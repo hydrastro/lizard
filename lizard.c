@@ -208,6 +208,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "set!") == 0) {
         ast_node->type = AST_ASSIGNMENT;
         *current_node_pointer = current_node->next;
@@ -235,6 +236,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "define") == 0) {
         ast_node->type = AST_DEFINITION;
         *current_node_pointer = current_node->next;
@@ -262,6 +264,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "lambda") == 0) {
         ast_node->type = AST_LAMBDA;
         ast_node->lambda_parameters = list_create();
@@ -293,7 +296,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
-
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "if") == 0) {
         ast_node->type = AST_IF;
         *current_node_pointer = current_node->next;
@@ -325,6 +328,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "begin") == 0) {
         ast_node->type = AST_BEGIN;
         *current_node_pointer = current_node->next;
@@ -355,6 +359,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "cond") == 0) {
         ast_node->type = AST_COND;
         *current_node_pointer = current_node->next;
@@ -385,8 +390,9 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else if (strcmp(current_token->symbol, "let") == 0) {
-        ast_node->type = AST_IF;
+        ast_node->type = AST_IF; // TODO
         current_node = *current_node_pointer;
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
@@ -396,6 +402,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
+        *depth -= 1;
       } else {
         ast_node->type = AST_APPLICATION;
         if (current_node == token_list->nil) {
