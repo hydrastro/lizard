@@ -21,17 +21,19 @@
           buildInputs = [ pkgs.gmp pkgs.stdenv.cc ds.defaultPackage.x86_64-linux ];
 
           buildPhase = ''
-            mkdir -p $out
-            gcc -c lizard.c -lgmp -o lizard
+            mkdir -p $out/include
+            gcc -c lizard.c -lgmp -o lizard.o
+            ar rcs $out/liblizard.a lizard.o
+            gcc -shared -o $out/liblizard.so lizard.o
           '';
 
           installPhase = ''
-            mkdir -p $out/bin
-            cp lizard $out/bin
+            cp ./*.h $out/include
+            cp lizard.h $out/include/
           '';
-          postInstall = ''
-            cp $out/bin/lizard ./lizard
-          '';
+          #postInstall = ''
+          #  cp $out/bin/lizard ./lizard
+          #'';
 
           meta = with pkgs.lib; {
             description = "lizard wizard";
