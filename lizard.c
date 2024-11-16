@@ -5,74 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef enum {
-  TOKEN_LEFT_PAREN,
-  TOKEN_RIGHT_PAREN,
-  TOKEN_SYMBOL,
-  TOKEN_NUMBER,
-  TOKEN_STRING
-} lizard_token_type_t;
-
-typedef struct lizard_token {
-  lizard_token_type_t type;
-  union {
-    char *string;
-    char *symbol;
-    mpz_t number;
-  };
-} lizard_token_t;
-
-typedef struct lizard_token_list_node {
-  list_node_t node;
-  lizard_token_t token;
-} lizard_token_list_node_t;
-
-typedef enum {
-  AST_STRING,
-  AST_NUMBER,
-  AST_SYMBOL,
-  AST_QUOTED,
-  AST_ASSIGNMENT,
-  AST_DEFINITION,
-  AST_IF,
-  AST_LAMBDA,
-  AST_BEGIN,
-  AST_COND,
-  AST_APPLICATION
-} lizard_ast_node_type_t;
-
-typedef struct lizard_ast_node {
-  lizard_ast_node_type_t type;
-  union {
-    char *string;
-    mpz_t number;
-    char *variable;
-    struct lizard_ast_node *quoted;
-    struct {
-      struct lizard_ast_node *variable;
-      struct lizard_ast_node *value;
-    } assignment;
-    struct {
-      struct lizard_ast_node *variable;
-      struct lizard_ast_node *value;
-    } definition;
-    struct {
-      struct lizard_ast_node *pred;
-      struct lizard_ast_node *cons;
-      struct lizard_ast_node *alt;
-    } if_clause;
-    list_t *lambda_parameters;
-    list_t *begin_expressions;
-    list_t *cond_clauses;
-    list_t *application_arguments;
-  };
-} lizard_ast_node_t;
-
-typedef struct lizard_ast_list_node {
-  list_node_t node;
-  lizard_ast_node_t ast;
-} lizard_ast_list_node_t;
+#include "lizard.h"
 
 bool lizard_is_digit(char *input, int i) {
   if (input[i] >= '0' && input[i] <= '9') {
@@ -112,7 +45,6 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
 list_t *lizard_tokenize(char *input) {
   list_t *list = list_create();
   int i, j, k;
-  bool match;
   char *buffer;
   i = 0;
   while (input[i] != '\0') {
@@ -590,45 +522,4 @@ void print_ast(lizard_ast_node_t *node, int depth) {
   default:
     printf("Unknown AST node type.\n");
   }
-}
-
-typedef struct my_shit {
-  list_node_t node;
-  int my_shit;
-} my_shit_t;
-
-void test_parser(char *input) {
-  printf("Testing input: %s\n", input);
-
-  list_t *tokens = lizard_tokenize(input);
-  if (!tokens) {
-    printf("Error: tokenization failed.\n");
-    return;
-  }
-
-  list_t *ast_list = lizard_parse(tokens);
-  if (!ast_list) {
-    printf("Error: parsing failed.\n");
-    return;
-  }
-  lizard_ast_node_t *ast;
-  list_node_t *node = ast_list->head;
-  while (node != ast_list->nil) {
-    ast = &((lizard_ast_list_node_t *)node)->ast;
-    print_ast(ast, 0);
-    node = node->next;
-  }
-  printf("\n");
-}
-
-int main(void) {
-  test_parser("(a ((b c) d))");
-  test_parser("(define x 10)");
-  test_parser("(if (> x 5) (display \"x is greater than 5\") (display \"x is 5 "
-              "or less\"))");
-  test_parser("(lambda (x y) (+ x y))");
-  test_parser("(xet ((a 5) (b 10)) (+ a b))");
-  test_parser("(begin (set! x 5) (display x))");
-
-  return 0;
 }
