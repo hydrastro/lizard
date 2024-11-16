@@ -22,13 +22,14 @@
 
           buildPhase = ''
             mkdir -p $out/include
+            mkdir -p $out/lib
             gcc -c lizard.c -lgmp -o lizard.o
-            ar rcs $out/liblizard.a lizard.o
-            gcc -shared -o $out/liblizard.so lizard.o
+            ar rcs $out/lib/liblizard.a lizard.o
+            gcc -shared -o $out/lib/liblizard.so lizard.o
           '';
 
           installPhase = ''
-            cp ./*.h $out/include
+            cp ./*.h $out/include/lib/
             cp lizard.h $out/include/
           '';
           #postInstall = ''
