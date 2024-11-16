@@ -29,7 +29,6 @@
           '';
 
           installPhase = ''
-            cp ./*.h $out/include/lib/
             cp lizard.h $out/include/
           '';
           #postInstall = ''
