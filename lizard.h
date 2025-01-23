@@ -31,7 +31,7 @@ typedef struct lizard_token {
     char *string;
     char *symbol;
     mpz_t number;
-  };
+  } data;
 } lizard_token_t;
 
 typedef struct lizard_token_list_node {
@@ -77,7 +77,7 @@ typedef struct lizard_ast_node {
     list_t *begin_expressions;
     list_t *cond_clauses;
     list_t *application_arguments;
-  };
+  } data;
 } lizard_ast_node_t;
 
 typedef struct lizard_ast_list_node {
@@ -86,11 +86,10 @@ typedef struct lizard_ast_list_node {
 } lizard_ast_list_node_t;
 
 bool lizard_is_digit(char *input, int i);
-void lizard_add_token(list_t *list, lizard_token_type_t token_type,
-                      char *data);
+void lizard_add_token(list_t *list, lizard_token_type_t token_type, char *data);
 list_t *lizard_tokenize(char *input);
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
-                                    list_node_t **current_node_pointer,
-                                    int *depth);
+                                           list_node_t **current_node_pointer,
+                                           int *depth);
 list_t *lizard_parse(list_t *token_list);
 void print_ast(lizard_ast_node_t *node, int depth);

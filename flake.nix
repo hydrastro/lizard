@@ -18,18 +18,14 @@
           src = ./.;
 
           # (pkgs.callPackage ds { })
-          buildInputs = [ pkgs.gmp pkgs.stdenv.cc ds.defaultPackage.x86_64-linux ];
+          buildInputs = [ pkgs.stdenv.cc pkgs.gmp ds.defaultPackage.x86_64-linux ];
 
           buildPhase = ''
-            mkdir -p $out/include
-            mkdir -p $out/lib
-            gcc -c lizard.c -lgmp -o lizard.o
-            ar rcs $out/lib/liblizard.a lizard.o
-            gcc -shared -o $out/lib/liblizard.so lizard.o
+            make PREFIX=$out
           '';
 
           installPhase = ''
-            cp lizard.h $out/include/
+            make install PREFIX=$out
           '';
           #postInstall = ''
           #  cp $out/bin/lizard ./lizard
