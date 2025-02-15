@@ -120,36 +120,15 @@ list_t *lizard_tokenize(char *input) {
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                                            list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *heap) {
-  lizard_ast_node_t *ast_node;
-  list_node_t *current_node;
-  int current_depth;
-  lizard_ast_node_t *val_node;
-  lizard_ast_node_t *var_node;
-  lizard_ast_list_node_t *ast_list_node;
-  lizard_ast_list_node_t *name_node;
-  lizard_ast_node_t *body_node;
+  lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
+      *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
+      *transformer, *quoted_node;
+  list_node_t *current_node, *val_iter, *p;
+  lizard_ast_list_node_t *ast_list_node, *name_node, *params_wrapper,
+      *body_wrapper, *val_list_node, *var_list_node, *lambda_wrapper;
+  list_t *params_list, *bindings, *values;
   char *fn_name;
-  lizard_ast_node_t *lambda_node;
-  lizard_ast_node_t *params_app;
-  list_t *params_list;
-  lizard_ast_list_node_t *params_wrapper;
-  lizard_ast_list_node_t *body_wrapper;
-  lizard_ast_node_t *def_node;
-  lizard_ast_node_t *fn_symbol;
-  lizard_ast_node_t *app_node;
-  list_t *bindings;
-  list_t *values;
-  lizard_ast_node_t *var;
-  lizard_ast_node_t *value;
-  lizard_ast_list_node_t *val_list_node;
-  lizard_ast_list_node_t *var_list_node;
-  lizard_ast_list_node_t *lambda_wrapper;
-  list_node_t *val_iter;
-  lizard_ast_node_t *macro_name;
-  lizard_ast_node_t *transformer;
-  lizard_ast_node_t *quoted_node;
-  list_node_t *p;
-
+  int current_depth;
   lizard_token_t *current_token;
   current_node = *current_node_pointer;
   current_token = &CAST(current_node, lizard_token_list_node_t)->token;
@@ -773,10 +752,7 @@ list_t *lizard_parse(list_t *token_list, lizard_heap_t *heap) {
 
 void print_ast(lizard_ast_node_t *node, int depth) {
   int i;
-  list_node_t *expr;
-  list_node_t *arg;
-  list_node_t *param_node;
-  list_node_t *iter;
+  list_node_t *expr, *arg, *param_node, *iter;
   if (!node) {
     return;
   }
@@ -895,8 +871,8 @@ void *lizard_heap_alloc(lizard_heap_t *heap, size_t size) {
   size_t alignment = sizeof(void *);
   size = (size + alignment - 1) & ~(alignment - 1);
   if (heap->top + size > heap->end) {
-    size_t used = heap->top - heap->start;
-    size_t current_committed = heap->end - heap->start;
+    size_t used = (size_t)(heap->top - heap->start);
+    size_t current_committed = (size_t)(heap->end - heap->start);
     size_t new_committed = current_committed * 2;
     if (new_committed > heap->reserved)
       new_committed = heap->reserved;
@@ -958,28 +934,11 @@ int lizard_env_set(lizard_env_t *env, const char *symbol,
 
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
                                lizard_heap_t *heap) {
-  lizard_ast_node_t *closure;
-  lizard_ast_node_t *result;
-  lizard_ast_node_t *func;
-  lizard_ast_list_node_t *name_node;
-  char *fn_name;
-
-  list_t *param_list;
-  list_node_t *p;
-  lizard_ast_node_t *lambda_node;
-  lizard_ast_node_t *params_app;
-
-  lizard_ast_list_node_t *params_wrapper;
-  lizard_ast_list_node_t *body_wrapper;
-
-  list_node_t *iter;
-
-  lizard_ast_node_t *var;
-
-  list_t *evaled_args;
-  list_node_t *arg_node;
-  char *macro_name;
-
+  lizard_ast_node_t *closure, *result, *func, *lambda_node, *params_app, *var;
+  lizard_ast_list_node_t *name_node, *params_wrapper, *body_wrapper;
+  char *fn_name, *macro_name;
+  list_t *param_list, *evaled_args;
+  list_node_t *p, *iter, *arg_node;
   if (!node) {
     return NULL;
   }
@@ -1142,13 +1101,10 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
                                 lizard_env_t *env, lizard_heap_t *heap) {
 
   list_t *formal_params;
+  list_node_t *param_node, *arg_node, *body_node;
   lizard_ast_list_node_t *var_param;
-  lizard_ast_node_t *rest_list;
-  list_node_t *param_node;
-  list_node_t *arg_node;
+  lizard_ast_node_t *rest_list, *result;
   bool variadic;
-  lizard_ast_node_t *result;
-  list_node_t *body_node;
   char *variadic_name;
 
   if (func->type == AST_PRIMITIVE) {
@@ -1259,11 +1215,9 @@ lizard_ast_node_t *lizard_primitive_plus(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_minus(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   list_node_t *node;
-  lizard_ast_list_node_t *first_node;
+  lizard_ast_list_node_t *first_node, *arg_node;
+  lizard_ast_node_t *arg, *ret;
   mpz_t result;
-  lizard_ast_list_node_t *arg_node;
-  lizard_ast_node_t *arg;
-  lizard_ast_node_t *ret;
   if (args->head == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGC);
   }
@@ -1299,8 +1253,7 @@ lizard_ast_node_t *lizard_primitive_multiply(list_t *args, lizard_env_t *env,
                                              lizard_heap_t *heap) {
   list_node_t *node;
   lizard_ast_list_node_t *arg_node;
-  lizard_ast_node_t *arg;
-  lizard_ast_node_t *ret;
+  lizard_ast_node_t *arg, *ret;
 
   mpz_t product;
   mpz_init_set_ui(product, 1);
@@ -1324,10 +1277,8 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   mpz_t quotient;
   list_node_t *node;
-  lizard_ast_list_node_t *first_node;
-  lizard_ast_list_node_t *arg_node;
-  lizard_ast_node_t *arg;
-  lizard_ast_node_t *ret;
+  lizard_ast_list_node_t *first_node, *arg_node;
+  lizard_ast_node_t *arg, *ret;
 
   if (args->head == args->nil || args->head->next == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGC);
@@ -1360,11 +1311,8 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   list_node_t *node;
-  lizard_ast_list_node_t *first_node;
-  lizard_ast_node_t *first;
-  lizard_ast_list_node_t *other_node;
-  lizard_ast_node_t *other;
-  lizard_ast_node_t *result;
+  lizard_ast_list_node_t *first_node, *other_node;
+  lizard_ast_node_t *first, *other, *result;
   int eq;
   if (args->head == args->nil || args->head->next == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_EQ_ARGC);
@@ -1411,10 +1359,7 @@ lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_cons(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lizard_ast_node_t *node;
-  lizard_ast_list_node_t *car_node;
-  lizard_ast_list_node_t *new_car_node;
-  lizard_ast_list_node_t *cdr_node;
-  lizard_ast_list_node_t *new_cdr_node;
+  lizard_ast_list_node_t *car_node, *new_car_node, *cdr_node, *new_cdr_node;
   if (args->head == args->nil || args->head->next == args->nil ||
       args->head->next->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CONS_ARGC);
@@ -1458,11 +1403,10 @@ lizard_ast_node_t *lizard_primitive_car(list_t *args, lizard_env_t *env,
 
 lizard_ast_node_t *lizard_primitive_cdr(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap) {
-  lizard_ast_list_node_t *node;
+  lizard_ast_list_node_t *node, *copy;
   list_t *app_args;
   lizard_ast_node_t *cdr_result;
   list_node_t *iter;
-  lizard_ast_list_node_t *copy;
   if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CDR_ARGC);
   }
@@ -1495,12 +1439,9 @@ lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
 }
 lizard_ast_node_t *lizard_primitive_list(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
-  lizard_ast_node_t *first;
-  list_t *rest_args;
-  lizard_ast_node_t *rest;
-  list_t *cons_args;
-  lizard_ast_list_node_t *first_node;
-  lizard_ast_list_node_t *rest_node;
+  lizard_ast_node_t *first, *rest;
+  list_t *rest_args, *cons_args;
+  lizard_ast_list_node_t *first_node, *rest_node;
   if (args->head == args->nil) {
     return lizard_make_nil(heap);
   }
@@ -1611,15 +1552,10 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env,
                                         lizard_heap_t *heap) {
-  list_node_t *first;
-  lizard_ast_node_t *operator;
-  lizard_ast_node_t *binding;
-  list_node_t *arg;
+  list_node_t *first, *arg, *body, *expr;
+  lizard_ast_node_t *operator, * binding, *expanded;
   lizard_ast_list_node_t *copy;
-  lizard_ast_node_t *expanded;
   list_t *macro_args;
-  list_node_t *body;
-  list_node_t *expr;
   if (!node) {
     return NULL;
   }
@@ -1696,16 +1632,16 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
 }
 
 lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
+  lizard_ast_list_node_t *msg_node;
   lizard_ast_node_t *node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
   node->type = AST_ERROR;
   node->data.error.code = error_code;
   node->data.error.data = list_create();
 
-  lizard_ast_list_node_t *msg_node =
-      lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  msg_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
   msg_node->ast.type = AST_STRING;
   msg_node->ast.data.string =
-      (char *)(lizard_error_messages[LIZARD_LANG_EN][error_code]);
+      (char *)lizard_error_messages[LIZARD_LANG_EN][error_code];
   list_append(node->data.error.data, &msg_node->node);
 
   return node;
