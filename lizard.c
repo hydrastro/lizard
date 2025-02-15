@@ -33,6 +33,7 @@ bool lizard_is_digit(const char *input, int i) {
 
 void lizard_add_token(list_t *list, lizard_token_type_t token_type,
                       char *data) {
+
   lizard_token_list_node_t *node;
   node = malloc(sizeof(lizard_token_list_node_t));
   node->token.type = token_type;
@@ -47,6 +48,7 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
   case TOKEN_NUMBER:
     mpz_init(node->token.data.number);
     mpz_set_str(node->token.data.number, data, 10);
+    free(data);
     break;
   case TOKEN_STRING:
     node->token.data.string = data;
@@ -88,6 +90,7 @@ list_t *lizard_tokenize(const char *input) {
       buffer[k] = '\0';
       lizard_add_token(list, TOKEN_STRING, buffer);
       i++;
+
     } else if (lizard_is_digit(input, i)) {
       j = i;
       while (lizard_is_digit(input, i)) {
@@ -99,6 +102,7 @@ list_t *lizard_tokenize(const char *input) {
       }
       buffer[k] = '\0';
       lizard_add_token(list, TOKEN_NUMBER, buffer);
+
     } else {
       j = i;
       while (input[i] != ' ' && input[i] != '\0' && input[i] != '(' &&
@@ -115,6 +119,29 @@ list_t *lizard_tokenize(const char *input) {
   }
 
   return list;
+}
+
+void lizard_destroy_token(list_node_t *node) {
+  lizard_token_list_node_t *token_node = CAST(node, lizard_token_list_node_t);
+  lizard_token_t *token = &token_node->token;
+
+  switch (token->type) {
+  case TOKEN_SYMBOL:
+  case TOKEN_STRING:
+    free(token->data.string);
+    break;
+  case TOKEN_NUMBER:
+    mpz_clear(token->data.number);
+    break;
+  default:
+    break;
+  }
+
+  free(token_node);
+}
+
+void lizard_free_tokens(list_t *token_list) {
+  list_destroy(token_list, lizard_destroy_token);
 }
 
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
@@ -864,6 +891,15 @@ lizard_heap_t *lizard_heap_create(size_t initial_size, size_t reserved_size) {
   heap->top = heap->start;
   heap->end = heap->start + initial_size;
   return heap;
+}
+
+void lizard_heap_destroy(lizard_heap_t *heap) {
+  if (heap) {
+    if (heap->start) {
+      munmap(heap->start, heap->reserved);
+    }
+    free(heap);
+  }
 }
 
 void *lizard_heap_alloc(lizard_heap_t *heap, size_t size) {

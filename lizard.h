@@ -28,8 +28,8 @@ typedef enum {
 typedef struct lizard_token {
   lizard_token_type_t type;
   union {
-    const char *string;
-    const char *symbol;
+    char *string;
+    char *symbol;
     mpz_t number;
   } data;
 } lizard_token_t;
@@ -39,8 +39,6 @@ typedef struct lizard_token_list_node {
   lizard_token_t token;
 } lizard_token_list_node_t;
 
-/* Define the error codes via an X‐macro list.
-   (This list is independent of language.) */
 #define ERROR_LIST                                                             \
   X(LIZARD_ERROR_NONE)                                                         \
   X(LIZARD_ERROR_UNBOUND_SYMBOL)                                               \
@@ -80,12 +78,11 @@ typedef struct lizard_token_list_node {
   X(LIZARD_ERROR_TOKENS_ARGT)                                                  \
   X(LIZARD_ERROR_EVAL_ARGC)
 
-/* Create the enum of errors */
 typedef enum lizard_error_code {
 #define X(err) err,
   ERROR_LIST
 #undef X
-      LIZARD_ERROR_COUNT /* Handy count of errors */
+      LIZARD_ERROR_COUNT
 } lizard_error_code_t;
 
 #define ERROR_MESSAGES_EN                                                      \
@@ -237,6 +234,7 @@ struct lizard_env {
 bool lizard_is_digit(const char *input, int i);
 void lizard_add_token(list_t *list, lizard_token_type_t token_type, char *data);
 list_t *lizard_tokenize(const char *input);
+void lizard_free_tokens(list_t *token_list);
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                                            list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *);
@@ -244,6 +242,7 @@ list_t *lizard_parse(list_t *token_list, lizard_heap_t *);
 void print_ast(lizard_ast_node_t *node, int depth);
 
 lizard_heap_t *lizard_heap_create(size_t initial_size, size_t reserved_size);
+void lizard_heap_destroy(lizard_heap_t *heap);
 void *lizard_heap_alloc(lizard_heap_t *heap, size_t size);
 
 lizard_env_t *lizard_env_create(lizard_heap_t *heap, lizard_env_t *parent);

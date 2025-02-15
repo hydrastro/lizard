@@ -156,11 +156,14 @@ int main(void) {
       printf("=> ");
       print_ast(result, 0);
     }
+    lizard_free_tokens(tokens);
     free(input);
   }
 
   for (int i = 0; i < HISTORY_SIZE; i++) {
     free(history[i]);
   }
+  lizard_heap_destroy(heap);
+
   return 0;
 }
