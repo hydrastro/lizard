@@ -28,8 +28,8 @@ typedef enum {
 typedef struct lizard_token {
   lizard_token_type_t type;
   union {
-    char *string;
-    char *symbol;
+    const char *string;
+    const char *symbol;
     mpz_t number;
   } data;
 } lizard_token_t;
@@ -171,9 +171,9 @@ struct lizard_ast_node {
   lizard_ast_node_type_t type;
   union {
     bool boolean;
-    char *string;
+    const char *string;
     mpz_t number;
-    char *variable;
+    const char *variable;
     struct lizard_ast_node *quoted;
     struct {
       struct lizard_ast_node *variable;
@@ -224,7 +224,7 @@ struct lizard_heap {
 };
 
 typedef struct lizard_env_entry {
-  char *symbol;
+  const char *symbol;
   lizard_ast_node_t *value;
   struct lizard_env_entry *next;
 } lizard_env_entry_t;
@@ -234,9 +234,9 @@ struct lizard_env {
   struct lizard_env *parent;
 };
 
-bool lizard_is_digit(char *input, int i);
+bool lizard_is_digit(const char *input, int i);
 void lizard_add_token(list_t *list, lizard_token_type_t token_type, char *data);
-list_t *lizard_tokenize(char *input);
+list_t *lizard_tokenize(const char *input);
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                                            list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *);
@@ -247,8 +247,8 @@ lizard_heap_t *lizard_heap_create(size_t initial_size, size_t reserved_size);
 void *lizard_heap_alloc(lizard_heap_t *heap, size_t size);
 
 lizard_env_t *lizard_env_create(lizard_heap_t *heap, lizard_env_t *parent);
-void lizard_env_define(lizard_heap_t *heap, lizard_env_t *env, char *symbol,
-                       lizard_ast_node_t *value);
+void lizard_env_define(lizard_heap_t *heap, lizard_env_t *env,
+                       const char *symbol, lizard_ast_node_t *value);
 lizard_ast_node_t *lizard_env_lookup(lizard_env_t *env, const char *symbol);
 int lizard_env_set(lizard_env_t *env, const char *symbol,
                    lizard_ast_node_t *value);

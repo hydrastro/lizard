@@ -20,7 +20,7 @@ static const char **lizard_error_messages[LIZARD_LANG_COUNT] = {
 #undef X
 };
 
-bool lizard_is_digit(char *input, int i) {
+bool lizard_is_digit(const char *input, int i) {
   if (input[i] >= '0' && input[i] <= '9') {
     return true;
   }
@@ -55,7 +55,7 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
   list_append(list, &node->node);
 }
 
-list_t *lizard_tokenize(char *input) {
+list_t *lizard_tokenize(const char *input) {
   list_t *list = list_create();
   int i, j, k;
   char *buffer;
@@ -127,7 +127,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
   lizard_ast_list_node_t *ast_list_node, *name_node, *params_wrapper,
       *body_wrapper, *val_list_node, *var_list_node, *lambda_wrapper;
   list_t *params_list, *bindings, *values;
-  char *fn_name;
+  const char *fn_name;
   int current_depth;
   lizard_token_t *current_token;
   current_node = *current_node_pointer;
@@ -895,8 +895,8 @@ lizard_env_t *lizard_env_create(lizard_heap_t *heap, lizard_env_t *parent) {
   return env;
 }
 
-void lizard_env_define(lizard_heap_t *heap, lizard_env_t *env, char *symbol,
-                       lizard_ast_node_t *value) {
+void lizard_env_define(lizard_heap_t *heap, lizard_env_t *env,
+                       const char *symbol, lizard_ast_node_t *value) {
   lizard_env_entry_t *entry =
       lizard_heap_alloc(heap, sizeof(lizard_env_entry_t));
   entry->symbol = symbol;
@@ -936,7 +936,7 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
                                lizard_heap_t *heap) {
   lizard_ast_node_t *closure, *result, *func, *lambda_node, *params_app, *var;
   lizard_ast_list_node_t *name_node, *params_wrapper, *body_wrapper;
-  char *fn_name, *macro_name;
+  const char *fn_name, *macro_name;
   list_t *param_list, *evaled_args;
   list_node_t *p, *iter, *arg_node;
   if (!node) {
@@ -1105,7 +1105,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
   lizard_ast_list_node_t *var_param;
   lizard_ast_node_t *rest_list, *result;
   bool variadic;
-  char *variadic_name;
+  const char *variadic_name;
 
   if (func->type == AST_PRIMITIVE) {
     return func->data.primitive(args, env, heap);
@@ -1466,7 +1466,7 @@ lizard_ast_node_t *lizard_primitive_list(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_tokens(list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   lizard_ast_list_node_t *node;
-  char *input;
+  const char *input;
   list_t *tokens;
   list_node_t *token_node;
   lizard_token_t *token;
@@ -1640,8 +1640,7 @@ lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
 
   msg_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
   msg_node->ast.type = AST_STRING;
-  msg_node->ast.data.string =
-      (char *)lizard_error_messages[LIZARD_LANG_EN][error_code];
+  msg_node->ast.data.string = lizard_error_messages[LIZARD_LANG_EN][error_code];
   list_append(node->data.error.data, &msg_node->node);
 
   return node;
