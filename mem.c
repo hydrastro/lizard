@@ -2,6 +2,8 @@
 #include "lang.h"
 #include "lizard.h"
 
+extern lizard_heap_t *heap;
+
 static const char *lizard_error_messages_lang_en[LIZARD_ERROR_COUNT] = {
 #define X(fst, snd) snd,
     LIZARD_ERROR_MESSAGES_EN
@@ -41,7 +43,7 @@ void lizard_heap_destroy(lizard_heap_t *heap) {
   }
 }
 
-void *lizard_heap_alloc(lizard_heap_t *heap, size_t size) {
+void *lizard_heap_alloc(size_t size) {
   void *ptr;
   size_t alignment = sizeof(void *);
   size = (size + alignment - 1) & ~(alignment - 1);
@@ -62,10 +64,13 @@ void *lizard_heap_alloc(lizard_heap_t *heap, size_t size) {
   heap->top += size;
   return ptr;
 }
+void lizard_heap_free(void *ptr) { (void)ptr; }
+
+void lizard_heap_free_wrapper(void *ptr, size_t size) { (void)ptr; }
 
 lizard_ast_node_t *lizard_make_bool(lizard_heap_t *heap, bool value) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_BOOL;
   node->data.boolean = value;
   return node;
@@ -73,7 +78,7 @@ lizard_ast_node_t *lizard_make_bool(lizard_heap_t *heap, bool value) {
 
 lizard_ast_node_t *lizard_make_nil(lizard_heap_t *heap) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_NIL;
   return node;
 }
@@ -82,7 +87,7 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,
                                          lizard_ast_node_t *transformer) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_MACRO;
   node->data.macro_def.variable = name;
   node->data.macro_def.transformer = transformer;
@@ -91,12 +96,13 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
 
 lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
   lizard_ast_list_node_t *msg_node;
-  lizard_ast_node_t *node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_ERROR;
   node->data.error.code = error_code;
-  node->data.error.data = list_create();
+  node->data.error.data =
+      list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
-  msg_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  msg_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
   msg_node->ast.type = AST_STRING;
   msg_node->ast.data.string = lizard_error_messages[LIZARD_LANG_EN][error_code];
   list_append(node->data.error.data, &msg_node->node);

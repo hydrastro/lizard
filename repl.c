@@ -1,4 +1,11 @@
+#include "env.h"
+#include "lang.h"
 #include "lizard.h"
+#include "mem.h"
+#include "parser.h"
+#include "primitives.h"
+#include "tokenizer.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +19,8 @@
 char *history[HISTORY_SIZE] = {NULL};
 int history_count = 0;
 int history_index = 0;
+
+lizard_heap_t *heap;
 
 void add_to_history(const char *line) {
   if (line[0] == '\0')
@@ -103,7 +112,8 @@ char *read_line(void) {
 }
 
 int main(void) {
-  lizard_heap_t *heap = lizard_heap_create(1024 * 1024, 16 * 1024 * 1024);
+  mp_set_memory_functions(lizard_heap_alloc, NULL, lizard_heap_free_wrapper);
+  heap = lizard_heap_create(1024 * 1024, 16 * 1024 * 1024);
   lizard_env_t *global_env = lizard_env_create(heap, NULL);
 
   lizard_env_define(heap, global_env, "+",
@@ -149,13 +159,14 @@ int main(void) {
     list_t *tokens = lizard_tokenize(input);
     list_t *ast_list = lizard_parse(tokens, heap);
     for (list_node_t *node = ast_list->head; node != ast_list->nil;
-         node = node->next) {
-      lizard_ast_list_node_t *expr_node = (lizard_ast_list_node_t *)node;
-      lizard_ast_node_t *result =
-          lizard_eval(&expr_node->ast, global_env, heap);
-      printf("=> ");
-      print_ast(result, 0);
-    }
+          node = node->next) {
+       lizard_ast_list_node_t *expr_node = (lizard_ast_list_node_t *)node;
+       lizard_ast_node_t *result =
+           lizard_eval(&expr_node->ast, global_env, heap);
+       printf("=> ");
+       print_ast(result, 0);
+     }
+
     lizard_free_tokens(tokens);
     free(input);
   }

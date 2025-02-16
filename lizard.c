@@ -158,7 +158,7 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
         return lizard_make_error(heap, LIZARD_ERROR_INVALID_FUNCTION_NAME);
       }
       fn_name = name_node->ast.data.variable;
-      param_list = list_create();
+      param_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
       for (p = app_args->head->next; p != app_args->nil; p = p->next) {
         lizard_ast_list_node_t *param_node = (lizard_ast_list_node_t *)p;
         if (param_node->ast.type != AST_SYMBOL) {
@@ -167,20 +167,21 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
         list_append(param_list, p);
       }
 
-      lambda_node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+      lambda_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       lambda_node->type = AST_LAMBDA;
       lambda_node->data.lambda.closure_env = NULL;
 
-      lambda_node->data.lambda.parameters = list_create();
+      lambda_node->data.lambda.parameters =
+          list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
-      params_app = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+      params_app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       params_app->type = AST_APPLICATION;
       params_app->data.application_arguments = param_list;
-      params_wrapper = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+      params_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       params_wrapper->ast = *params_app;
       list_append(lambda_node->data.lambda.parameters, &params_wrapper->node);
 
-      body_wrapper = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+      body_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       body_wrapper->ast = *node->data.definition.value;
       list_append(lambda_node->data.lambda.parameters, &body_wrapper->node);
 
@@ -236,7 +237,7 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
   }
 
   case AST_LAMBDA:
-    closure = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+    closure = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     closure->type = AST_LAMBDA;
     closure->data.lambda.parameters = node->data.lambda.parameters;
     closure->data.lambda.closure_env = env;
@@ -246,14 +247,14 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
     list_node_t *func_node = node->data.application_arguments->head;
     func = lizard_eval(&((lizard_ast_list_node_t *)func_node)->ast, env, heap);
 
-    evaled_args = list_create();
+    evaled_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
     for (arg_node = func_node->next;
          arg_node != node->data.application_arguments->nil;
          arg_node = arg_node->next) {
       lizard_ast_node_t *arg_val =
           lizard_eval(&((lizard_ast_list_node_t *)arg_node)->ast, env, heap);
       lizard_ast_list_node_t *new_arg_node =
-          lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+          lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       new_arg_node->ast = *arg_val;
       list_append(evaled_args, &new_arg_node->node);
     }
@@ -380,10 +381,10 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
       if (operator->type == AST_SYMBOL) {
         binding = lizard_env_lookup(env, operator->data.variable);
         if (binding && binding->type == AST_MACRO) {
-          macro_args = list_create();
+          macro_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
           for (arg = first->next; arg != node->data.application_arguments->nil;
                arg = arg->next) {
-            copy = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+            copy = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
             copy->ast = ((lizard_ast_list_node_t *)arg)->ast; /* shallow copy */
             list_append(macro_args, &copy->node);
           }

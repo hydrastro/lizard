@@ -23,7 +23,7 @@ lizard_ast_node_t *lizard_primitive_plus(list_t *args, lizard_env_t *env,
     mpz_add(sum, sum, arg->data.number);
   }
 
-  result = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
   mpz_set(result->data.number, sum);
@@ -60,7 +60,7 @@ lizard_ast_node_t *lizard_primitive_minus(list_t *args, lizard_env_t *env,
       mpz_sub(result, result, arg->data.number);
     }
   }
-  ret = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   ret->type = AST_NUMBER;
   mpz_init(ret->data.number);
   mpz_set(ret->data.number, result);
@@ -84,7 +84,7 @@ lizard_ast_node_t *lizard_primitive_multiply(list_t *args, lizard_env_t *env,
     }
     mpz_mul(product, product, arg->data.number);
   }
-  ret = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   ret->type = AST_NUMBER;
   mpz_init(ret->data.number);
   mpz_set(ret->data.number, product);
@@ -120,7 +120,7 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
     }
     mpz_tdiv_q(quotient, quotient, arg->data.number);
   }
-  ret = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   ret->type = AST_NUMBER;
   mpz_init(ret->data.number);
   mpz_set(ret->data.number, quotient);
@@ -169,7 +169,7 @@ lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
     if (!eq)
       break;
   }
-  result = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_BOOL;
   result->data.boolean = (eq != 0);
   return result;
@@ -183,17 +183,18 @@ lizard_ast_node_t *lizard_primitive_cons(list_t *args, lizard_env_t *env,
       args->head->next->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CONS_ARGC);
   }
-  node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_APPLICATION;
-  node->data.application_arguments = list_create();
+  node->data.application_arguments =
+      list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
   car_node = CAST(args->head, lizard_ast_list_node_t);
-  new_car_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  new_car_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
   new_car_node->ast = car_node->ast; /* shallow copy */
   list_append(node->data.application_arguments, &new_car_node->node);
 
   cdr_node = CAST(args->head->next, lizard_ast_list_node_t);
-  new_cdr_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  new_cdr_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
   new_cdr_node->ast = cdr_node->ast; /* shallow copy */
   list_append(node->data.application_arguments, &new_cdr_node->node);
 
@@ -237,12 +238,13 @@ lizard_ast_node_t *lizard_primitive_cdr(list_t *args, lizard_env_t *env,
   if (app_args->head == app_args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CDR_NIL);
   }
-  cdr_result = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  cdr_result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   cdr_result->type = AST_APPLICATION;
-  cdr_result->data.application_arguments = list_create();
+  cdr_result->data.application_arguments =
+      list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
   for (iter = app_args->head->next; iter != app_args->nil; iter = iter->next) {
-    copy = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+    copy = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
     copy->ast = ((lizard_ast_list_node_t *)iter)->ast; /* shallow copy */
     list_append(cdr_result->data.application_arguments, &copy->node);
   }
@@ -251,7 +253,7 @@ lizard_ast_node_t *lizard_primitive_cdr(list_t *args, lizard_env_t *env,
 
 lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
                                          lizard_primitive_func_t func) {
-  lizard_ast_node_t *node = lizard_heap_alloc(heap, sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   node->type = AST_PRIMITIVE;
   node->data.primitive = func;
   return node;
@@ -266,16 +268,16 @@ lizard_ast_node_t *lizard_primitive_list(list_t *args, lizard_env_t *env,
   }
 
   first = &CAST(args->head, lizard_ast_list_node_t)->ast;
-  rest_args = list_create();
+  rest_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   rest_args->head = args->head->next;
   rest_args->nil = args->nil;
   rest = lizard_primitive_list(rest_args, env, heap);
 
-  cons_args = list_create();
-  first_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  cons_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  first_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
   first_node->ast = *first;
   list_append(cons_args, &first_node->node);
-  rest_node = lizard_heap_alloc(heap, sizeof(lizard_ast_list_node_t));
+  rest_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
   rest_node->ast = *rest;
   list_append(cons_args, &rest_node->node);
 

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 lizard_env_t *lizard_env_create(lizard_heap_t *heap, lizard_env_t *parent) {
-  lizard_env_t *env = lizard_heap_alloc(heap, sizeof(lizard_env_t));
+  lizard_env_t *env = lizard_heap_alloc(sizeof(lizard_env_t));
   env->entries = NULL;
   env->parent = parent;
   return env;
@@ -13,8 +13,7 @@ lizard_env_t *lizard_env_create(lizard_heap_t *heap, lizard_env_t *parent) {
 
 void lizard_env_define(lizard_heap_t *heap, lizard_env_t *env,
                        const char *symbol, lizard_ast_node_t *value) {
-  lizard_env_entry_t *entry =
-      lizard_heap_alloc(heap, sizeof(lizard_env_entry_t));
+  lizard_env_entry_t *entry = lizard_heap_alloc(sizeof(lizard_env_entry_t));
   entry->symbol = symbol;
   entry->value = value;
   entry->next = env->entries;
