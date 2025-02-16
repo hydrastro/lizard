@@ -1,13 +1,14 @@
 #include "parser.h"
 #include "lizard.h"
 #include "mem.h"
+#include "tokenizer.h"
 
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                                            list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *heap) {
   lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
       *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
-      *transformer, *quoted_node;
+      *transformer;
   list_node_t *current_node, *val_iter, *p;
   lizard_ast_list_node_t *ast_list_node, *name_node, *params_wrapper,
       *body_wrapper, *val_list_node, *var_list_node, *lambda_wrapper;
@@ -555,32 +556,40 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
     *depth = *depth - 1;
     break;
   case TOKEN_SYMBOL:
-    if (current_token->data.symbol[0] == '\'' &&
-        current_token->data.symbol[1] == '\0') {
+    if (strcmp(current_token->data.symbol, "'") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
       ast_node->type = AST_QUOTED;
       ast_node->data.quoted = lizard_parse_expression(
           token_list, current_node_pointer, depth, heap);
-    } else if (current_token->data.symbol[0] == '\'' &&
-               current_token->data.symbol[1] != '\0') {
-      ast_node->type = AST_QUOTED;
-      quoted_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      quoted_node->type = AST_SYMBOL;
-      quoted_node->data.variable = current_token->data.symbol + 1;
-      ast_node->data.quoted = quoted_node;
+    } else if (strcmp(current_token->data.symbol, "`") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
-    } else if (strcmp(current_token->data.symbol, "#t") == 0) {
-      ast_node->type = AST_BOOL;
-      ast_node->data.boolean = true;
+      ast_node->type = AST_QUASIQUOTE;
+      ast_node->data.quoted = lizard_parse_expression(
+          token_list, current_node_pointer, depth, heap);
+    } else if (strcmp(current_token->data.symbol, ",") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
-    } else if (strcmp(current_token->data.symbol, "#f") == 0) {
-      ast_node->type = AST_BOOL;
-      ast_node->data.boolean = false;
+      ast_node->type = AST_UNQUOTE;
+      ast_node->data.quoted = lizard_parse_expression(
+          token_list, current_node_pointer, depth, heap);
+    } else if (strcmp(current_token->data.symbol, "#") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
+      current_token = &CAST(current_node, lizard_token_list_node_t)->token;
+      if (strcmp(current_token->data.symbol, "t") == 0) {
+        ast_node->type = AST_BOOL;
+        ast_node->data.boolean = true;
+      } else if (strcmp(current_token->data.symbol, "f") == 0) {
+        ast_node->type = AST_BOOL;
+        ast_node->data.boolean = false;
+      } else {
+        fprintf(stderr, "Error: unexpected token after #.\n");
+        exit(1);
+      }
+      *current_node_pointer = current_node->next;
+      current_node = *current_node_pointer;
     } else if (strcmp(current_token->data.symbol, "nil") == 0) {
       ast_node->type = AST_NIL;
       *current_node_pointer = current_node->next;

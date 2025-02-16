@@ -42,6 +42,14 @@ void print_ast(lizard_ast_node_t *node, int depth) {
     printf("Quote:\n");
     print_ast(node->data.quoted, depth + 1);
     break;
+  case AST_QUASIQUOTE:
+    printf("Quasiquote:\n");
+    print_ast(node->data.quoted, depth + 1);
+    break;
+  case AST_UNQUOTE:
+    printf("Unquote:\n");
+    print_ast(node->data.quoted, depth + 1);
+    break;
   case AST_ASSIGNMENT:
     printf("Assignment:\n");
     print_ast(node->data.assignment.variable, depth + 1);
@@ -138,6 +146,11 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
   }
   case AST_QUOTED:
     return node->data.quoted;
+  case AST_QUASIQUOTE:
+
+    return lizard_expand_quasiquote(node->data.quoted, env, heap);
+  case AST_UNQUOTE:
+    return lizard_eval(node->data.quoted, env, heap);
 
   case AST_DEFINITION:
     var = node->data.definition.variable;
@@ -443,4 +456,60 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
     break;
   }
   return node;
+}
+
+lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  list_t *expanded_list;
+  list_node_t *iter;
+  lizard_ast_list_node_t *elem;
+  lizard_ast_node_t *expanded_elem;
+  lizard_ast_list_node_t *new_elem;
+  lizard_ast_node_t *new_node;
+  if (!node) {
+    return NULL;
+  }
+
+  switch (node->type) {
+  case AST_NUMBER:
+  case AST_STRING:
+  case AST_SYMBOL:
+  case AST_BOOL:
+  case AST_NIL:
+    return node;
+
+  case AST_UNQUOTE:
+    return lizard_eval(node->data.quoted, env, heap);
+
+  case AST_APPLICATION: {
+    expanded_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+
+    for (iter = node->data.application_arguments->head;
+         iter != node->data.application_arguments->nil; iter = iter->next) {
+
+      elem = (lizard_ast_list_node_t *)iter;
+      expanded_elem = lizard_expand_quasiquote(&elem->ast, env, heap);
+
+      if (expanded_elem->type == AST_UNQUOTE) {
+        expanded_elem = expanded_elem->data.quoted;
+      }
+      new_elem = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      new_elem->ast = *expanded_elem;
+      list_append(expanded_list, &new_elem->node);
+    }
+
+    new_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    new_node->type = AST_APPLICATION;
+    new_node->data.application_arguments = expanded_list;
+
+    return new_node;
+  }
+
+  case AST_QUASIQUOTE:
+    return lizard_expand_quasiquote(node->data.quoted, env, heap);
+
+  default:
+    return node;
+  }
 }

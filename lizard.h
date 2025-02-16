@@ -18,28 +18,6 @@ ___                     .-*''*-.
  //-\\^//-\\--            /__\
 */
 
-typedef enum {
-  TOKEN_LEFT_PAREN,
-  TOKEN_RIGHT_PAREN,
-  TOKEN_SYMBOL,
-  TOKEN_NUMBER,
-  TOKEN_STRING
-} lizard_token_type_t;
-
-typedef struct lizard_token {
-  lizard_token_type_t type;
-  union {
-    char *string;
-    char *symbol;
-    mpz_t number;
-  } data;
-} lizard_token_t;
-
-typedef struct lizard_token_list_node {
-  list_node_t node;
-  lizard_token_t token;
-} lizard_token_list_node_t;
-
 #define LIZARD_ERROR_LIST                                                      \
   X(LIZARD_ERROR_NONE)                                                         \
   X(LIZARD_ERROR_UNBOUND_SYMBOL)                                               \
@@ -77,7 +55,9 @@ typedef struct lizard_token_list_node {
   X(LIZARD_ERROR_CDR_NIL)                                                      \
   X(LIZARD_ERROR_TOKENS_ARGC)                                                  \
   X(LIZARD_ERROR_TOKENS_ARGT)                                                  \
-  X(LIZARD_ERROR_EVAL_ARGC)
+  X(LIZARD_ERROR_EVAL_ARGC)                                                    \
+  X(LIZARD_ERROR_UNQUOTE)                                                      \
+  X(LIZARD_ERROR_UNQUOTE_ARGC)
 
 typedef enum lizard_error_code {
 #define X(err) err,
@@ -93,6 +73,8 @@ typedef enum {
   AST_BOOL,
   AST_NIL,
   AST_QUOTED,
+  AST_QUASIQUOTE,
+  AST_UNQUOTE,
   AST_ASSIGNMENT,
   AST_DEFINITION,
   AST_IF,
@@ -102,6 +84,7 @@ typedef enum {
   AST_APPLICATION,
   AST_PRIMITIVE,
   AST_MACRO,
+  AST_PROMISE,
   AST_ERROR
 } lizard_ast_node_type_t;
 
@@ -186,4 +169,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
                                 lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap);
 #endif /* LIZARD_H */

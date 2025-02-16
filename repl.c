@@ -39,6 +39,7 @@ void add_to_history(const char *line) {
 char *read_line(void) {
   char *buffer = malloc(REPL_BUFFER_SIZE);
   int position = 0;
+  int length = 0;
   buffer[0] = '\0';
 
   system("stty raw -echo");
@@ -70,6 +71,7 @@ char *read_line(void) {
           strcpy(buffer, history[history_index % HISTORY_SIZE]);
           printf("%s", buffer);
           position = strlen(buffer);
+          length = position;
         }
         continue;
       } else if (c == KEY_DOWN && history_count > 0) {
@@ -86,6 +88,19 @@ char *read_line(void) {
           }
           printf("%s", buffer);
           position = strlen(buffer);
+          length = position;
+        }
+        continue;
+      } else if (c == 'D') {
+        if (position > 0) {
+          position--;
+          printf("\b");
+        }
+        continue;
+      } else if (c == 'C') {
+        if (position < length) {
+          printf("%c", buffer[position]);
+          position++;
         }
         continue;
       }
@@ -94,19 +109,25 @@ char *read_line(void) {
     if (c == '\r' || c == '\n') {
       system("stty cooked echo");
       printf("\n");
-      buffer[position] = '\0';
+      buffer[length] = '\0';
       add_to_history(buffer);
       return buffer;
     } else if (c == 127 || c == '\b') {
       if (position > 0) {
         position--;
+        length--;
         printf("\b \b");
-        buffer[position] = '\0';
+        memmove(&buffer[position], &buffer[position + 1], length - position);
       }
     } else if (position < REPL_BUFFER_SIZE - 1) {
+      memmove(&buffer[position + 1], &buffer[position], length - position);
       buffer[position++] = c;
-      buffer[position] = '\0';
-      printf("%c", c);
+      buffer[++length] = '\0';
+      printf("\033[K");
+      printf("%s", &buffer[position - 1]);
+      for (int i = position; i < length; i++) {
+        printf("\b");
+      }
     }
   }
 }
@@ -138,6 +159,8 @@ int main(void) {
                     lizard_make_primitive(heap, lizard_primitive_tokens));
   lizard_env_define(heap, global_env, "eval",
                     lizard_make_primitive(heap, lizard_primitive_eval));
+  lizard_env_define(heap, global_env, "unquote",
+                    lizard_make_primitive(heap, lizard_primitive_unquote));
 
   while (1) {
     printf("lizard> ");
@@ -159,15 +182,15 @@ int main(void) {
     list_t *tokens = lizard_tokenize(input);
     list_t *ast_list = lizard_parse(tokens, heap);
     for (list_node_t *node = ast_list->head; node != ast_list->nil;
-          node = node->next) {
-       lizard_ast_list_node_t *expr_node = (lizard_ast_list_node_t *)node;
-       lizard_ast_node_t *result =
-           lizard_eval(&expr_node->ast, global_env, heap);
-       printf("=> ");
-       print_ast(result, 0);
-     }
+         node = node->next) {
+      lizard_ast_list_node_t *expr_node = (lizard_ast_list_node_t *)node;
+      lizard_ast_node_t *result =
+          lizard_eval(&expr_node->ast, global_env, heap);
+      printf("=> ");
+      print_ast(result, 0);
+    }
 
-    lizard_free_tokens(tokens);
+    /*lizard_free_tokens(tokens);*/
     free(input);
   }
 

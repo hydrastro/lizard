@@ -342,4 +342,21 @@ lizard_ast_node_t *lizard_primitive_eval(list_t *args, lizard_env_t *env,
   expr = &node->ast;
   return lizard_eval(expr, env, heap);
 }
-#pragma GCC diagnostic pop
+
+lizard_ast_node_t *lizard_primitive_unquote(list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_list_node_t *node;
+  lizard_ast_node_t *expr;
+  if (args->head == args->nil || args->head->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_UNQUOTE_ARGC);
+  }
+
+  node = CAST(args->head, lizard_ast_list_node_t);
+  expr = &node->ast;
+
+  if (expr->type != AST_QUOTED) {
+    return lizard_make_error(heap, LIZARD_ERROR_UNQUOTE_ARGC);
+  }
+
+  return expr->data.quoted;
+}

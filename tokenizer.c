@@ -86,16 +86,39 @@ list_t *lizard_tokenize(const char *input) {
 
     } else {
       j = i;
-      while (input[i] != ' ' && input[i] != '\0' && input[i] != '(' &&
-             input[i] != ')') {
-        i++;
+      if (input[i] == '\'' || input[i] == '`' || input[i] == ',' ||
+          input[i] == '!' || input[i] == '@' || input[i] == '#' ||
+          input[i] == '$' || input[i] == '%' || input[i] == '^' ||
+          input[i] == '&' || input[i] == '[' || input[i] == ']' ||
+          (input[i] == ',' && input[i + 1] == '@')) {
+        if (input[i] == ',' && input[i + 1] == '@') {
+          buffer = malloc(sizeof(char) * 3);
+          buffer[0] = input[i];
+          buffer[1] = input[i + 1];
+          buffer[2] = '\0';
+          lizard_add_token(list, TOKEN_SYMBOL, buffer);
+          i += 2;
+        } else {
+
+          buffer = malloc(sizeof(char) * 2);
+          buffer[0] = input[i];
+          buffer[1] = '\0';
+          lizard_add_token(list, TOKEN_SYMBOL, buffer);
+          i++;
+        }
+      } else {
+        while (input[i] != ' ' && input[i] != '\0' && input[i] != '(' &&
+               input[i] != ')' && input[i] != '\'' && input[i] != '`' &&
+               input[i] != ',') {
+          i++;
+        }
+        buffer = malloc(sizeof(char) * (long unsigned int)(i - j + 1));
+        for (k = 0; j < i; j++, k++) {
+          buffer[k] = input[j];
+        }
+        buffer[k] = '\0';
+        lizard_add_token(list, TOKEN_SYMBOL, buffer);
       }
-      buffer = malloc(sizeof(char) * (long unsigned int)(i - j + 1));
-      for (k = 0; j < i; j++, k++) {
-        buffer[k] = input[j];
-      }
-      buffer[k] = '\0';
-      lizard_add_token(list, TOKEN_SYMBOL, buffer);
     }
   }
 

@@ -64,6 +64,7 @@ void *lizard_heap_alloc(size_t size) {
   heap->top += size;
   return ptr;
 }
+
 void lizard_heap_free(void *ptr) { (void)ptr; }
 
 void lizard_heap_free_wrapper(void *ptr, size_t size) { (void)ptr; }
