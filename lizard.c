@@ -1,6 +1,6 @@
 #include "lizard.h"
-#include "en.h"
 #include "env.h"
+#include "lang.h"
 #include "mem.h"
 #include "primitives.h"
 #include <ctype.h>
