@@ -1,3 +1,4 @@
+#include "mem.h"
 #include "env.h"
 #include "lang.h"
 #include "lizard.h"
@@ -16,53 +17,100 @@ static const char **lizard_error_messages[LIZARD_LANG_COUNT] = {
 #undef X
 };
 
-lizard_heap_t *lizard_heap_create(size_t initial_size, size_t reserved_size) {
-  lizard_heap_t *heap = malloc(sizeof(lizard_heap_t));
-  if (!heap) {
-    fprintf(stderr, "Error: Unable to allocate lizard_heap structure.\n");
+lizard_heap_segment_t *create_segment(size_t size) {
+  lizard_heap_segment_t *seg;
+  seg = (lizard_heap_segment_t *)malloc(sizeof(lizard_heap_segment_t));
+  if (seg == NULL) {
+    fprintf(stderr, "Error: Unable to allocate lizard_heap_segment_t\n");
     exit(1);
   }
-  heap->reserved = reserved_size;
-  heap->start = mmap(NULL, reserved_size, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (heap->start == MAP_FAILED) {
+  seg->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (seg->start == MAP_FAILED) {
     perror("mmap");
     exit(1);
   }
-  heap->top = heap->start;
-  heap->end = heap->start + initial_size;
-  return heap;
+  seg->top = seg->start;
+  seg->end = seg->start + size;
+  seg->next = NULL;
+  return seg;
 }
 
-void lizard_heap_destroy(lizard_heap_t *heap) {
-  if (heap) {
-    if (heap->start) {
-      munmap(heap->start, heap->reserved);
-    }
-    free(heap);
+lizard_heap_t *lizard_heap_create(size_t initial_size,
+                                  size_t max_segment_size) {
+  lizard_heap_t *heap;
+  heap = (lizard_heap_t *)malloc(sizeof(lizard_heap_t));
+  if (heap == NULL) {
+    fprintf(stderr, "Error: Unable to allocate lizard_heap_t\n");
+    exit(1);
   }
+  heap->initial_size = initial_size;
+  heap->max_segment_size = max_segment_size;
+  heap->head = create_segment(initial_size);
+  heap->current = heap->head;
+  return heap;
+}
+void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
+  void *new_ptr;
+  size_t copy_size;
+
+  if (ptr == NULL) {
+    return lizard_heap_alloc(new_size);
+  }
+  if (new_size == 0) {
+    return NULL;
+  }
+  new_ptr = lizard_heap_alloc(new_size);
+  if (new_ptr == NULL) {
+    return NULL;
+  }
+  copy_size = old_size < new_size ? old_size : new_size;
+  memcpy(new_ptr, ptr, copy_size);
+  return new_ptr;
 }
 
 void *lizard_heap_alloc(size_t size) {
+  size_t alignment;
+  lizard_heap_segment_t *seg;
   void *ptr;
-  size_t alignment = sizeof(void *);
+  size_t current_seg_size, new_segment_size;
+
+  alignment = sizeof(void *);
   size = (size + alignment - 1) & ~(alignment - 1);
-  if (heap->top + size > heap->end) {
-    size_t used = (size_t)(heap->top - heap->start);
-    size_t current_committed = (size_t)(heap->end - heap->start);
-    size_t new_committed = current_committed * 2;
-    if (new_committed > heap->reserved)
-      new_committed = heap->reserved;
-    if (used + size > new_committed) {
-      fprintf(stderr, "Error: Out of reserved memory in lizard_heap.\n");
-      exit(1);
+
+  seg = heap->current;
+  if (seg->top + size > seg->end) {
+    current_seg_size = (size_t)(seg->end - seg->start);
+    new_segment_size = current_seg_size * 2;
+    if (new_segment_size < size) {
+      new_segment_size = size;
     }
-    /* TODO: use mprotect */
-    heap->end = heap->start + new_committed;
+    if (new_segment_size > heap->max_segment_size) {
+      new_segment_size = heap->max_segment_size;
+    }
+    seg->next = create_segment(new_segment_size);
+    heap->current = seg->next;
+    seg = heap->current;
   }
-  ptr = heap->top;
-  heap->top += size;
+  ptr = seg->top;
+  seg->top += size;
   return ptr;
+}
+
+void lizard_heap_destroy(lizard_heap_t *heap) {
+  lizard_heap_segment_t *seg;
+  lizard_heap_segment_t *next;
+  size_t seg_size;
+
+  seg = heap->head;
+  while (seg != NULL) {
+    next = seg->next;
+    seg_size = (size_t)(seg->end - seg->start);
+    munmap(seg->start, seg_size);
+    free(seg);
+    seg = next;
+  }
+  free(heap);
 }
 
 void lizard_heap_free(void *ptr) { (void)ptr; }

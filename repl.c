@@ -133,7 +133,8 @@ char *read_line(void) {
 }
 
 int main(void) {
-  mp_set_memory_functions(lizard_heap_alloc, NULL, lizard_heap_free_wrapper);
+  mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
+                          lizard_heap_free_wrapper);
   heap = lizard_heap_create(1024 * 1024, 16 * 1024 * 1024);
   lizard_env_t *global_env = lizard_env_create(heap, NULL);
 

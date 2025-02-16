@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include "lizard.h"
+#include "mem.h"
 
 bool lizard_is_digit(const char *input, int i) {
   if (input[i] >= '0' && input[i] <= '9') {
@@ -16,7 +17,7 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
                       char *data) {
 
   lizard_token_list_node_t *node;
-  node = malloc(sizeof(lizard_token_list_node_t));
+  node = lizard_heap_alloc(sizeof(lizard_token_list_node_t));
   node->token.type = token_type;
   switch (token_type) {
   case TOKEN_LEFT_PAREN:
@@ -29,7 +30,7 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
   case TOKEN_NUMBER:
     mpz_init(node->token.data.number);
     mpz_set_str(node->token.data.number, data, 10);
-    free(data);
+    lizard_heap_free(data);
     break;
   case TOKEN_STRING:
     node->token.data.string = data;
@@ -39,7 +40,7 @@ void lizard_add_token(list_t *list, lizard_token_type_t token_type,
 }
 
 list_t *lizard_tokenize(const char *input) {
-  list_t *list = list_create();
+  list_t *list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   int i, j, k;
   char *buffer;
   i = 0;
@@ -64,7 +65,7 @@ list_t *lizard_tokenize(const char *input) {
         fprintf(stderr, "Error: unterminated string.\n");
         exit(1);
       }
-      buffer = malloc(sizeof(char) * (long unsigned int)(i - j));
+      buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j));
       for (k = 0, j++; j < i; j++, k++) {
         buffer[k] = input[j];
       }
@@ -77,7 +78,7 @@ list_t *lizard_tokenize(const char *input) {
       while (lizard_is_digit(input, i)) {
         i++;
       }
-      buffer = malloc(sizeof(char) * (long unsigned int)(i - j + 1));
+      buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
       for (k = 0; j < i; j++, k++) {
         buffer[k] = input[j];
       }
@@ -92,7 +93,7 @@ list_t *lizard_tokenize(const char *input) {
           input[i] == '&' || input[i] == '[' || input[i] == ']' ||
           (input[i] == ',' && input[i + 1] == '@')) {
         if (input[i] == ',' && input[i + 1] == '@') {
-          buffer = malloc(sizeof(char) * 3);
+          buffer = lizard_heap_alloc(sizeof(char) * 3);
           buffer[0] = input[i];
           buffer[1] = input[i + 1];
           buffer[2] = '\0';
@@ -100,7 +101,7 @@ list_t *lizard_tokenize(const char *input) {
           i += 2;
         } else {
 
-          buffer = malloc(sizeof(char) * 2);
+          buffer = lizard_heap_alloc(sizeof(char) * 2);
           buffer[0] = input[i];
           buffer[1] = '\0';
           lizard_add_token(list, TOKEN_SYMBOL, buffer);
@@ -112,7 +113,8 @@ list_t *lizard_tokenize(const char *input) {
                input[i] != ',') {
           i++;
         }
-        buffer = malloc(sizeof(char) * (long unsigned int)(i - j + 1));
+        buffer =
+            lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
         for (k = 0; j < i; j++, k++) {
           buffer[k] = input[j];
         }
@@ -132,7 +134,7 @@ void lizard_destroy_token(list_node_t *node) {
   switch (token->type) {
   case TOKEN_SYMBOL:
   case TOKEN_STRING:
-    free(token->data.string);
+    lizard_heap_free(token->data.string);
     break;
   case TOKEN_NUMBER:
     mpz_clear(token->data.number);
@@ -141,9 +143,9 @@ void lizard_destroy_token(list_node_t *node) {
     break;
   }
 
-  free(token_node);
+  lizard_heap_free(token_node);
 }
 
-void lizard_free_tokens(list_t *token_list) {
+void lizard_lizard_heap_free_tokens(list_t *token_list) {
   list_destroy(token_list, lizard_destroy_token);
 }

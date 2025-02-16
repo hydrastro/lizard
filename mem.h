@@ -16,5 +16,7 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,
                                          lizard_ast_node_t *transformer);
 lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code);
+lizard_heap_segment_t *create_segment(size_t size);
+void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size);
 
 #endif /* LIZARD_HEAP_H */

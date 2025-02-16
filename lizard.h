@@ -144,11 +144,18 @@ typedef struct lizard_ast_list_node {
   lizard_ast_node_t ast;
 } lizard_ast_list_node_t;
 
+typedef struct lizard_heap_segment {
+  char *start;
+  char *top;
+  char *end;
+  struct lizard_heap_segment *next;
+} lizard_heap_segment_t;
+
 struct lizard_heap {
-  size_t *start;
-  size_t *top;
-  size_t *end;
-  size_t reserved;
+  lizard_heap_segment_t *head;
+  lizard_heap_segment_t *current;
+  size_t initial_size;
+  size_t max_segment_size;
 };
 
 typedef struct lizard_env_entry {
