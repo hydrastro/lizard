@@ -23,7 +23,8 @@ OUT_LIB_DIR = $(PREFIX)/lib
 OUT_INCLUDE_DIR = $(PREFIX)/include/lib
 
 #SRC_FILES = $(wildcard $(LIB_DIR)/*.c)
-SRC_FILES = lizard.c
+#SRC_FILES = lizard.c
+SRC_FILES = lizard.c env.c mem.c parser.c primitives.c tokenizer.c
 OBJ_FILES = $(SRC_FILES:.c=.o)
 
 all: liblizard.a liblizard.so
