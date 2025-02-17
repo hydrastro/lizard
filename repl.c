@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define REPL_BUFFER_SIZE 1024
 
@@ -41,13 +42,32 @@ char *read_line(void) {
   int position = 0;
   int length = 0;
   buffer[0] = '\0';
+  char c;
+  ssize_t bytes_read;
 
-  system("stty raw -echo");
+  if (isatty(STDIN_FILENO)) {
+    system("stty raw -echo");
+  }
   while (1) {
-    char c = getchar();
+
+    if (isatty(STDIN_FILENO)) {
+      c = getchar();
+    } else {
+      bytes_read = read(STDIN_FILENO, &c, 1);
+
+      if (bytes_read == 0) {
+        printf("EOF\n");
+        exit(0);
+      } else if (bytes_read < 0) {
+        perror("read error");
+        exit(1);
+      }
+    }
 
     if (c == 3 || c == 4) {
-      system("stty cooked echo");
+      if (isatty(STDIN_FILENO)) {
+        system("stty cooked echo");
+      }
       if (c == 3) {
         printf("\n^C\n");
       } else if (c == 4) {
@@ -107,7 +127,9 @@ char *read_line(void) {
     }
 
     if (c == '\r' || c == '\n') {
-      system("stty cooked echo");
+      if (isatty(STDIN_FILENO)) {
+        system("stty cooked echo");
+      }
       printf("\n");
       buffer[length] = '\0';
       add_to_history(buffer);
