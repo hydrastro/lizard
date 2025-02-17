@@ -1,6 +1,6 @@
 CC = gcc
 AR = ar
-CFLAGS = -c -std=c89 -lgmp -pg
+CFLAGS = -c -std=c89 -lgmp
 CFLAGS += -O2 -march=native -mtune=native
 CFLAGS += -Wall -Wextra -Werror -pedantic -pedantic-errors
 CFLAGS += -fno-common -Wl,--gc-sections -Wredundant-decls -Wno-unused-parameter

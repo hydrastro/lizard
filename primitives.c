@@ -8,109 +8,111 @@
 lizard_ast_node_t *lizard_primitive_plus(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   list_node_t *node;
-  lizard_ast_list_node_t *arg_node;
-  lizard_ast_node_t *arg;
-  lizard_ast_node_t *result;
-  mpz_t sum;
-  mpz_init(sum);
+  lizard_ast_list_node_t *first_arg_node, *arg_node;
+  lizard_ast_node_t *acc, *arg;
 
-  for (node = args->head; node != args->nil; node = node->next) {
-    arg_node = CAST(node, lizard_ast_list_node_t);
+  node = args->head;
+  if (node == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS);
+  }
+  first_arg_node = (lizard_ast_list_node_t *)node;
+  acc = &first_arg_node->ast;
+  if (acc->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS);
+  }
+  node = node->next;
+  while (node != args->nil) {
+    arg_node = (lizard_ast_list_node_t *)node;
     arg = &arg_node->ast;
     if (arg->type != AST_NUMBER) {
       return lizard_make_error(heap, LIZARD_ERROR_PLUS);
     }
-    mpz_add(sum, sum, arg->data.number);
+    mpz_add(acc->data.number, acc->data.number, arg->data.number);
+    node = node->next;
   }
-
-  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  result->type = AST_NUMBER;
-  mpz_init(result->data.number);
-  mpz_set(result->data.number, sum);
-  mpz_clear(sum);
-  return result;
+  return acc;
 }
 
 lizard_ast_node_t *lizard_primitive_minus(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   list_node_t *node;
-  lizard_ast_list_node_t *first_node, *arg_node;
-  lizard_ast_node_t *arg, *ret;
-  mpz_t result;
-  if (args->head == args->nil) {
+  lizard_ast_list_node_t *first_arg_node, *arg_node;
+  lizard_ast_node_t *acc, *arg;
+
+  node = args->head;
+  if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGC);
   }
-  node = args->head;
-  first_node = CAST(node, lizard_ast_list_node_t);
-  if (first_node->ast.type != AST_NUMBER) {
+  first_arg_node = (lizard_ast_list_node_t *)node;
+  acc = &first_arg_node->ast;
+  if (acc->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT);
   }
-  mpz_init(result);
-  mpz_set(result, first_node->ast.data.number);
   node = node->next;
   if (node == args->nil) {
-    mpz_neg(result, result);
-  } else {
-    for (; node != args->nil; node = node->next) {
-      arg_node = CAST(node, lizard_ast_list_node_t);
-      arg = &arg_node->ast;
-      if (arg->type != AST_NUMBER) {
-        return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT_2);
-      }
-      mpz_sub(result, result, arg->data.number);
-    }
+    mpz_neg(acc->data.number, acc->data.number);
+    return acc;
   }
-  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  ret->type = AST_NUMBER;
-  mpz_init(ret->data.number);
-  mpz_set(ret->data.number, result);
-  mpz_clear(result);
-  return ret;
+  while (node != args->nil) {
+    arg_node = (lizard_ast_list_node_t *)node;
+    arg = &arg_node->ast;
+    if (arg->type != AST_NUMBER) {
+      return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT_2);
+    }
+    mpz_sub(acc->data.number, acc->data.number, arg->data.number);
+    node = node->next;
+  }
+  return acc;
 }
 
 lizard_ast_node_t *lizard_primitive_multiply(list_t *args, lizard_env_t *env,
                                              lizard_heap_t *heap) {
   list_node_t *node;
+  lizard_ast_list_node_t *first_arg_node;
+  lizard_ast_node_t *acc;
   lizard_ast_list_node_t *arg_node;
-  lizard_ast_node_t *arg, *ret;
+  lizard_ast_node_t *arg;
 
-  mpz_t product;
-  mpz_init_set_ui(product, 1);
-  for (node = args->head; node != args->nil; node = node->next) {
-    arg_node = CAST(node, lizard_ast_list_node_t);
+  node = args->head;
+  if (node == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_MUL);
+  }
+  first_arg_node = (lizard_ast_list_node_t *)node;
+  acc = &first_arg_node->ast;
+  if (acc->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_MUL);
+  }
+  node = node->next;
+  while (node != args->nil) {
+    arg_node = (lizard_ast_list_node_t *)node;
     arg = &arg_node->ast;
     if (arg->type != AST_NUMBER) {
       return lizard_make_error(heap, LIZARD_ERROR_MUL);
     }
-    mpz_mul(product, product, arg->data.number);
+    mpz_mul(acc->data.number, acc->data.number, arg->data.number);
+    node = node->next;
   }
-  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  ret->type = AST_NUMBER;
-  mpz_init(ret->data.number);
-  mpz_set(ret->data.number, product);
-  mpz_clear(product);
-  return ret;
+  return acc;
 }
 
 lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
-  mpz_t quotient;
   list_node_t *node;
-  lizard_ast_list_node_t *first_node, *arg_node;
-  lizard_ast_node_t *arg, *ret;
+  lizard_ast_list_node_t *first_arg_node, *arg_node;
+  lizard_ast_node_t *acc, *arg;
 
-  if (args->head == args->nil || args->head->next == args->nil) {
+  node = args->head;
+  if (node == args->nil || node->next == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGC);
   }
-  node = args->head;
-  first_node = CAST(node, lizard_ast_list_node_t);
-  if (first_node->ast.type != AST_NUMBER) {
+  first_arg_node = (lizard_ast_list_node_t *)node;
+  acc = &first_arg_node->ast;
+  if (acc->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT);
   }
-  mpz_init(quotient);
-  mpz_set(quotient, first_node->ast.data.number);
-  for (node = node->next; node != args->nil; node = node->next) {
-    arg_node = CAST(node, lizard_ast_list_node_t);
+  node = node->next;
+  while (node != args->nil) {
+    arg_node = (lizard_ast_list_node_t *)node;
     arg = &arg_node->ast;
     if (arg->type != AST_NUMBER) {
       return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT_2);
@@ -118,15 +120,12 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
     if (mpz_cmp_ui(arg->data.number, 0) == 0) {
       return lizard_make_error(heap, LIZARD_ERROR_DIV_ZERO);
     }
-    mpz_tdiv_q(quotient, quotient, arg->data.number);
+    mpz_tdiv_q(acc->data.number, acc->data.number, arg->data.number);
+    node = node->next;
   }
-  ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  ret->type = AST_NUMBER;
-  mpz_init(ret->data.number);
-  mpz_set(ret->data.number, quotient);
-  mpz_clear(quotient);
-  return ret;
+  return acc;
 }
+
 lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   list_node_t *node;

@@ -51,8 +51,14 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   return heap;
 }
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
+  size_t alignment;
+  lizard_heap_segment_t *seg;
   void *new_ptr;
+  size_t additional;
   size_t copy_size;
+
+  alignment = sizeof(void *);
+  new_size = (new_size + alignment - 1) & ~(alignment - 1);
 
   if (ptr == NULL) {
     return lizard_heap_alloc(new_size);
@@ -60,6 +66,17 @@ void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
   if (new_size == 0) {
     return NULL;
   }
+
+  seg = heap->current;
+  /* Check if the block is the most recent allocation */
+  if ((char *)ptr + old_size == seg->top) {
+    additional = new_size - old_size;
+    if (seg->top + additional <= seg->end) {
+      seg->top += additional;
+      return ptr;
+    }
+  }
+
   new_ptr = lizard_heap_alloc(new_size);
   if (new_ptr == NULL) {
     return NULL;
