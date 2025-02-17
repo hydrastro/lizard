@@ -140,16 +140,13 @@ lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
     }
 
     case AST_QUOTED:
-      node = node->data.quoted;
-      continue;
+      return node->data.quoted;
 
     case AST_QUASIQUOTE:
-      node = lizard_expand_quasiquote(node->data.quoted, env, heap);
-      continue;
+      return lizard_expand_quasiquote(node->data.quoted, env, heap);
 
     case AST_UNQUOTE:
-      node = node->data.quoted;
-      continue;
+      return node->data.quoted;
 
     case AST_DEFINITION: {
       lizard_ast_node_t *var;
