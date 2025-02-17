@@ -46,6 +46,23 @@ ___                     .-*''*-.
   X(LIZARD_ERROR_DIV_ARGT_2)                                                   \
   X(LIZARD_ERROR_DIV_ZERO)                                                     \
   X(LIZARD_ERROR_EQ_ARGC)                                                      \
+  X(LIZARD_ERROR_POW_ARGC)                                                     \
+  X(LIZARD_ERROR_POW_ARGT)                                                     \
+  X(LIZARD_ERROR_LT_ARGC)                                                      \
+  X(LIZARD_ERROR_LT_ARGT)                                                      \
+  X(LIZARD_ERROR_LT_ARGT_2)                                                    \
+  X(LIZARD_ERROR_LE_ARGC)                                                      \
+  X(LIZARD_ERROR_LE_ARGT)                                                      \
+  X(LIZARD_ERROR_LE_ARGT_2)                                                    \
+  X(LIZARD_ERROR_GT_ARGC)                                                      \
+  X(LIZARD_ERROR_GT_ARGT)                                                      \
+  X(LIZARD_ERROR_GT_ARGT_2)                                                    \
+  X(LIZARD_ERROR_GE_ARGC)                                                      \
+  X(LIZARD_ERROR_GE_ARGT)                                                      \
+  X(LIZARD_ERROR_GE_ARGT_2)                                                    \
+  X(LIZARD_ERROR_MOD_ARGC)                                                     \
+  X(LIZARD_ERROR_MOD_ARGT)                                                     \
+  X(LIZARD_ERROR_MOD_ARGT_2)                                                   \
   X(LIZARD_ERROR_CONS_ARGC)                                                    \
   X(LIZARD_ERROR_CAR_ARGC)                                                     \
   X(LIZARD_ERROR_CAR_ARGT)                                                     \

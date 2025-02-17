@@ -37,6 +37,23 @@
   X(LIZARD_ERROR_DIV_ARGT_2, "Error: '/' expects number arguments.")           \
   X(LIZARD_ERROR_DIV_ZERO, "Error: division by zero.")                         \
   X(LIZARD_ERROR_EQ_ARGC, "Error: '=' expects at least two arguments.")        \
+  X(LIZARD_ERROR_POW_ARGC, "Error: '^' expects two arguments.")                \
+  X(LIZARD_ERROR_POW_ARGT, "Error: '^' expects number arguments.")             \
+  X(LIZARD_ERROR_LT_ARGC, "Error: '<' expects two arguments.")                 \
+  X(LIZARD_ERROR_LT_ARGT, "Error: '<' expects number arguments.")              \
+  X(LIZARD_ERROR_LT_ARGT_2, "Error: '<' expects number arguments.")            \
+  X(LIZARD_ERROR_LE_ARGC, "Error: '<=' expects two arguments.")                \
+  X(LIZARD_ERROR_LE_ARGT, "Error: '<=' expects number arguments.")             \
+  X(LIZARD_ERROR_LE_ARGT_2, "Error: '<=' expects number arguments.")           \
+  X(LIZARD_ERROR_GT_ARGC, "Error: '>' expects two arguments.")                 \
+  X(LIZARD_ERROR_GT_ARGT, "Error: '>' expects number arguments.")              \
+  X(LIZARD_ERROR_GT_ARGT_2, "Error: '>' expects number arguments.")            \
+  X(LIZARD_ERROR_GE_ARGC, "Error: '>=' expects two arguments.")                \
+  X(LIZARD_ERROR_GE_ARGT, "Error: '>=' expects number arguments.")             \
+  X(LIZARD_ERROR_GE_ARGT_2, "Error: '>=' expects number arguments.")           \
+  X(LIZARD_ERROR_MOD_ARGC, "Error: '%' expects two arguments.")                \
+  X(LIZARD_ERROR_MOD_ARGT, "Error: '%' expects number arguments.")             \
+  X(LIZARD_ERROR_MOD_ARGT_2, "Error: '%' expects number arguments.")           \
   X(LIZARD_ERROR_CONS_ARGC, "Error: 'cons' expects exactly two arguments.")    \
   X(LIZARD_ERROR_CAR_ARGC, "Error: 'car' expects exactly one argument.")       \
   X(LIZARD_ERROR_CAR_ARGT, "Error: 'car' expects a list.")                     \

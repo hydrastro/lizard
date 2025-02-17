@@ -170,6 +170,18 @@ int main(void) {
                     lizard_make_primitive(heap, lizard_primitive_divide));
   lizard_env_define(heap, global_env, "=",
                     lizard_make_primitive(heap, lizard_primitive_equal));
+  lizard_env_define(heap, global_env, "^",
+                    lizard_make_primitive(heap, lizard_primitive_pow));
+  lizard_env_define(heap, global_env, "<",
+                    lizard_make_primitive(heap, lizard_primitive_lt));
+  lizard_env_define(heap, global_env,
+                    "<=", lizard_make_primitive(heap, lizard_primitive_le));
+  lizard_env_define(heap, global_env, ">",
+                    lizard_make_primitive(heap, lizard_primitive_gt));
+  lizard_env_define(heap, global_env,
+                    ">=", lizard_make_primitive(heap, lizard_primitive_ge));
+  lizard_env_define(heap, global_env, "%",
+                    lizard_make_primitive(heap, lizard_primitive_mod));
   lizard_env_define(heap, global_env, "cons",
                     lizard_make_primitive(heap, lizard_primitive_cons));
   lizard_env_define(heap, global_env, "car",
@@ -207,8 +219,12 @@ int main(void) {
     for (list_node_t *node = ast_list->head; node != ast_list->nil;
          node = node->next) {
       lizard_ast_list_node_t *expr_node = (lizard_ast_list_node_t *)node;
-      lizard_ast_node_t *result =
-          lizard_eval(&expr_node->ast, global_env, heap);
+
+      lizard_ast_node_t *expanded_ast;
+      expanded_ast = lizard_expand_macros(&expr_node->ast, global_env, heap);
+      lizard_ast_node_t *result;
+      result = lizard_eval(expanded_ast, global_env, heap);
+
       printf("=> ");
       print_ast(result, 0);
     }
