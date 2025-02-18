@@ -1,6 +1,7 @@
 #include "primitives.h"
 #include "lizard.h"
 #include "mem.h"
+#include "parser.h"
 #include "tokenizer.h"
 
 #pragma GCC diagnostic push
@@ -519,6 +520,34 @@ lizard_ast_node_t *lizard_primitive_tokens(list_t *args, lizard_env_t *env,
     }
   }
 
+  return lizard_make_nil(heap);
+}
+
+lizard_ast_node_t *lizard_primitive_ast(list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  lizard_ast_list_node_t *node;
+  const char *input;
+  list_t *tokens, *ast_list;
+  list_node_t *current_node;
+
+  if (args->head == args->nil || args->head->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_TOKENS_ARGC);
+  }
+
+  node = CAST(args->head, lizard_ast_list_node_t);
+  if (node->ast.type != AST_STRING) {
+    return lizard_make_error(heap, LIZARD_ERROR_TOKENS_ARGT);
+  }
+
+  input = node->ast.data.string;
+  tokens = lizard_tokenize(input);
+  ast_list = lizard_parse(tokens, heap);
+  current_node = ast_list->head;
+  while (current_node != ast_list->nil) {
+    printf("=> ");
+    print_ast(&CAST(current_node, lizard_ast_list_node_t)->ast, 0);
+    current_node = current_node->next;
+  }
   return lizard_make_nil(heap);
 }
 

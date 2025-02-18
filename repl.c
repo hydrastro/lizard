@@ -240,6 +240,8 @@ int main(void) {
                       lizard_make_primitive(heap, lizard_primitive_list));
     lizard_env_define(heap, global_env, "tokens",
                       lizard_make_primitive(heap, lizard_primitive_tokens));
+    lizard_env_define(heap, global_env, "ast",
+                      lizard_make_primitive(heap, lizard_primitive_ast));
     lizard_env_define(heap, global_env, "eval",
                       lizard_make_primitive(heap, lizard_primitive_eval));
     lizard_env_define(heap, global_env, "unquote",

@@ -50,6 +50,10 @@ void print_ast(lizard_ast_node_t *node, int depth) {
     printf("Unquote:\n");
     print_ast(node->data.quoted, depth + 1);
     break;
+  case AST_UNQUOTE_SPLICING:
+    printf("Unquote-splicing:\n");
+    print_ast(node->data.quoted, depth + 1);
+    break;
   case AST_ASSIGNMENT:
     printf("Assignment:\n");
     print_ast(node->data.assignment.variable, depth + 1);
