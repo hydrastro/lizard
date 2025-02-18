@@ -556,6 +556,27 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
       if (expanded_elem->type == AST_UNQUOTE) {
         expanded_elem = expanded_elem->data.quoted;
       }
+
+      else if (expanded_elem->type == AST_UNQUOTE_SPLICING) {
+        list_node_t *splice_iter;
+        lizard_ast_node_t *spliced =
+            lizard_eval(expanded_elem->data.quoted, env, heap);
+        if (spliced->type != AST_APPLICATION) {
+          return lizard_make_error(heap, LIZARD_ERROR_INVALID_SPLICE);
+        }
+        for (splice_iter = spliced->data.application_arguments->head;
+             splice_iter != spliced->data.application_arguments->nil;
+             splice_iter = splice_iter->next) {
+          lizard_ast_list_node_t *splice_elem =
+              (lizard_ast_list_node_t *)splice_iter;
+          lizard_ast_list_node_t *new_elem =
+              lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+          new_elem->ast = splice_elem->ast; /* shallow copy */
+          list_append(expanded_list, &new_elem->node);
+        }
+        continue;
+      }
+
       new_elem = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       new_elem->ast = *expanded_elem;
       list_append(expanded_list, &new_elem->node);

@@ -68,7 +68,6 @@ void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
   }
 
   seg = heap->current;
-  /* Check if the block is the most recent allocation */
   if ((char *)ptr + old_size == seg->top) {
     additional = new_size - old_size;
     if (seg->top + additional <= seg->end) {

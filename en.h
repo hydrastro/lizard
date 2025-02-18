@@ -67,7 +67,8 @@
     "Error: 'print-tokens' expects a string argument.")                        \
   X(LIZARD_ERROR_EVAL_ARGC, "Error: eval expects exactly one argument.")       \
   X(LIZARD_ERROR_UNQUOTE, "Error: unquote not allowed outside quasiquote.")    \
-  X(LIZARD_ERROR_UNQUOTE_ARGC, "Error: unquote requires an argument.")
+  X(LIZARD_ERROR_UNQUOTE_ARGC, "Error: unquote requires an argument.")         \
+  X(LIZARD_ERROR_INVALID_SPLICE, "Error: invalid splice.")
 
 #define LIZARD_ERROR_MESSAGES                                                  \
   X(LIZARD_ERROR_MESSAGES_EN, lizard_error_messages_lang_en)

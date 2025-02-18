@@ -574,6 +574,13 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
       ast_node->type = AST_UNQUOTE;
       ast_node->data.quoted = lizard_parse_expression(
           token_list, current_node_pointer, depth, heap);
+    } else if (strcmp(current_token->data.symbol, ",@") == 0) {
+      *current_node_pointer = current_node->next;
+      current_node = current_node->next;
+      ast_node->type = AST_UNQUOTE_SPLICING;
+      ast_node->data.quoted = lizard_parse_expression(
+          token_list, current_node_pointer, depth, heap);
+
     } else if (strcmp(current_token->data.symbol, "#") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
