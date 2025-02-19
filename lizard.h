@@ -137,16 +137,6 @@ struct lizard_env {
   struct lizard_env *parent;
 };
 
-lizard_ast_node_t *lizard_make_continuation(
-    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
-                                       lizard_heap_t *),
-    lizard_heap_t *heap);
-lizard_ast_node_t *lizard_primitive_callcc(
-    list_t *args, lizard_env_t *env, lizard_heap_t *heap,
-    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
-                                       lizard_heap_t *));
-lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
-                                        lizard_env_t *env, lizard_heap_t *heap);
 typedef lizard_ast_node_t *(*lizard_continuation_t)(lizard_ast_node_t *result,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap);

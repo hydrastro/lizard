@@ -12,50 +12,6 @@
 #include <string.h>
 #include <sys/mman.h>
 
-lizard_ast_node_t *lizard_make_continuation(
-    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
-                                       lizard_heap_t *),
-    lizard_heap_t *heap) {
-  lizard_ast_node_t *cont_obj = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  cont_obj->type = AST_CONTINUATION;
-  cont_obj->data.continuation.captured_cont = current_cont;
-  return cont_obj;
-}
-
-lizard_ast_node_t *lizard_primitive_callcc(
-    list_t *args, lizard_env_t *env, lizard_heap_t *heap,
-    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
-                                       lizard_heap_t *)) {
-  lizard_ast_list_node_t *arg0;
-  lizard_ast_node_t *proc;
-  lizard_ast_node_t *cont_obj;
-  list_t *arg_list;
-  lizard_ast_list_node_t *node_arg;
-  if (args->head == args->nil) {
-    return lizard_make_error(heap, LIZARD_ERROR_CALLCC_ARGC);
-  }
-  arg0 = (lizard_ast_list_node_t *)args->head;
-  proc = &arg0->ast;
-  if (proc->type != AST_LAMBDA && proc->type != AST_PRIMITIVE) {
-    return lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY);
-  }
-  cont_obj = lizard_make_continuation(current_cont, heap);
-
-  arg_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
-  node_arg = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  node_arg->ast = *cont_obj; /* shallow copy */
-  list_append(arg_list, &node_arg->node);
-
-  return lizard_apply(proc, arg_list, env, heap, current_cont);
-}
-
-lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
-                                        lizard_env_t *env,
-                                        lizard_heap_t *heap) {
-  (void)heap;
-  (void)env;
-  return result;
-}
 lizard_ast_node_t *lizard_eval(
     lizard_ast_node_t *node, lizard_env_t *env, lizard_heap_t *heap,
     lizard_ast_node_t *(*cont)(lizard_ast_node_t *result, lizard_env_t *env,

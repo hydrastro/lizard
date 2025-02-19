@@ -174,3 +174,13 @@ lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
 
   return node;
 }
+
+lizard_ast_node_t *lizard_make_continuation(
+    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
+                                       lizard_heap_t *),
+    lizard_heap_t *heap) {
+  lizard_ast_node_t *cont_obj = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  cont_obj->type = AST_CONTINUATION;
+  cont_obj->data.continuation.captured_cont = current_cont;
+  return cont_obj;
+}
