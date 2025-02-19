@@ -575,7 +575,7 @@ lizard_ast_node_t *lizard_primitive_eval(list_t *args, lizard_env_t *env,
 
   node = CAST(args->head, lizard_ast_list_node_t);
   expr = &node->ast;
-  return lizard_eval(expr, env, heap, identity_cont);
+  return lizard_eval(expr, env, heap, lizard_identity_cont);
 }
 
 lizard_ast_node_t *lizard_primitive_unquote(list_t *args, lizard_env_t *env,

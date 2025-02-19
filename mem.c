@@ -17,7 +17,7 @@ static const char **lizard_error_messages[LIZARD_LANG_COUNT] = {
 #undef X
 };
 
-lizard_heap_segment_t *create_segment(size_t size) {
+lizard_heap_segment_t *lizard_create_heap_segment(size_t size) {
   lizard_heap_segment_t *seg;
   seg = (lizard_heap_segment_t *)malloc(sizeof(lizard_heap_segment_t));
   if (seg == NULL) {
@@ -46,7 +46,7 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   }
   heap->initial_size = initial_size;
   heap->max_segment_size = max_segment_size;
-  heap->head = create_segment(initial_size);
+  heap->head = lizard_create_heap_segment(initial_size);
   heap->current = heap->head;
   return heap;
 }
@@ -104,7 +104,7 @@ void *lizard_heap_alloc(size_t size) {
     if (new_segment_size > heap->max_segment_size) {
       new_segment_size = heap->max_segment_size;
     }
-    seg->next = create_segment(new_segment_size);
+    seg->next = lizard_create_heap_segment(new_segment_size);
     heap->current = seg->next;
     seg = heap->current;
   }

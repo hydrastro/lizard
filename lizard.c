@@ -12,7 +12,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
-lizard_ast_node_t *make_continuation(
+lizard_ast_node_t *lizard_make_continuation(
     lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
                                        lizard_heap_t *),
     lizard_heap_t *heap) {
@@ -39,7 +39,7 @@ lizard_ast_node_t *lizard_primitive_callcc(
   if (proc->type != AST_LAMBDA && proc->type != AST_PRIMITIVE) {
     return lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY);
   }
-  cont_obj = make_continuation(current_cont, heap);
+  cont_obj = lizard_make_continuation(current_cont, heap);
 
   arg_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   node_arg = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
@@ -49,8 +49,9 @@ lizard_ast_node_t *lizard_primitive_callcc(
   return lizard_apply(proc, arg_list, env, heap, current_cont);
 }
 
-lizard_ast_node_t *identity_cont(lizard_ast_node_t *result, lizard_env_t *env,
-                                 lizard_heap_t *heap) {
+lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
+                                        lizard_env_t *env,
+                                        lizard_heap_t *heap) {
   (void)heap;
   (void)env;
   return result;
@@ -98,8 +99,8 @@ lizard_ast_node_t *lizard_eval(
                     heap);
       }
       {
-        lizard_ast_node_t *value =
-            lizard_eval(node->data.definition.value, env, heap, identity_cont);
+        lizard_ast_node_t *value = lizard_eval(node->data.definition.value, env,
+                                               heap, lizard_identity_cont);
         lizard_env_define(heap, env,
                           node->data.definition.variable->data.variable, value);
         return cont(value, env, heap);
@@ -112,8 +113,8 @@ lizard_ast_node_t *lizard_eval(
                     heap);
       }
       {
-        lizard_ast_node_t *value =
-            lizard_eval(node->data.assignment.value, env, heap, identity_cont);
+        lizard_ast_node_t *value = lizard_eval(node->data.assignment.value, env,
+                                               heap, lizard_identity_cont);
         if (!lizard_env_set(env, node->data.assignment.variable->data.variable,
                             value)) {
           return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND),
@@ -124,8 +125,8 @@ lizard_ast_node_t *lizard_eval(
     }
 
     case AST_IF: {
-      lizard_ast_node_t *pred_result =
-          lizard_eval(node->data.if_clause.pred, env, heap, identity_cont);
+      lizard_ast_node_t *pred_result = lizard_eval(
+          node->data.if_clause.pred, env, heap, lizard_identity_cont);
       {
         int is_true;
         if (pred_result->type == AST_BOOL) {
@@ -150,7 +151,7 @@ lizard_ast_node_t *lizard_eval(
       lizard_ast_list_node_t *last_expr = NULL;
       while (iter != node->data.begin_expressions->nil) {
         last_expr = (lizard_ast_list_node_t *)iter;
-        lizard_eval(&last_expr->ast, env, heap, identity_cont);
+        lizard_eval(&last_expr->ast, env, heap, lizard_identity_cont);
         iter = iter->next;
       }
       if (last_expr)
@@ -172,7 +173,7 @@ lizard_ast_node_t *lizard_eval(
       list_node_t *func_node = node->data.application_arguments->head;
       lizard_ast_node_t *func =
           lizard_eval(&((lizard_ast_list_node_t *)func_node)->ast, env, heap,
-                      identity_cont);
+                      lizard_identity_cont);
       list_t *evaled_args =
           list_create_alloc(lizard_heap_alloc, lizard_heap_free);
       {
@@ -181,7 +182,7 @@ lizard_ast_node_t *lizard_eval(
              arg_node = arg_node->next) {
           lizard_ast_node_t *arg_val =
               lizard_eval(&((lizard_ast_list_node_t *)arg_node)->ast, env, heap,
-                          identity_cont);
+                          lizard_identity_cont);
           lizard_ast_list_node_t *new_arg_node =
               lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
           new_arg_node->ast = *arg_val;
@@ -246,7 +247,8 @@ lizard_ast_node_t *lizard_eval(
         while (body_node->next != func->data.lambda.parameters->nil) {
           lizard_ast_list_node_t *body_expr;
           body_expr = (lizard_ast_list_node_t *)body_node;
-          (void)lizard_eval(&body_expr->ast, new_env, heap, identity_cont);
+          (void)lizard_eval(&body_expr->ast, new_env, heap,
+                            lizard_identity_cont);
           body_node = body_node->next;
         }
 
@@ -261,7 +263,7 @@ lizard_ast_node_t *lizard_eval(
 
     case AST_MACRO: {
       lizard_ast_node_t *transformer = lizard_eval(
-          node->data.macro_def.transformer, env, heap, identity_cont);
+          node->data.macro_def.transformer, env, heap, lizard_identity_cont);
       if (node->data.macro_def.variable->type != AST_SYMBOL) {
         return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_MACRO_NAME),
                     env, heap);
@@ -365,7 +367,8 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
          body_node != func->data.lambda.parameters->nil;
          body_node = body_node->next) {
       body_expr = (lizard_ast_list_node_t *)body_node;
-      result = lizard_eval(&body_expr->ast, new_env, heap, identity_cont);
+      result =
+          lizard_eval(&body_expr->ast, new_env, heap, lizard_identity_cont);
     }
     return cont(result, env, heap);
   } else {
@@ -508,8 +511,8 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
             copy->ast = ((lizard_ast_list_node_t *)arg)->ast; /* shallow copy */
             list_append(macro_args, &copy->node);
           }
-          expanded =
-              lizard_apply(binding, macro_args, env, heap, identity_cont);
+          expanded = lizard_apply(binding, macro_args, env, heap,
+                                  lizard_identity_cont);
           return lizard_expand_macros(expanded, env, heap);
         }
       }
@@ -588,7 +591,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
     return node;
 
   case AST_UNQUOTE:
-    return lizard_eval(node->data.quoted, env, heap, identity_cont);
+    return lizard_eval(node->data.quoted, env, heap, lizard_identity_cont);
 
   case AST_APPLICATION: {
     expanded_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -605,8 +608,8 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
 
       else if (expanded_elem->type == AST_UNQUOTE_SPLICING) {
         list_node_t *splice_iter;
-        lizard_ast_node_t *spliced =
-            lizard_eval(expanded_elem->data.quoted, env, heap, identity_cont);
+        lizard_ast_node_t *spliced = lizard_eval(
+            expanded_elem->data.quoted, env, heap, lizard_identity_cont);
         if (spliced->type != AST_APPLICATION) {
           return lizard_make_error(heap, LIZARD_ERROR_INVALID_SPLICE);
         }

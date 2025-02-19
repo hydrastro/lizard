@@ -200,6 +200,34 @@ char *read_input(void) {
   return buffer;
 }
 
+void lizard_define_primitive(lizard_heap_t *heap, lizard_env_t *global_env,
+                             const char *name, lizard_primitive_func_t func) {
+  lizard_env_define(heap, global_env, name, lizard_make_primitive(heap, func));
+}
+
+void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
+  lizard_define_primitive(heap, global_env, "+", lizard_primitive_plus);
+  lizard_define_primitive(heap, global_env, "-", lizard_primitive_minus);
+  lizard_define_primitive(heap, global_env, "*", lizard_primitive_multiply);
+  lizard_define_primitive(heap, global_env, "/", lizard_primitive_divide);
+  lizard_define_primitive(heap, global_env, "=", lizard_primitive_equal);
+  lizard_define_primitive(heap, global_env, "^", lizard_primitive_pow);
+  lizard_define_primitive(heap, global_env, "<", lizard_primitive_lt);
+  lizard_define_primitive(heap, global_env, "<=", lizard_primitive_le);
+  lizard_define_primitive(heap, global_env, ">", lizard_primitive_gt);
+  lizard_define_primitive(heap, global_env, ">=", lizard_primitive_ge);
+  lizard_define_primitive(heap, global_env, "%", lizard_primitive_mod);
+  lizard_define_primitive(heap, global_env, "cons", lizard_primitive_cons);
+  lizard_define_primitive(heap, global_env, "car", lizard_primitive_car);
+  lizard_define_primitive(heap, global_env, "cdr", lizard_primitive_cdr);
+  lizard_define_primitive(heap, global_env, "list", lizard_primitive_list);
+  lizard_define_primitive(heap, global_env, "tokens", lizard_primitive_tokens);
+  lizard_define_primitive(heap, global_env, "ast", lizard_primitive_ast);
+  lizard_define_primitive(heap, global_env, "eval", lizard_primitive_eval);
+  lizard_define_primitive(heap, global_env, "unquote",
+                          lizard_primitive_unquote);
+}
+
 int main(void) {
   char *input;
   int i;
@@ -215,44 +243,9 @@ int main(void) {
   {
     lizard_env_t *global_env;
     global_env = lizard_env_create(heap, NULL);
-    lizard_env_define(heap, global_env, "+",
-                      lizard_make_primitive(heap, lizard_primitive_plus));
-    lizard_env_define(heap, global_env, "-",
-                      lizard_make_primitive(heap, lizard_primitive_minus));
-    lizard_env_define(heap, global_env, "*",
-                      lizard_make_primitive(heap, lizard_primitive_multiply));
-    lizard_env_define(heap, global_env, "/",
-                      lizard_make_primitive(heap, lizard_primitive_divide));
-    lizard_env_define(heap, global_env, "=",
-                      lizard_make_primitive(heap, lizard_primitive_equal));
-    lizard_env_define(heap, global_env, "^",
-                      lizard_make_primitive(heap, lizard_primitive_pow));
-    lizard_env_define(heap, global_env, "<",
-                      lizard_make_primitive(heap, lizard_primitive_lt));
-    lizard_env_define(heap, global_env,
-                      "<=", lizard_make_primitive(heap, lizard_primitive_le));
-    lizard_env_define(heap, global_env, ">",
-                      lizard_make_primitive(heap, lizard_primitive_gt));
-    lizard_env_define(heap, global_env,
-                      ">=", lizard_make_primitive(heap, lizard_primitive_ge));
-    lizard_env_define(heap, global_env, "%",
-                      lizard_make_primitive(heap, lizard_primitive_mod));
-    lizard_env_define(heap, global_env, "cons",
-                      lizard_make_primitive(heap, lizard_primitive_cons));
-    lizard_env_define(heap, global_env, "car",
-                      lizard_make_primitive(heap, lizard_primitive_car));
-    lizard_env_define(heap, global_env, "cdr",
-                      lizard_make_primitive(heap, lizard_primitive_cdr));
-    lizard_env_define(heap, global_env, "list",
-                      lizard_make_primitive(heap, lizard_primitive_list));
-    lizard_env_define(heap, global_env, "tokens",
-                      lizard_make_primitive(heap, lizard_primitive_tokens));
-    lizard_env_define(heap, global_env, "ast",
-                      lizard_make_primitive(heap, lizard_primitive_ast));
-    lizard_env_define(heap, global_env, "eval",
-                      lizard_make_primitive(heap, lizard_primitive_eval));
-    lizard_env_define(heap, global_env, "unquote",
-                      lizard_make_primitive(heap, lizard_primitive_unquote));
+
+    define_primitives(heap, global_env);
+
     while (1) {
       printf("lizard> ");
       fflush(stdout);
@@ -274,7 +267,8 @@ int main(void) {
       while (node != ast_list->nil) {
         expr_node = (lizard_ast_list_node_t *)node;
         expanded_ast = lizard_expand_macros(&expr_node->ast, global_env, heap);
-        result = lizard_eval(expanded_ast, global_env, heap, identity_cont);
+        result =
+            lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
         //        result = lizard_eval(expanded_ast, global_env, heap);
         printf("=> ");
         print_ast(result, 0);

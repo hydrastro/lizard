@@ -1,5 +1,6 @@
 #ifndef LIZARD_H
 #define LIZARD_H
+
 #include "errors.h"
 #include <ds.h>
 #include <gmp.h>
@@ -47,6 +48,7 @@ typedef enum {
 typedef struct lizard_ast_node lizard_ast_node_t;
 typedef struct lizard_env lizard_env_t;
 typedef struct lizard_heap lizard_heap_t;
+
 typedef lizard_ast_node_t *(*lizard_primitive_func_t)(list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap);
@@ -135,7 +137,7 @@ struct lizard_env {
   struct lizard_env *parent;
 };
 
-lizard_ast_node_t *make_continuation(
+lizard_ast_node_t *lizard_make_continuation(
     lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
                                        lizard_heap_t *),
     lizard_heap_t *heap);
@@ -143,25 +145,22 @@ lizard_ast_node_t *lizard_primitive_callcc(
     list_t *args, lizard_env_t *env, lizard_heap_t *heap,
     lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
                                        lizard_heap_t *));
-
-lizard_ast_node_t *identity_cont(lizard_ast_node_t *result, lizard_env_t *env,
-                                 lizard_heap_t *heap);
-typedef lizard_ast_node_t *(*continuation_t)(lizard_ast_node_t *result,
-                                             lizard_env_t *env,
-                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
+                                        lizard_env_t *env, lizard_heap_t *heap);
+typedef lizard_ast_node_t *(*lizard_continuation_t)(lizard_ast_node_t *result,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap);
 
 void print_ast(lizard_ast_node_t *node, int depth);
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
-                               lizard_heap_t *heap, continuation_t cont);
-
+                               lizard_heap_t *heap, lizard_continuation_t cont);
 lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
                                 lizard_env_t *env, lizard_heap_t *heap,
-                                lizard_ast_node_t *(*cont)(lizard_ast_node_t *,
-                                                           lizard_env_t *,
-                                                           lizard_heap_t *));
+                                lizard_continuation_t cont);
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap);
+
 #endif /* LIZARD_H */
