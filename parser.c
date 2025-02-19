@@ -32,7 +32,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
 
     if (current_token->type == TOKEN_SYMBOL) {
       if (strcmp(current_token->data.symbol, "quote") == 0) {
-        ast_node->type = AST_QUOTED;
+        ast_node->type = AST_QUOTE;
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         ast_node->data.quoted = lizard_parse_expression(
@@ -559,7 +559,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
     if (strcmp(current_token->data.symbol, "'") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
-      ast_node->type = AST_QUOTED;
+      ast_node->type = AST_QUOTE;
       ast_node->data.quoted = lizard_parse_expression(
           token_list, current_node_pointer, depth, heap);
     } else if (strcmp(current_token->data.symbol, "`") == 0) {

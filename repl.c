@@ -21,10 +21,12 @@ int history_index = 0;
 lizard_heap_t *heap;
 
 void add_to_history(const char *line) {
-  if (line[0] == '\0')
+  if (line[0] == '\0') {
     return;
-  if (history_count > 0 && strcmp(history[history_count - 1], line) == 0)
+  }
+  if (history_count > 0 && strcmp(history[history_count - 1], line) == 0) {
     return;
+  }
   free(history[history_count % HISTORY_SIZE]);
   history[history_count % HISTORY_SIZE] = strdup(line);
   history_count++;
@@ -44,9 +46,9 @@ char *read_line(void) {
     system("stty raw -echo");
   }
   for (;;) {
-    if (isatty(STDIN_FILENO))
+    if (isatty(STDIN_FILENO)) {
       c = getchar();
-    else {
+    } else {
       bytes_read = read(STDIN_FILENO, &c, 1);
       if (bytes_read == 0) {
         printf("EOF\n");
@@ -57,12 +59,14 @@ char *read_line(void) {
       }
     }
     if (c == 3 || c == 4) {
-      if (isatty(STDIN_FILENO))
+      if (isatty(STDIN_FILENO)) {
         system("stty cooked echo");
-      if (c == 3)
+      }
+      if (c == 3) {
         printf("\n^C\n");
-      else
+      } else {
         printf("\n^D\n");
+      }
       free(buffer);
       exit(0);
     }
@@ -89,10 +93,11 @@ char *read_line(void) {
             printf("\b \b");
             position--;
           }
-          if (history_index == history_count)
+          if (history_index == history_count) {
             buffer[0] = '\0';
-          else
+          } else {
             strcpy(buffer, history[history_index % HISTORY_SIZE]);
+          }
           printf("%s", buffer);
           position = strlen(buffer);
           length = position;
@@ -113,8 +118,9 @@ char *read_line(void) {
       }
     }
     if (c == '\r' || c == '\n') {
-      if (isatty(STDIN_FILENO))
+      if (isatty(STDIN_FILENO)) {
         system("stty cooked echo");
+      }
       printf("\n");
       buffer[length] = '\0';
       return buffer;
@@ -147,10 +153,11 @@ int paren_balance(const char *s) {
   int balance;
   balance = 0;
   for (; *s; s++) {
-    if (*s == '(')
+    if (*s == '(') {
       balance++;
-    else if (*s == ')')
+    } else if (*s == ')') {
       balance--;
+    }
   }
   return balance;
 }
@@ -250,8 +257,9 @@ int main(void) {
       printf("lizard> ");
       fflush(stdout);
       input = read_input();
-      if (input == NULL)
+      if (input == NULL) {
         break;
+      }
       if (strcmp(input, "quit") == 0 || feof(stdin)) {
         free(input);
         break;
@@ -266,7 +274,8 @@ int main(void) {
       while (node != ast_list->nil) {
         expr_node = (lizard_ast_list_node_t *)node;
         expanded_ast = lizard_expand_macros(&expr_node->ast, global_env, heap);
-        result = lizard_eval(expanded_ast, global_env, heap);
+        result = lizard_eval(expanded_ast, global_env, heap, identity_cont);
+        //        result = lizard_eval(expanded_ast, global_env, heap);
         printf("=> ");
         print_ast(result, 0);
         node = node->next;

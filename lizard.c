@@ -12,6 +12,367 @@
 #include <string.h>
 #include <sys/mman.h>
 
+lizard_ast_node_t *make_continuation(
+    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
+                                       lizard_heap_t *),
+    lizard_heap_t *heap) {
+  lizard_ast_node_t *cont_obj = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  cont_obj->type = AST_CONTINUATION;
+  cont_obj->data.continuation.captured_cont = current_cont;
+  return cont_obj;
+}
+
+lizard_ast_node_t *lizard_primitive_callcc(
+    list_t *args, lizard_env_t *env, lizard_heap_t *heap,
+    lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
+                                       lizard_heap_t *)) {
+  lizard_ast_list_node_t *arg0;
+  lizard_ast_node_t *proc;
+  lizard_ast_node_t *cont_obj;
+  list_t *arg_list;
+  lizard_ast_list_node_t *node_arg;
+  if (args->head == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_CALLCC_ARGC);
+  }
+  arg0 = (lizard_ast_list_node_t *)args->head;
+  proc = &arg0->ast;
+  if (proc->type != AST_LAMBDA && proc->type != AST_PRIMITIVE) {
+    return lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY);
+  }
+  cont_obj = make_continuation(current_cont, heap);
+
+  arg_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  node_arg = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+  node_arg->ast = *cont_obj; /* shallow copy */
+  list_append(arg_list, &node_arg->node);
+
+  return lizard_apply(proc, arg_list, env, heap, current_cont);
+}
+
+lizard_ast_node_t *identity_cont(lizard_ast_node_t *result, lizard_env_t *env,
+                                 lizard_heap_t *heap) {
+  (void)heap;
+  (void)env;
+  return result;
+}
+lizard_ast_node_t *lizard_eval(
+    lizard_ast_node_t *node, lizard_env_t *env, lizard_heap_t *heap,
+    lizard_ast_node_t *(*cont)(lizard_ast_node_t *result, lizard_env_t *env,
+                               lizard_heap_t *heap)) {
+  while (1) {
+    switch (node->type) {
+    case AST_BOOL:
+    case AST_NIL:
+    case AST_NUMBER:
+    case AST_STRING:
+    case AST_PRIMITIVE:
+      return cont(node, env, heap);
+
+    case AST_SYMBOL: {
+      lizard_ast_node_t *val = lizard_env_lookup(env, node->data.variable);
+      if (!val) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_UNBOUND_SYMBOL), env,
+                    heap);
+      }
+      return cont(val, env, heap);
+    }
+
+    case AST_QUOTE:
+      return cont(node->data.quoted, env, heap);
+
+    case AST_QUASIQUOTE: {
+      lizard_ast_node_t *expanded =
+          lizard_expand_quasiquote(node->data.quoted, env, heap);
+      lizard_ast_node_t *quoted = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      quoted->type = AST_QUOTE;
+      quoted->data.quoted = expanded;
+      return cont(quoted, env, heap);
+    }
+
+    case AST_UNQUOTE:
+      return cont(node->data.quoted, env, heap);
+
+    case AST_DEFINITION: {
+      if (node->data.definition.variable->type != AST_SYMBOL) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_DEF), env,
+                    heap);
+      }
+      {
+        lizard_ast_node_t *value =
+            lizard_eval(node->data.definition.value, env, heap, identity_cont);
+        lizard_env_define(heap, env,
+                          node->data.definition.variable->data.variable, value);
+        return cont(value, env, heap);
+      }
+    }
+
+    case AST_ASSIGNMENT: {
+      if (node->data.assignment.variable->type != AST_SYMBOL) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT), env,
+                    heap);
+      }
+      {
+        lizard_ast_node_t *value =
+            lizard_eval(node->data.assignment.value, env, heap, identity_cont);
+        if (!lizard_env_set(env, node->data.assignment.variable->data.variable,
+                            value)) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND),
+                      env, heap);
+        }
+        return cont(value, env, heap);
+      }
+    }
+
+    case AST_IF: {
+      lizard_ast_node_t *pred_result =
+          lizard_eval(node->data.if_clause.pred, env, heap, identity_cont);
+      {
+        int is_true;
+        if (pred_result->type == AST_BOOL) {
+          is_true = pred_result->data.boolean;
+        } else if (pred_result->type == AST_NIL) {
+          is_true = 0;
+        } else {
+          is_true = 1;
+        }
+        if (is_true) {
+          node = node->data.if_clause.cons;
+        } else {
+          node = (node->data.if_clause.alt ? node->data.if_clause.alt
+                                           : lizard_make_nil(heap));
+        }
+        continue;
+      }
+    }
+
+    case AST_BEGIN: {
+      list_node_t *iter = node->data.begin_expressions->head;
+      lizard_ast_list_node_t *last_expr = NULL;
+      while (iter != node->data.begin_expressions->nil) {
+        last_expr = (lizard_ast_list_node_t *)iter;
+        lizard_eval(&last_expr->ast, env, heap, identity_cont);
+        iter = iter->next;
+      }
+      if (last_expr)
+        node = &last_expr->ast;
+      else
+        node = lizard_make_nil(heap);
+      continue;
+    }
+
+    case AST_LAMBDA: {
+      lizard_ast_node_t *closure = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      closure->type = AST_LAMBDA;
+      closure->data.lambda.parameters = node->data.lambda.parameters;
+      closure->data.lambda.closure_env = env;
+      return cont(closure, env, heap);
+    }
+
+    case AST_APPLICATION: {
+      list_node_t *func_node = node->data.application_arguments->head;
+      lizard_ast_node_t *func =
+          lizard_eval(&((lizard_ast_list_node_t *)func_node)->ast, env, heap,
+                      identity_cont);
+      list_t *evaled_args =
+          list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+      {
+        list_node_t *arg_node = func_node->next;
+        for (; arg_node != node->data.application_arguments->nil;
+             arg_node = arg_node->next) {
+          lizard_ast_node_t *arg_val =
+              lizard_eval(&((lizard_ast_list_node_t *)arg_node)->ast, env, heap,
+                          identity_cont);
+          lizard_ast_list_node_t *new_arg_node =
+              lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+          new_arg_node->ast = *arg_val;
+          list_append(evaled_args, &new_arg_node->node);
+        }
+      }
+      if (func->type == AST_CONTINUATION) {
+        list_node_t *arg = evaled_args->head;
+        lizard_ast_node_t *value = (arg != evaled_args->nil)
+                                       ? &((lizard_ast_list_node_t *)arg)->ast
+                                       : lizard_make_nil(heap);
+        return func->data.continuation.captured_cont(value, env, heap);
+      }
+      if (func->type == AST_CALLCC) {
+        return cont(func->data.callcc(evaled_args, env, heap, cont), env, heap);
+      }
+      if (func->type == AST_PRIMITIVE) {
+
+        return cont(func->data.primitive(evaled_args, env, heap), env, heap);
+
+      } else if (func->type == AST_LAMBDA) {
+        lizard_env_t *new_env;
+        lizard_ast_node_t *param_list;
+        list_t *formal_params;
+        list_node_t *param_node, *arg_iter;
+        lizard_ast_list_node_t *param;
+        list_node_t *body_node;
+
+        new_env = lizard_env_create(heap, func->data.lambda.closure_env);
+        param_list =
+            &((lizard_ast_list_node_t *)func->data.lambda.parameters->head)
+                 ->ast;
+        if (param_list->type != AST_APPLICATION) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS), env,
+                      heap);
+        }
+
+        formal_params = param_list->data.application_arguments;
+        param_node = formal_params->head;
+        arg_iter = evaled_args->head;
+        while (param_node != formal_params->nil) {
+          param = (lizard_ast_list_node_t *)param_node;
+          if (arg_iter == evaled_args->nil) {
+            return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS),
+                        env, heap);
+          }
+          if (param->ast.type != AST_SYMBOL) {
+            return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER),
+                        env, heap);
+          }
+          lizard_env_define(heap, new_env, param->ast.data.variable,
+                            &((lizard_ast_list_node_t *)arg_iter)->ast);
+          param_node = param_node->next;
+          arg_iter = arg_iter->next;
+        }
+        if (arg_iter != evaled_args->nil) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
+                      env, heap);
+        }
+
+        body_node = func->data.lambda.parameters->head->next;
+        while (body_node->next != func->data.lambda.parameters->nil) {
+          lizard_ast_list_node_t *body_expr;
+          body_expr = (lizard_ast_list_node_t *)body_node;
+          (void)lizard_eval(&body_expr->ast, new_env, heap, identity_cont);
+          body_node = body_node->next;
+        }
+
+        node = &((lizard_ast_list_node_t *)body_node)->ast;
+        env = new_env;
+        continue;
+      } else {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,
+                    heap);
+      }
+    }
+
+    case AST_MACRO: {
+      lizard_ast_node_t *transformer = lizard_eval(
+          node->data.macro_def.transformer, env, heap, identity_cont);
+      if (node->data.macro_def.variable->type != AST_SYMBOL) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_MACRO_NAME),
+                    env, heap);
+      }
+      lizard_env_define(heap, env, node->data.macro_def.variable->data.variable,
+                        transformer);
+      return cont(lizard_make_nil(heap), env, heap);
+    }
+
+    case AST_ERROR:
+      return cont(node, env, heap);
+
+    default:
+      return cont(lizard_make_error(heap, LIZARD_ERROR_NODE_TYPE), env, heap);
+    }
+  }
+}
+
+lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
+                                lizard_env_t *env, lizard_heap_t *heap,
+                                lizard_ast_node_t *(*cont)(lizard_ast_node_t *,
+                                                           lizard_env_t *,
+                                                           lizard_heap_t *)) {
+  list_t *formal_params;
+  list_node_t *param_node;
+  list_node_t *arg_node;
+  bool variadic;
+  const char *variadic_name;
+  lizard_ast_list_node_t *param;
+  lizard_ast_list_node_t *var_param;
+  list_t temp_args;
+  lizard_ast_node_t *rest_list;
+  lizard_ast_node_t *result;
+  list_node_t *body_node;
+  lizard_ast_list_node_t *body_expr;
+  if (func->type == AST_PRIMITIVE) {
+    return cont(func->data.primitive(args, env, heap), env, heap);
+  } else if (func->type == AST_LAMBDA) {
+    lizard_env_t *new_env;
+    lizard_ast_node_t *param_list;
+    new_env = lizard_env_create(heap, func->data.lambda.closure_env);
+    param_list =
+        &((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;
+    if (param_list->type != AST_APPLICATION) {
+      return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS), env,
+                  heap);
+    }
+
+    formal_params = param_list->data.application_arguments;
+    param_node = formal_params->head;
+    arg_node = args->head;
+    variadic = false;
+    variadic_name = NULL;
+
+    while (param_node != formal_params->nil) {
+      param = (lizard_ast_list_node_t *)param_node;
+      if (param->ast.type == AST_SYMBOL &&
+          (strcmp(param->ast.data.variable, ".") == 0 ||
+           strcmp(param->ast.data.variable, "...") == 0)) {
+        param_node = param_node->next;
+        if (param_node == formal_params->nil) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_VARIADIC_UNFOLLOWED),
+                      env, heap);
+        }
+        var_param = (lizard_ast_list_node_t *)param_node;
+        if (var_param->ast.type != AST_SYMBOL) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_VARIADIC_SYMBOL),
+                      env, heap);
+        }
+        variadic = true;
+        variadic_name = var_param->ast.data.variable;
+        param_node = param_node->next;
+        break;
+      }
+      if (arg_node == args->nil) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS),
+                    env, heap);
+      }
+      if (param->ast.type != AST_SYMBOL) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER), env,
+                    heap);
+      }
+      lizard_env_define(heap, new_env, param->ast.data.variable,
+                        &((lizard_ast_list_node_t *)arg_node)->ast);
+      param_node = param_node->next;
+      arg_node = arg_node->next;
+    }
+    if (!variadic && arg_node != args->nil) {
+      return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE), env,
+                  heap);
+    }
+    if (variadic) {
+      temp_args.head = arg_node;
+      temp_args.nil = args->nil;
+      rest_list = lizard_primitive_list(&temp_args, env, heap);
+      lizard_env_define(heap, new_env, variadic_name, rest_list);
+    }
+
+    result = NULL;
+    for (body_node = func->data.lambda.parameters->head->next;
+         body_node != func->data.lambda.parameters->nil;
+         body_node = body_node->next) {
+      body_expr = (lizard_ast_list_node_t *)body_node;
+      result = lizard_eval(&body_expr->ast, new_env, heap, identity_cont);
+    }
+    return cont(result, env, heap);
+  } else {
+    return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env, heap);
+  }
+}
+
 void print_ast(lizard_ast_node_t *node, int depth) {
   int i;
   list_node_t *expr, *arg, *param_node, *iter;
@@ -38,7 +399,7 @@ void print_ast(lizard_ast_node_t *node, int depth) {
   case AST_NIL:
     printf("Nil\n");
     break;
-  case AST_QUOTED:
+  case AST_QUOTE:
     printf("Quote:\n");
     print_ast(node->data.quoted, depth + 1);
     break;
@@ -122,326 +483,6 @@ void print_ast(lizard_ast_node_t *node, int depth) {
   }
 }
 
-lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
-                               lizard_heap_t *heap) {
-  while (1) {
-
-    switch (node->type) {
-    case AST_BOOL:
-    case AST_NIL:
-    case AST_NUMBER:
-    case AST_STRING:
-    case AST_PRIMITIVE:
-      return node;
-
-    case AST_SYMBOL: {
-      lizard_ast_node_t *val;
-      val = lizard_env_lookup(env, node->data.variable);
-      if (!val) {
-        return lizard_make_error(heap, LIZARD_ERROR_UNBOUND_SYMBOL);
-      }
-      return val;
-    }
-
-    case AST_QUOTED:
-      return node->data.quoted;
-
-    case AST_QUASIQUOTE:
-      return lizard_expand_quasiquote(node->data.quoted, env, heap);
-
-    case AST_UNQUOTE:
-      return node->data.quoted;
-
-    case AST_DEFINITION: {
-      lizard_ast_node_t *var;
-      lizard_ast_node_t *value;
-      var = node->data.definition.variable;
-      if (var->type == AST_SYMBOL) {
-        value = lizard_eval(node->data.definition.value, env, heap);
-        lizard_env_define(heap, env, var->data.variable, value);
-        return value;
-      } else {
-        return lizard_make_error(heap, LIZARD_ERROR_INVALID_DEF);
-      }
-    }
-
-    case AST_ASSIGNMENT: {
-      lizard_ast_node_t *var;
-      lizard_ast_node_t *value;
-      var = node->data.assignment.variable;
-      value = lizard_eval(node->data.assignment.value, env, heap);
-      if (var->type != AST_SYMBOL) {
-        return lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT);
-      }
-      if (!lizard_env_set(env, var->data.variable, value)) {
-        return lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND);
-      }
-      return value;
-    }
-
-    case AST_IF: {
-      lizard_ast_node_t *pred;
-      int is_true;
-      pred = lizard_eval(node->data.if_clause.pred, env, heap);
-      is_true = 0;
-      if (pred->type == AST_BOOL) {
-        is_true = pred->data.boolean;
-      } else if (pred->type == AST_NIL) {
-        is_true = 0;
-      } else {
-        is_true = 1;
-      }
-      if (is_true) {
-        node = node->data.if_clause.cons;
-      } else if (node->data.if_clause.alt) {
-        node = node->data.if_clause.alt;
-      } else {
-        return lizard_make_nil(heap);
-      }
-      continue;
-    }
-
-    case AST_BEGIN: {
-      list_node_t *iter;
-      lizard_ast_list_node_t *last_expr;
-      iter = node->data.begin_expressions->head;
-      while (iter->next != node->data.begin_expressions->nil) {
-        lizard_ast_list_node_t *expr_node;
-        expr_node = (lizard_ast_list_node_t *)iter;
-        lizard_eval(&expr_node->ast, env, heap);
-        iter = iter->next;
-      }
-      last_expr = (lizard_ast_list_node_t *)iter;
-      node = &last_expr->ast;
-      continue;
-    }
-
-    case AST_LAMBDA: {
-      lizard_ast_node_t *closure;
-      closure = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      closure->type = AST_LAMBDA;
-      closure->data.lambda.parameters = node->data.lambda.parameters;
-      closure->data.lambda.closure_env = env;
-      return closure;
-    }
-
-    case AST_APPLICATION: {
-      list_node_t *func_node;
-      lizard_ast_node_t *func;
-      list_t *evaled_args;
-      list_node_t *arg_node;
-      func_node = node->data.application_arguments->head;
-      func =
-          lizard_eval(&((lizard_ast_list_node_t *)func_node)->ast, env, heap);
-
-      evaled_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
-      for (arg_node = func_node->next;
-           arg_node != node->data.application_arguments->nil;
-           arg_node = arg_node->next) {
-        lizard_ast_node_t *arg_val;
-        lizard_ast_list_node_t *new_arg_node;
-        arg_val =
-            lizard_eval(&((lizard_ast_list_node_t *)arg_node)->ast, env, heap);
-        new_arg_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-        new_arg_node->ast = *arg_val;
-        list_append(evaled_args, &new_arg_node->node);
-      }
-
-      if (func->type == AST_PRIMITIVE) {
-        return func->data.primitive(evaled_args, env, heap);
-      } else if (func->type == AST_LAMBDA) {
-        lizard_env_t *new_env;
-        list_t *formal_params;
-        list_node_t *param_node;
-        list_node_t *arg_iter;
-        lizard_ast_node_t *param_list;
-        int variadic;
-        const char *variadic_name;
-        new_env = lizard_env_create(heap, func->data.lambda.closure_env);
-        variadic = 0;
-        variadic_name = NULL;
-        param_list =
-            &((lizard_ast_list_node_t *)func->data.lambda.parameters->head)
-                 ->ast;
-        if (param_list->type != AST_APPLICATION) {
-          return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS);
-        }
-        formal_params = param_list->data.application_arguments;
-        param_node = formal_params->head;
-        arg_iter = evaled_args->head;
-        while (param_node != formal_params->nil) {
-          lizard_ast_list_node_t *param;
-          param = (lizard_ast_list_node_t *)param_node;
-          if (param->ast.type == AST_SYMBOL &&
-              (strcmp(param->ast.data.variable, ".") == 0 ||
-               strcmp(param->ast.data.variable, "...") == 0)) {
-            param_node = param_node->next;
-            if (param_node == formal_params->nil) {
-              return lizard_make_error(heap, LIZARD_ERROR_VARIADIC_UNFOLLOWED);
-            }
-            {
-              lizard_ast_list_node_t *var_param;
-              var_param = (lizard_ast_list_node_t *)param_node;
-              if (var_param->ast.type != AST_SYMBOL) {
-                return lizard_make_error(heap, LIZARD_ERROR_VARIADIC_SYMBOL);
-              }
-            }
-            variadic = 1;
-            variadic_name =
-                ((lizard_ast_list_node_t *)param_node)->ast.data.variable;
-            param_node = param_node->next;
-            break;
-          }
-          if (arg_iter == evaled_args->nil) {
-            return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS);
-          }
-          if (param->ast.type != AST_SYMBOL) {
-            return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER);
-          }
-          lizard_env_define(heap, new_env, param->ast.data.variable,
-                            &((lizard_ast_list_node_t *)arg_iter)->ast);
-          param_node = param_node->next;
-          arg_iter = arg_iter->next;
-        }
-        if (!variadic && arg_iter != evaled_args->nil) {
-          return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE);
-        }
-        if (variadic) {
-          list_t temp_args;
-          lizard_ast_node_t *rest_list;
-          temp_args.head = arg_iter;
-          temp_args.nil = evaled_args->nil;
-          rest_list = lizard_primitive_list(&temp_args, env, heap);
-          lizard_env_define(heap, new_env, variadic_name, rest_list);
-        }
-        {
-          list_node_t *body_node;
-          lizard_ast_list_node_t *last_expr;
-          body_node = func->data.lambda.parameters->head->next;
-          while (body_node->next != func->data.lambda.parameters->nil) {
-            lizard_ast_list_node_t *body_expr;
-            body_expr = (lizard_ast_list_node_t *)body_node;
-            lizard_eval(&body_expr->ast, new_env, heap);
-            body_node = body_node->next;
-          }
-          last_expr = (lizard_ast_list_node_t *)body_node;
-          node = &last_expr->ast;
-          env = new_env;
-          continue;
-        }
-      } else {
-        return lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY);
-      }
-    }
-
-    case AST_MACRO: {
-      lizard_ast_node_t *transformer;
-      const char *macro_name;
-      transformer = lizard_eval(node->data.macro_def.transformer, env, heap);
-      if (node->data.macro_def.variable->type != AST_SYMBOL) {
-        return lizard_make_error(heap, LIZARD_ERROR_INVALID_MACRO_NAME);
-      }
-      macro_name = node->data.macro_def.variable->data.variable;
-      lizard_env_define(heap, env, macro_name, transformer);
-      return lizard_make_nil(heap);
-    }
-
-    case AST_ERROR:
-      return node;
-
-    default:
-      return lizard_make_error(heap, LIZARD_ERROR_NODE_TYPE);
-    }
-  }
-}
-
-lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
-                                lizard_env_t *env, lizard_heap_t *heap) {
-
-  list_t *formal_params;
-  list_node_t *param_node, *arg_node, *body_node;
-  lizard_ast_list_node_t *var_param;
-  lizard_ast_node_t *rest_list, *result;
-  bool variadic;
-  const char *variadic_name;
-
-  if (func->type == AST_PRIMITIVE) {
-    return func->data.primitive(args, env, heap);
-  } else if (func->type == AST_LAMBDA) {
-    lizard_env_t *new_env =
-        lizard_env_create(heap, func->data.lambda.closure_env);
-
-    lizard_ast_node_t *param_list =
-        &((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;
-    if (param_list->type != AST_APPLICATION) {
-      return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS);
-    }
-
-    formal_params = param_list->data.application_arguments;
-    param_node = formal_params->head;
-    arg_node = args->head;
-    variadic = false;
-    variadic_name = NULL;
-
-    while (param_node != formal_params->nil) {
-      lizard_ast_list_node_t *param = (lizard_ast_list_node_t *)param_node;
-      if (param->ast.type == AST_SYMBOL &&
-          (strcmp(param->ast.data.variable, ".") == 0 ||
-           strcmp(param->ast.data.variable, "...") == 0)) {
-        param_node = param_node->next;
-        if (param_node == formal_params->nil) {
-          return lizard_make_error(heap, LIZARD_ERROR_VARIADIC_UNFOLLOWED);
-        }
-        var_param = (lizard_ast_list_node_t *)param_node;
-        if (var_param->ast.type != AST_SYMBOL) {
-          return lizard_make_error(heap, LIZARD_ERROR_VARIADIC_SYMBOL);
-        }
-        variadic = true;
-        variadic_name = var_param->ast.data.variable;
-        param_node = param_node->next;
-        break;
-      }
-
-      if (arg_node == args->nil) {
-        return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS);
-      }
-
-      if (param->ast.type != AST_SYMBOL) {
-        return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER);
-      }
-      lizard_env_define(heap, new_env, param->ast.data.variable,
-                        &((lizard_ast_list_node_t *)arg_node)->ast);
-      param_node = param_node->next;
-      arg_node = arg_node->next;
-    }
-
-    if (!variadic && arg_node != args->nil) {
-      return lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE);
-    }
-
-    if (variadic) {
-      list_t temp_args;
-      temp_args.head = arg_node;
-      temp_args.nil = args->nil;
-      rest_list = lizard_primitive_list(&temp_args, env, heap);
-      lizard_env_define(heap, new_env, variadic_name, rest_list);
-    }
-
-    result = NULL;
-    for (body_node = func->data.lambda.parameters->head->next;
-         body_node != func->data.lambda.parameters->nil;
-         body_node = body_node->next) {
-      lizard_ast_list_node_t *body_expr = (lizard_ast_list_node_t *)body_node;
-      result = lizard_eval(&body_expr->ast, new_env, heap);
-    }
-
-    return result;
-
-  } else {
-    return lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY);
-  }
-}
-
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env,
                                         lizard_heap_t *heap) {
@@ -467,7 +508,8 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
             copy->ast = ((lizard_ast_list_node_t *)arg)->ast; /* shallow copy */
             list_append(macro_args, &copy->node);
           }
-          expanded = lizard_apply(binding, macro_args, env, heap);
+          expanded =
+              lizard_apply(binding, macro_args, env, heap, identity_cont);
           return lizard_expand_macros(expanded, env, heap);
         }
       }
@@ -480,7 +522,7 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
   }
 
   switch (node->type) {
-  case AST_QUOTED:
+  case AST_QUOTE:
     node->data.quoted = lizard_expand_macros(node->data.quoted, env, heap);
     break;
   case AST_ASSIGNMENT:
@@ -546,7 +588,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
     return node;
 
   case AST_UNQUOTE:
-    return lizard_eval(node->data.quoted, env, heap);
+    return lizard_eval(node->data.quoted, env, heap, identity_cont);
 
   case AST_APPLICATION: {
     expanded_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -564,7 +606,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
       else if (expanded_elem->type == AST_UNQUOTE_SPLICING) {
         list_node_t *splice_iter;
         lizard_ast_node_t *spliced =
-            lizard_eval(expanded_elem->data.quoted, env, heap);
+            lizard_eval(expanded_elem->data.quoted, env, heap, identity_cont);
         if (spliced->type != AST_APPLICATION) {
           return lizard_make_error(heap, LIZARD_ERROR_INVALID_SPLICE);
         }

@@ -25,8 +25,9 @@ lizard_ast_node_t *lizard_env_lookup(lizard_env_t *env, const char *symbol) {
   lizard_env_entry_t *entry;
   for (e = env; e != NULL; e = e->parent) {
     for (entry = e->entries; entry != NULL; entry = entry->next) {
-      if (strcmp(entry->symbol, symbol) == 0)
+      if (strcmp(entry->symbol, symbol) == 0) {
         return entry->value;
+      }
     }
   }
   return NULL;

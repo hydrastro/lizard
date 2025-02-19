@@ -58,7 +58,8 @@
   X(LIZARD_ERROR_EVAL_ARGC)                                                    \
   X(LIZARD_ERROR_UNQUOTE)                                                      \
   X(LIZARD_ERROR_UNQUOTE_ARGC)                                                 \
-  X(LIZARD_ERROR_INVALID_SPLICE)
+  X(LIZARD_ERROR_INVALID_SPLICE)                                               \
+  X(LIZARD_ERROR_CALLCC_ARGC)
 
 typedef enum lizard_error_code {
 #define X(err) err,

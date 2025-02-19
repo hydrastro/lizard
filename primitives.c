@@ -148,26 +148,31 @@ lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
     }
     switch (first->type) {
     case AST_NUMBER:
-      if (mpz_cmp(first->data.number, other->data.number) != 0)
+      if (mpz_cmp(first->data.number, other->data.number) != 0) {
         eq = 0;
+      }
       break;
     case AST_SYMBOL:
-      if (strcmp(first->data.variable, other->data.variable) != 0)
+      if (strcmp(first->data.variable, other->data.variable) != 0) {
         eq = 0;
+      }
       break;
     case AST_BOOL:
-      if (first->data.boolean != other->data.boolean)
+      if (first->data.boolean != other->data.boolean) {
         eq = 0;
+      }
       break;
     case AST_NIL:
       break;
     default:
       /* comparing pointers */
-      if (first != other)
+      if (first != other) {
         eq = 0;
+      }
     }
-    if (!eq)
+    if (!eq) {
       break;
+    }
   }
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_BOOL;
@@ -451,6 +456,15 @@ lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
   node->data.primitive = func;
   return node;
 }
+
+lizard_ast_node_t *lizard_make_callcc(lizard_heap_t *heap,
+                                      lizard_callcc_func_t func) {
+  lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node->type = AST_CALLCC;
+  node->data.callcc = func;
+  return node;
+}
+
 lizard_ast_node_t *lizard_primitive_list(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lizard_ast_node_t *first, *rest;
@@ -561,7 +575,7 @@ lizard_ast_node_t *lizard_primitive_eval(list_t *args, lizard_env_t *env,
 
   node = CAST(args->head, lizard_ast_list_node_t);
   expr = &node->ast;
-  return lizard_eval(expr, env, heap);
+  return lizard_eval(expr, env, heap, identity_cont);
 }
 
 lizard_ast_node_t *lizard_primitive_unquote(list_t *args, lizard_env_t *env,
@@ -575,7 +589,7 @@ lizard_ast_node_t *lizard_primitive_unquote(list_t *args, lizard_env_t *env,
   node = CAST(args->head, lizard_ast_list_node_t);
   expr = &node->ast;
 
-  if (expr->type != AST_QUOTED) {
+  if (expr->type != AST_QUOTE) {
     return lizard_make_error(heap, LIZARD_ERROR_UNQUOTE_ARGC);
   }
 
