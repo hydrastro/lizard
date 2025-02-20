@@ -90,7 +90,12 @@ struct lizard_ast_node {
       lizard_ast_node_t *cdr;
     } pair;
     lizard_primitive_func_t primitive;
-    lizard_callcc_func_t callcc;
+    struct {
+      lizard_ast_node_t *expr;
+      lizard_env_t *env;
+      lizard_ast_node_t *value;
+      bool forced;
+    } promise;
     struct {
       lizard_ast_node_t *variable;
       lizard_ast_node_t *transformer;
@@ -140,6 +145,16 @@ struct lizard_env {
 typedef lizard_ast_node_t *(*lizard_continuation_t)(lizard_ast_node_t *result,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap);
+
+lizard_ast_node_t *lizard_make_promise(lizard_heap_t *heap,
+                                       lizard_ast_node_t *expr,
+                                       lizard_env_t *env);
+lizard_ast_node_t *lizard_force(lizard_ast_node_t *node, lizard_heap_t *heap);
+
+lizard_ast_node_t *lizard_primitive_delay(list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_force(list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap);
 
 void print_ast(lizard_ast_node_t *node, int depth);
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,

@@ -12,6 +12,52 @@
 #include <string.h>
 #include <sys/mman.h>
 
+lizard_ast_node_t *lizard_make_promise(lizard_heap_t *heap,
+                                       lizard_ast_node_t *expr,
+                                       lizard_env_t *env) {
+  lizard_ast_node_t *promise = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  promise->type = AST_PROMISE;
+  promise->data.promise.expr = expr;
+  promise->data.promise.env = env;
+  promise->data.promise.value = NULL;
+  promise->data.promise.forced = false;
+  return promise;
+}
+
+lizard_ast_node_t *lizard_force(lizard_ast_node_t *node, lizard_heap_t *heap) {
+  if (node->type == AST_PROMISE) {
+    if (!node->data.promise.forced) {
+      node->data.promise.value =
+          lizard_eval(node->data.promise.expr, node->data.promise.env, heap,
+                      lizard_identity_cont);
+      node->data.promise.forced = true;
+    }
+    return node->data.promise.value;
+  }
+  return node;
+}
+
+lizard_ast_node_t *lizard_primitive_delay(list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  if (args->head == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_INVALID_DELAY);
+  }
+  expr = &((lizard_ast_list_node_t *)args->head)->ast;
+  return lizard_make_promise(heap, expr, env);
+}
+
+lizard_ast_node_t *lizard_primitive_force(list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *node;
+
+  if (args->head == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_INVALID_FORCE);
+  }
+  node = &((lizard_ast_list_node_t *)args->head)->ast;
+  return lizard_force(node, heap);
+}
+
 lizard_ast_node_t *lizard_eval(
     lizard_ast_node_t *node, lizard_env_t *env, lizard_heap_t *heap,
     lizard_ast_node_t *(*cont)(lizard_ast_node_t *result, lizard_env_t *env,
@@ -32,6 +78,16 @@ lizard_ast_node_t *lizard_eval(
                     heap);
       }
       return cont(val, env, heap);
+    }
+    case AST_PROMISE: {
+      if (!node->data.promise.forced) {
+        node->data.promise.value =
+            lizard_eval(node->data.promise.expr, node->data.promise.env, heap,
+                        lizard_identity_cont);
+        node->data.promise.forced = true;
+      }
+      node = node->data.promise.value;
+      continue;
     }
 
     case AST_QUOTE:
@@ -152,10 +208,6 @@ lizard_ast_node_t *lizard_eval(
                                        : lizard_make_nil(heap);
         return func->data.continuation.captured_cont(value, env, heap);
       }
-      /* TODO check this */
-      if (func->type == AST_CALLCC) {
-        return cont(func->data.callcc(evaled_args, env, heap, cont), env, heap);
-      }
       if (func->type == AST_PRIMITIVE) {
 
         return cont(func->data.primitive(evaled_args, env, heap), env, heap);
@@ -212,10 +264,6 @@ lizard_ast_node_t *lizard_eval(
         node = &((lizard_ast_list_node_t *)body_node)->ast;
         env = new_env;
         continue;
-
-        /* TODO check this */
-      } else if (func->type == AST_CALLCC) {
-        return lizard_primitive_callcc(evaled_args, env, heap, cont);
 
       } else {
         return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,

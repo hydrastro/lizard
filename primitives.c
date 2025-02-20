@@ -457,14 +457,6 @@ lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
   return node;
 }
 
-lizard_ast_node_t *lizard_make_callcc(lizard_heap_t *heap,
-                                      lizard_callcc_func_t func) {
-  lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  node->type = AST_CALLCC;
-  node->data.callcc = func;
-  return node;
-}
-
 lizard_ast_node_t *lizard_primitive_list(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lizard_ast_node_t *first, *rest;
