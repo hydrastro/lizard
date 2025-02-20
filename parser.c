@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "lizard.h"
 #include "mem.h"
+#include "primitives.h"
 #include "tokenizer.h"
 
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
@@ -25,6 +26,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
   ast_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   switch (current_token->type) {
   case TOKEN_LEFT_PAREN: {
+    lizard_ast_list_node_t *first_arg;
     *current_node_pointer = current_node->next;
     current_node = current_node->next;
     current_token = &CAST(current_node, lizard_token_list_node_t)->token;
@@ -482,6 +484,13 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
           fprintf(stderr, "Error: missing closing paren.\n");
           exit(1);
         }
+        first_arg = (lizard_ast_list_node_t *)
+                        ast_node->data.application_arguments->head;
+        if (first_arg->ast.type == AST_SYMBOL &&
+            strcmp(first_arg->ast.data.variable, "call/cc") == 0) {
+          ast_node->type = AST_CALLCC;
+        }
+
         current_node = *current_node_pointer;
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;

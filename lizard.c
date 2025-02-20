@@ -152,6 +152,7 @@ lizard_ast_node_t *lizard_eval(
                                        : lizard_make_nil(heap);
         return func->data.continuation.captured_cont(value, env, heap);
       }
+      /* TODO check this */
       if (func->type == AST_CALLCC) {
         return cont(func->data.callcc(evaled_args, env, heap, cont), env, heap);
       }
@@ -211,6 +212,11 @@ lizard_ast_node_t *lizard_eval(
         node = &((lizard_ast_list_node_t *)body_node)->ast;
         env = new_env;
         continue;
+
+        /* TODO check this */
+      } else if (func->type == AST_CALLCC) {
+        return lizard_primitive_callcc(evaled_args, env, heap, cont);
+
       } else {
         return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,
                     heap);
@@ -227,6 +233,27 @@ lizard_ast_node_t *lizard_eval(
       lizard_env_define(heap, env, node->data.macro_def.variable->data.variable,
                         transformer);
       return cont(lizard_make_nil(heap), env, heap);
+    }
+    case AST_CALLCC: {
+      list_node_t *func_node = node->data.application_arguments->head;
+      list_t *evaled_args =
+          list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+      {
+        list_node_t *arg_node = func_node->next;
+        for (; arg_node != node->data.application_arguments->nil;
+             arg_node = arg_node->next) {
+          lizard_ast_node_t *arg_val =
+              lizard_eval(&((lizard_ast_list_node_t *)arg_node)->ast, env, heap,
+                          lizard_identity_cont);
+          lizard_ast_list_node_t *new_arg_node =
+              lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+          new_arg_node->ast = *arg_val;
+          list_append(evaled_args, &new_arg_node->node);
+        }
+      }
+
+      node = lizard_primitive_callcc(evaled_args, env, heap, cont);
+      continue;
     }
 
     case AST_ERROR:
@@ -429,6 +456,14 @@ void print_ast(lizard_ast_node_t *node, int depth) {
     printf("Macro definition:\n");
     print_ast(node->data.macro_def.variable, depth + 1);
     print_ast(node->data.macro_def.transformer, depth + 1);
+    break;
+  case AST_CALLCC:
+    printf("Call/cc:\n");
+    arg = node->data.application_arguments->head;
+    while (arg != node->data.application_arguments->nil) {
+      print_ast(&((lizard_ast_list_node_t *)arg)->ast, depth + 1);
+      arg = arg->next;
+    }
     break;
   case AST_ERROR:
     printf("Error (code %d):\n", node->data.error.code);
