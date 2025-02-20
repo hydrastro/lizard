@@ -277,7 +277,9 @@ int main(void) {
         expanded_ast = lizard_expand_macros(&expr_node->ast, global_env, heap);
         result =
             lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
-        //        result = lizard_eval(expanded_ast, global_env, heap);
+        // lizard_force_all(            result->data.application_arguments,
+        // heap);
+        //       result = lizard_force(result,heap);
         printf("=> ");
         print_ast(result, 0);
         node = node->next;

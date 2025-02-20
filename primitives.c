@@ -6,6 +6,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+
 lizard_ast_node_t *lizard_primitive_plus(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   list_node_t *node;
