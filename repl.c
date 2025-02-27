@@ -274,7 +274,7 @@ int main(void) {
       node = ast_list->head;
       while (node != ast_list->nil) {
         expr_node = (lizard_ast_list_node_t *)node;
-        expanded_ast = lizard_expand_macros(&expr_node->ast, global_env, heap);
+        expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
         result =
             lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
         // lizard_force_all(            result->data.application_arguments,
