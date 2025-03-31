@@ -114,7 +114,7 @@ struct lizard_ast_node {
 
 typedef struct lizard_ast_list_node {
   list_node_t node;
-  lizard_ast_node_t ast;
+  lizard_ast_node_t *ast;
 } lizard_ast_list_node_t;
 
 typedef struct lizard_heap_segment {

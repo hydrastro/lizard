@@ -87,11 +87,11 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
             exit(1);
           }
           name_node = (lizard_ast_list_node_t *)app_args->head;
-          if (name_node->ast.type != AST_SYMBOL) {
+          if (name_node->ast->type != AST_SYMBOL) {
             fprintf(stderr, "Error: function name must be a symbol.\n");
             exit(1);
           }
-          fn_name = name_node->ast.data.variable;
+          fn_name = name_node->ast->data.variable;
 
           body_node = lizard_parse_expression(token_list, current_node_pointer,
                                               depth, heap);
@@ -115,12 +115,12 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
           }
           params_app->data.application_arguments = params_list;
           params_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          params_wrapper->ast = *params_app;
+          params_wrapper->ast = params_app;
           list_append(lambda_node->data.lambda.parameters,
                       &params_wrapper->node);
 
           body_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          body_wrapper->ast = *body_node;
+          body_wrapper->ast = body_node;
           list_append(lambda_node->data.lambda.parameters, &body_wrapper->node);
 
           def_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -186,7 +186,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                current_depth <= *depth) {
           ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
               sizeof(lizard_ast_list_node_t));
-          ast_list_node->ast = *lizard_parse_expression(
+          ast_list_node->ast = lizard_parse_expression(
               token_list, current_node_pointer, depth, heap);
           list_append(ast_node->data.lambda.parameters, &ast_list_node->node);
           current_node = *current_node_pointer;
@@ -250,7 +250,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                current_depth <= *depth) {
           ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
               sizeof(lizard_ast_list_node_t));
-          ast_list_node->ast = *lizard_parse_expression(
+          ast_list_node->ast = lizard_parse_expression(
               token_list, current_node_pointer, depth, heap);
           list_append(ast_node->data.begin_expressions, &ast_list_node->node);
           current_node = *current_node_pointer;
@@ -282,7 +282,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                current_depth <= *depth) {
           ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
               sizeof(lizard_ast_list_node_t));
-          ast_list_node->ast = *lizard_parse_expression(
+          ast_list_node->ast = lizard_parse_expression(
               token_list, current_node_pointer, depth, heap);
           list_append(ast_node->data.cond_clauses, &ast_list_node->node);
           current_node = *current_node_pointer;
@@ -368,11 +368,11 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
           current_node = *current_node_pointer;
 
           var_list_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          var_list_node->ast = *var;
+          var_list_node->ast = var;
           list_append(bindings, &var_list_node->node);
 
           val_list_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          val_list_node->ast = *value;
+          val_list_node->ast = value;
           list_append(values, &val_list_node->node);
         }
 
@@ -390,7 +390,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         params_app->data.application_arguments = bindings;
 
         params_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-        params_wrapper->ast = *params_app;
+        params_wrapper->ast = params_app;
         list_append(lambda_node->data.lambda.parameters, &params_wrapper->node);
 
         while (current_node != token_list->nil &&
@@ -398,14 +398,14 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                    TOKEN_RIGHT_PAREN) {
           lizard_ast_list_node_t *body_node =
               lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          body_node->ast = *lizard_parse_expression(
+          body_node->ast = lizard_parse_expression(
               token_list, current_node_pointer, depth, heap);
           list_append(lambda_node->data.lambda.parameters, &body_node->node);
           current_node = *current_node_pointer;
         }
 
         lambda_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-        lambda_wrapper->ast = *lambda_node;
+        lambda_wrapper->ast = lambda_node;
         list_append(app_node->data.application_arguments,
                     &lambda_wrapper->node);
 
@@ -413,7 +413,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         while (val_iter != values->nil) {
           lizard_ast_list_node_t *val_copy =
               lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-          val_copy->ast = *(&((lizard_ast_list_node_t *)val_iter)->ast);
+          val_copy->ast = (((lizard_ast_list_node_t *)val_iter)->ast);
           list_append(app_node->data.application_arguments, &val_copy->node);
           val_iter = val_iter->next;
         }
@@ -471,7 +471,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                current_depth <= *depth) {
           ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
               sizeof(lizard_ast_list_node_t));
-          ast_list_node->ast = *lizard_parse_expression(
+          ast_list_node->ast = lizard_parse_expression(
               token_list, current_node_pointer, depth, heap);
           list_append(ast_node->data.application_arguments,
                       &ast_list_node->node);
@@ -486,8 +486,8 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
         }
         first_arg = (lizard_ast_list_node_t *)
                         ast_node->data.application_arguments->head;
-        if (first_arg->ast.type == AST_SYMBOL &&
-            strcmp(first_arg->ast.data.variable, "call/cc") == 0) {
+        if (first_arg->ast->type == AST_SYMBOL &&
+            strcmp(first_arg->ast->data.variable, "call/cc") == 0) {
           ast_node->type = AST_CALLCC;
         }
 
@@ -511,7 +511,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
              current_depth <= *depth) {
         ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
             sizeof(lizard_ast_list_node_t));
-        ast_list_node->ast = *lizard_parse_expression(
+        ast_list_node->ast = lizard_parse_expression(
             token_list, current_node_pointer, depth, heap);
         list_append(ast_node->data.application_arguments, &ast_list_node->node);
         current_node = *current_node_pointer;
@@ -538,7 +538,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
              current_depth <= *depth) {
         ast_list_node = (lizard_ast_list_node_t *)lizard_heap_alloc(
             sizeof(lizard_ast_list_node_t));
-        ast_list_node->ast = *lizard_parse_expression(
+        ast_list_node->ast = lizard_parse_expression(
             token_list, current_node_pointer, depth, heap);
         list_append(ast_node->data.application_arguments, &ast_list_node->node);
         current_node = *current_node_pointer;
@@ -652,7 +652,7 @@ list_t *lizard_parse(list_t *token_list, lizard_heap_t *heap) {
     lizard_ast_list_node_t *ast_node =
         (lizard_ast_list_node_t *)lizard_heap_alloc(
             sizeof(lizard_ast_list_node_t));
-    ast_node->ast = *ast;
+    ast_node->ast = ast;
 
     if (ast != NULL) {
       list_append(ast_list, &ast_node->node);

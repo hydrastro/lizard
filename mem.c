@@ -168,8 +168,9 @@ lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
       list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
   msg_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  msg_node->ast.type = AST_STRING;
-  msg_node->ast.data.string = lizard_error_messages[LIZARD_LANG_EN][error_code];
+  msg_node->ast->type = AST_STRING;
+  msg_node->ast->data.string =
+      lizard_error_messages[LIZARD_LANG_EN][error_code];
   list_append(node->data.error.data, &msg_node->node);
 
   return node;
