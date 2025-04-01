@@ -476,80 +476,48 @@ lizard_ast_node_t *lizard_primitive_mod(list_t *args, lizard_env_t *env,
 
 lizard_ast_node_t *lizard_primitive_cons(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
+  lizard_ast_list_node_t *car_node, *cdr_node;
   lizard_ast_node_t *node;
-  lizard_ast_list_node_t *car_node, *new_car_node, *cdr_node, *new_cdr_node;
   if (args->head == args->nil || args->head->next == args->nil ||
       args->head->next->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CONS_ARGC);
   }
+
+  car_node = (lizard_ast_list_node_t *)args->head;
+  cdr_node = (lizard_ast_list_node_t *)args->head->next;
+
   node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  node->type = AST_APPLICATION;
-  node->data.application_arguments =
-      list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  node->type = AST_PAIR;
 
-  car_node = CAST(args->head, lizard_ast_list_node_t);
-  new_car_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  /* new_car_node->ast = car_node->ast; * shallow copy */
-  new_car_node->ast = lizard_ast_deep_copy(car_node->ast, heap);
-  list_append(node->data.application_arguments, &new_car_node->node);
-
-  cdr_node = CAST(args->head->next, lizard_ast_list_node_t);
-  new_cdr_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  /*new_cdr_node->ast = cdr_node->ast; * shallow copy */
-  new_cdr_node->ast = lizard_ast_deep_copy(cdr_node->ast, heap);
-  list_append(node->data.application_arguments, &new_cdr_node->node);
-
+  node->data.pair.car = lizard_ast_deep_copy(car_node->ast, heap);
+  node->data.pair.cdr = lizard_ast_deep_copy(cdr_node->ast, heap);
   return node;
 }
 
 lizard_ast_node_t *lizard_primitive_car(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap) {
   lizard_ast_list_node_t *node;
-  list_t *app_args;
-  lizard_ast_list_node_t *first_arg;
   if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CAR_ARGC);
   }
-  node = CAST(args->head, lizard_ast_list_node_t);
-  if (node->ast->type != AST_APPLICATION) {
+  node = (lizard_ast_list_node_t *)args->head;
+  if (node->ast->type != AST_PAIR) {
     return lizard_make_error(heap, LIZARD_ERROR_CAR_ARGT);
   }
-  app_args = node->ast->data.application_arguments;
-  if (app_args->head == app_args->nil) {
-    return lizard_make_error(heap, LIZARD_ERROR_CAR_NIL);
-  }
-  first_arg = CAST(app_args->head, lizard_ast_list_node_t);
-  return first_arg->ast;
+  return node->ast->data.pair.car;
 }
 
 lizard_ast_node_t *lizard_primitive_cdr(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap) {
-  lizard_ast_list_node_t *node, *copy;
-  list_t *app_args;
-  lizard_ast_node_t *cdr_result;
-  list_node_t *iter;
+  lizard_ast_list_node_t *node;
   if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_CDR_ARGC);
   }
-  node = CAST(args->head, lizard_ast_list_node_t);
-  if (node->ast->type != AST_APPLICATION) {
+  node = (lizard_ast_list_node_t *)args->head;
+  if (node->ast->type != AST_PAIR) {
     return lizard_make_error(heap, LIZARD_ERROR_CDR_ARGT);
   }
-  app_args = node->ast->data.application_arguments;
-  if (app_args->head == app_args->nil) {
-    return lizard_make_error(heap, LIZARD_ERROR_CDR_NIL);
-  }
-  cdr_result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  cdr_result->type = AST_APPLICATION;
-  cdr_result->data.application_arguments =
-      list_create_alloc(lizard_heap_alloc, lizard_heap_free);
-
-  for (iter = app_args->head->next; iter != app_args->nil; iter = iter->next) {
-    copy = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-    copy->ast = ((lizard_ast_list_node_t *)iter)->ast; /* shallow copy */
-    list_append(cdr_result->data.application_arguments, &copy->node);
-  }
-  return cdr_result;
+  return node->ast->data.pair.cdr;
 }
 
 lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
@@ -923,6 +891,11 @@ lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
         list_append(copy->data.application_arguments, &copy_node->node);
       }
     }
+    break;
+  case AST_PAIR:
+
+    copy->data.pair.car = lizard_ast_deep_copy(node->data.pair.car, heap);
+    copy->data.pair.cdr = lizard_ast_deep_copy(node->data.pair.cdr, heap);
     break;
   default:
     memcpy(&(copy->data), &(node->data), sizeof(node->data));

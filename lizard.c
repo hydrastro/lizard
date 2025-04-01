@@ -12,6 +12,34 @@
 #include <string.h>
 #include <sys/mman.h>
 
+lizard_ast_node_t *lizard_convert_list_literal(lizard_ast_node_t *node,
+                                               lizard_heap_t *heap) {
+  list_t *args, *rest_args;
+  lizard_ast_list_node_t *first;
+  lizard_ast_node_t *car, *rest_app, *cdr, *pair;
+  if (node->type != AST_APPLICATION) {
+    return node;
+  }
+  args = node->data.application_arguments;
+  if (args->head == args->nil) {
+    return lizard_make_nil(heap);
+  }
+  first = (lizard_ast_list_node_t *)args->head;
+  car = first->ast;
+  rest_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  rest_args->head = args->head->next;
+  rest_args->nil = args->nil;
+  rest_app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  rest_app->type = AST_APPLICATION;
+  rest_app->data.application_arguments = rest_args;
+  cdr = lizard_convert_list_literal(rest_app, heap);
+  pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  pair->type = AST_PAIR;
+  pair->data.pair.car = lizard_ast_deep_copy(car, heap);
+  pair->data.pair.cdr = cdr;
+  return pair;
+}
+
 lizard_ast_node_t *lizard_make_promise(lizard_heap_t *heap,
                                        lizard_ast_node_t *expr,
                                        lizard_env_t *env) {
@@ -72,6 +100,7 @@ lizard_ast_node_t *lizard_eval(
     case AST_NIL:
     case AST_NUMBER:
     case AST_STRING:
+    case AST_PAIR:
     case AST_PRIMITIVE:
       return cont(node, env, heap);
 
@@ -85,8 +114,13 @@ lizard_ast_node_t *lizard_eval(
       return cont(lizard_force(val, heap), env, heap);
     }
 
-    case AST_QUOTE:
-      return cont(node->data.quoted, env, heap);
+    case AST_QUOTE: {
+      lizard_ast_node_t *quoted = node->data.quoted;
+      if (quoted->type == AST_APPLICATION) {
+        quoted = lizard_convert_list_literal(quoted, heap);
+      }
+      return cont(quoted, env, heap);
+    }
 
     case AST_QUASIQUOTE: {
       lizard_ast_node_t *expanded;

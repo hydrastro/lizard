@@ -31,6 +31,15 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_BOOL:
     fprintf(fp, "Boolean: %s\n", node->data.boolean ? "#t" : "#f");
     break;
+  case AST_PAIR:
+    fprintf(fp, "Pair:\n");
+    lizard_print_indent(depth + 1);
+    fprintf(fp, "Car:\n");
+    lizard_fprint_ast(fp, node->data.pair.car, depth + 2);
+    lizard_print_indent(depth + 1);
+    fprintf(fp, "Cdr:\n");
+    lizard_fprint_ast(fp, node->data.pair.cdr, depth + 2);
+    break;
   case AST_NIL:
     fprintf(fp, "Nil\n");
     break;

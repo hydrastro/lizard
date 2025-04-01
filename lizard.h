@@ -25,6 +25,7 @@ typedef enum {
   AST_NUMBER,
   AST_SYMBOL,
   AST_BOOL,
+  AST_PAIR,
   AST_NIL,
   AST_QUOTE,
   AST_QUASIQUOTE,
