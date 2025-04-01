@@ -1,4 +1,5 @@
 #include "primitives.h"
+#include "deep_copy.h"
 #include "lizard.h"
 #include "mem.h"
 #include "parser.h"
@@ -541,12 +542,14 @@ lizard_ast_node_t *lizard_primitive_cons(list_t *args, lizard_env_t *env,
 
   car_node = CAST(args->head, lizard_ast_list_node_t);
   new_car_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  new_car_node->ast = car_node->ast; /* shallow copy */
+  /* new_car_node->ast = car_node->ast; * shallow copy */
+  new_car_node->ast = lizard_ast_deep_copy(car_node->ast, heap);
   list_append(node->data.application_arguments, &new_car_node->node);
 
   cdr_node = CAST(args->head->next, lizard_ast_list_node_t);
   new_cdr_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  new_cdr_node->ast = cdr_node->ast; /* shallow copy */
+  /*new_cdr_node->ast = cdr_node->ast; * shallow copy */
+  new_cdr_node->ast = lizard_ast_deep_copy(cdr_node->ast, heap);
   list_append(node->data.application_arguments, &new_cdr_node->node);
 
   return node;
@@ -654,6 +657,9 @@ lizard_ast_node_t *lizard_primitive_tokens(list_t *args, lizard_env_t *env,
 
   input = node->ast->data.string;
   tokens = lizard_tokenize(input);
+  if (!tokens) {
+    return lizard_make_error(heap, LIZARD_ERROR_NONE); /* TODO */
+  }
 
   for (token_node = tokens->head; token_node != tokens->nil;
        token_node = token_node->next) {
