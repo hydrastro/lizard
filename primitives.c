@@ -126,8 +126,162 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
   return acc;
 }
 
+int is_empty_list(lizard_ast_node_t *node) {
+  if (!node)
+    return 1;
+  if (node->type == AST_NIL)
+    return 1;
+  if (node->type == AST_APPLICATION) {
+    list_t *args = node->data.application_arguments;
+    if (args->head == args->nil)
+      return 1;
+  }
+  return 0;
+}
+
+int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
+  if (a == b)
+    return 1;
+  if (!a || !b)
+    return 0;
+
+  if (is_empty_list(a) && is_empty_list(b))
+    return 1;
+
+  if (a->type != b->type) {
+    if ((a->type == AST_NIL && is_empty_list(b)) ||
+        (b->type == AST_NIL && is_empty_list(a))) {
+      return 1;
+    }
+    return 0;
+  }
+
+  switch (a->type) {
+  case AST_NUMBER:
+    return (mpz_cmp(a->data.number, b->data.number) == 0);
+  case AST_SYMBOL:
+    return (strcmp(a->data.variable, b->data.variable) == 0);
+  case AST_BOOL:
+    return (a->data.boolean == b->data.boolean);
+  case AST_STRING:
+    return (strcmp(a->data.string, b->data.string) == 0);
+  case AST_NIL:
+    return 1;
+  case AST_QUOTE:
+  case AST_QUASIQUOTE:
+  case AST_UNQUOTE:
+  case AST_UNQUOTE_SPLICING:
+    return lizard_ast_equal(a->data.quoted, b->data.quoted);
+  case AST_ASSIGNMENT:
+    return lizard_ast_equal(a->data.assignment.variable,
+                            b->data.assignment.variable) &&
+           lizard_ast_equal(a->data.assignment.value, b->data.assignment.value);
+  case AST_DEFINITION:
+    return lizard_ast_equal(a->data.definition.variable,
+                            b->data.definition.variable) &&
+           lizard_ast_equal(a->data.definition.value, b->data.definition.value);
+  case AST_IF:
+    return lizard_ast_equal(a->data.if_clause.pred, b->data.if_clause.pred) &&
+           lizard_ast_equal(a->data.if_clause.cons, b->data.if_clause.cons) &&
+           lizard_ast_equal(a->data.if_clause.alt, b->data.if_clause.alt);
+  case AST_LAMBDA: {
+    list_t *params_a = a->data.lambda.parameters;
+    list_t *params_b = b->data.lambda.parameters;
+    list_node_t *pa = params_a->head, *pb = params_b->head;
+    while (pa != params_a->nil && pb != params_b->nil) {
+      lizard_ast_list_node_t *pna = (lizard_ast_list_node_t *)pa;
+      lizard_ast_list_node_t *pnb = (lizard_ast_list_node_t *)pb;
+      if (!lizard_ast_equal(pna->ast, pnb->ast))
+        return 0;
+      pa = pa->next;
+      pb = pb->next;
+    }
+    if (pa != params_a->nil || pb != params_b->nil)
+      return 0;
+    return 1;
+  }
+  case AST_BEGIN: {
+    list_t *exprs_a = a->data.begin_expressions;
+    list_t *exprs_b = b->data.begin_expressions;
+    list_node_t *na = exprs_a->head, *nb = exprs_b->head;
+    while (na != exprs_a->nil && nb != exprs_b->nil) {
+      lizard_ast_list_node_t *ena = (lizard_ast_list_node_t *)na;
+      lizard_ast_list_node_t *enb = (lizard_ast_list_node_t *)nb;
+      if (!lizard_ast_equal(ena->ast, enb->ast))
+        return 0;
+      na = na->next;
+      nb = nb->next;
+    }
+    return (na == exprs_a->nil && nb == exprs_b->nil);
+  }
+  case AST_APPLICATION: {
+    list_t *args_a = a->data.application_arguments;
+    list_t *args_b = b->data.application_arguments;
+    list_node_t *na = args_a->head, *nb = args_b->head;
+    while (na != args_a->nil && nb != args_b->nil) {
+      lizard_ast_list_node_t *ena = (lizard_ast_list_node_t *)na;
+      lizard_ast_list_node_t *enb = (lizard_ast_list_node_t *)nb;
+      if (!lizard_ast_equal(ena->ast, enb->ast))
+        return 0;
+      na = na->next;
+      nb = nb->next;
+    }
+    return (na == args_a->nil && nb == args_b->nil);
+  }
+  case AST_PRIMITIVE:
+    return (a->data.primitive == b->data.primitive);
+  case AST_MACRO:
+    return lizard_ast_equal(a->data.macro_def.variable,
+                            b->data.macro_def.variable) &&
+           lizard_ast_equal(a->data.macro_def.transformer,
+                            b->data.macro_def.transformer);
+  case AST_PROMISE:
+    if (a->data.promise.forced && b->data.promise.forced)
+      return lizard_ast_equal(a->data.promise.value, b->data.promise.value);
+    return lizard_ast_equal(a->data.promise.expr, b->data.promise.expr);
+  case AST_CONTINUATION:
+    return (a->data.continuation.captured_cont ==
+            b->data.continuation.captured_cont);
+  case AST_CALLCC:
+    return (a == b);
+  case AST_ERROR:
+    if (a->data.error.code != b->data.error.code)
+      return 0;
+    return lizard_ast_equal((lizard_ast_node_t *)a->data.error.data,
+                            (lizard_ast_node_t *)b->data.error.data);
+  default:
+    return (a == b);
+  }
+}
+
 lizard_ast_node_t *lizard_primitive_equal(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
+  list_node_t *node;
+  lizard_ast_list_node_t *first_node;
+  lizard_ast_node_t *first;
+  lizard_ast_node_t *result;
+  int eq = 1;
+  if (args->head == args->nil || args->head->next == args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_EQ_ARGC);
+  }
+  first_node = (lizard_ast_list_node_t *)args->head;
+  first = first_node->ast;
+  for (node = args->head->next; node != args->nil; node = node->next) {
+    lizard_ast_list_node_t *other_node = (lizard_ast_list_node_t *)node;
+    lizard_ast_node_t *other = other_node->ast;
+    if (!lizard_ast_equal(first, other)) {
+      eq = 0;
+      break;
+    }
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_BOOL;
+  result->data.boolean = (eq != 0);
+  return result;
+}
+
+lizard_ast_node_t *lizard_primitive_equallo(list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap) {
   list_node_t *node;
   lizard_ast_list_node_t *first_node, *other_node;
   lizard_ast_node_t *first, *other, *result;

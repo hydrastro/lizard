@@ -44,7 +44,6 @@ lizard_ast_node_t *lizard_primitive_delay(list_t *args, lizard_env_t *env,
   if (args->head == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_INVALID_DELAY);
   }
-  /* With pointer semantics, no ampersand is needed */
   expr = ((lizard_ast_list_node_t *)args->head)->ast;
   return lizard_make_promise(heap, expr, env);
 }
@@ -587,8 +586,6 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
   case AST_LAMBDA: {
     list_node_t *body_node;
     lizard_ast_list_node_t *body_expr;
-    /* Skip the first node (formal parameters) and process each body expression
-     */
     if (node->data.lambda.parameters->head !=
         node->data.lambda.parameters->nil) {
       body_node = node->data.lambda.parameters->head->next;

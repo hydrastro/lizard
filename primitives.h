@@ -63,4 +63,8 @@ lizard_ast_node_t *lizard_primitive_or(list_t *args, lizard_env_t *env,
                                        lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_not(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap);
+
+int is_empty_list(lizard_ast_node_t *node);
+int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
+
 #endif /* LIZARD_PRIMITIVES_H */

@@ -4,6 +4,15 @@
 #include "primitives.h"
 #include "tokenizer.h"
 
+lizard_ast_node_t *get_canonical_empty_list(lizard_heap_t *heap) {
+  lizard_ast_node_t *canonical_empty_list = NULL;
+  if (!canonical_empty_list) {
+    canonical_empty_list = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    canonical_empty_list->type = AST_NIL;
+  }
+  return canonical_empty_list;
+}
+
 lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
                                            list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *heap) {
@@ -29,8 +38,17 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
     lizard_ast_list_node_t *first_arg;
     *current_node_pointer = current_node->next;
     current_node = current_node->next;
+    if (current_node == token_list->nil) {
+      fprintf(stderr, "Error: unexpected EOF after '('\n");
+      exit(1);
+    }
     current_token = &CAST(current_node, lizard_token_list_node_t)->token;
     *depth = *depth + 1;
+    if (current_token->type == TOKEN_RIGHT_PAREN) {
+      *current_node_pointer = current_node->next;
+      *depth = *depth - 1;
+      return get_canonical_empty_list(heap);
+    }
 
     if (current_token->type == TOKEN_SYMBOL) {
       if (strcmp(current_token->data.symbol, "quote") == 0) {
@@ -527,6 +545,11 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
       *depth -= 1;
+    } else if (current_token->type == TOKEN_RIGHT_PAREN) {
+      /*should never be reached*/
+      *current_node_pointer = current_node->next;
+      *depth -= 1;
+      return get_canonical_empty_list(heap);
     } else {
       ast_node->type = AST_APPLICATION;
       ast_node->data.application_arguments =
@@ -607,9 +630,8 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
     } else if (strcmp(current_token->data.symbol, "nil") == 0) {
-      ast_node->type = AST_NIL;
       *current_node_pointer = current_node->next;
-      current_node = current_node->next;
+      return get_canonical_empty_list(heap);
     } else {
       ast_node->type = AST_SYMBOL;
       ast_node->data.variable = current_token->data.symbol;
