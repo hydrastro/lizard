@@ -47,8 +47,8 @@ lizard_ast_node_t *lizard_primitive_callcc(
                                        lizard_heap_t *));
 lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
                                         lizard_env_t *env, lizard_heap_t *heap);
-int is_false(lizard_ast_node_t *node);
-int is_true(lizard_ast_node_t *node);
+int lizard_is_false(lizard_ast_node_t *node);
+int lizard_is_true(lizard_ast_node_t *node);
 lizard_ast_node_t *lizard_primitive_nullp(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_pairp(list_t *args, lizard_env_t *env,
@@ -64,7 +64,7 @@ lizard_ast_node_t *lizard_primitive_or(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_not(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap);
 
-int is_empty_list(lizard_ast_node_t *node);
+int lizard_is_empty_list(lizard_ast_node_t *node);
 int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
 
 lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,

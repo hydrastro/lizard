@@ -4,7 +4,7 @@
 #include "primitives.h"
 #include "tokenizer.h"
 
-lizard_ast_node_t *get_canonical_empty_list(lizard_heap_t *heap) {
+lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   lizard_ast_node_t *canonical_empty_list = NULL;
   if (!canonical_empty_list) {
     canonical_empty_list = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -47,7 +47,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
     if (current_token->type == TOKEN_RIGHT_PAREN) {
       *current_node_pointer = current_node->next;
       *depth = *depth - 1;
-      return get_canonical_empty_list(heap);
+      return lizard_get_canonical_nil(heap);
     }
 
     if (current_token->type == TOKEN_SYMBOL) {
@@ -549,7 +549,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
       /*should never be reached*/
       *current_node_pointer = current_node->next;
       *depth -= 1;
-      return get_canonical_empty_list(heap);
+      return lizard_get_canonical_nil(heap);
     } else {
       ast_node->type = AST_APPLICATION;
       ast_node->data.application_arguments =
@@ -631,7 +631,7 @@ lizard_ast_node_t *lizard_parse_expression(list_t *token_list,
       current_node = *current_node_pointer;
     } else if (strcmp(current_token->data.symbol, "nil") == 0) {
       *current_node_pointer = current_node->next;
-      return get_canonical_empty_list(heap);
+      return lizard_get_canonical_nil(heap);
     } else {
       ast_node->type = AST_SYMBOL;
       ast_node->data.variable = current_token->data.symbol;

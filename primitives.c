@@ -127,7 +127,7 @@ lizard_ast_node_t *lizard_primitive_divide(list_t *args, lizard_env_t *env,
   return acc;
 }
 
-int is_empty_list(lizard_ast_node_t *node) {
+int lizard_is_empty_list(lizard_ast_node_t *node) {
   if (!node)
     return 1;
   if (node->type == AST_NIL)
@@ -146,12 +146,12 @@ int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   if (!a || !b)
     return 0;
 
-  if (is_empty_list(a) && is_empty_list(b))
+  if (lizard_is_empty_list(a) && lizard_is_empty_list(b))
     return 1;
 
   if (a->type != b->type) {
-    if ((a->type == AST_NIL && is_empty_list(b)) ||
-        (b->type == AST_NIL && is_empty_list(a))) {
+    if ((a->type == AST_NIL && lizard_is_empty_list(b)) ||
+        (b->type == AST_NIL && lizard_is_empty_list(a))) {
       return 1;
     }
     return 0;
@@ -657,7 +657,7 @@ lizard_ast_node_t *lizard_primitive_ast(list_t *args, lizard_env_t *env,
   current_node = ast_list->head;
   while (current_node != ast_list->nil) {
     printf("=> ");
-    print_ast(CAST(current_node, lizard_ast_list_node_t)->ast, 0);
+    lizard_print_ast(CAST(current_node, lizard_ast_list_node_t)->ast, 0);
     current_node = current_node->next;
   }
   return lizard_make_nil(heap);
@@ -729,7 +729,7 @@ lizard_ast_node_t *lizard_identity_cont(lizard_ast_node_t *result,
   return result;
 }
 
-int is_false(lizard_ast_node_t *node) {
+int lizard_is_false(lizard_ast_node_t *node) {
   if (!node) {
     return 1;
   }
@@ -742,7 +742,7 @@ int is_false(lizard_ast_node_t *node) {
   return 0;
 }
 
-int is_true(lizard_ast_node_t *node) { return !is_false(node); }
+int lizard_is_true(lizard_ast_node_t *node) { return !lizard_is_false(node); }
 
 lizard_ast_node_t *lizard_primitive_nullp(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
@@ -809,7 +809,7 @@ lizard_ast_node_t *lizard_primitive_and(list_t *args, lizard_env_t *env,
   for (iter = args->head; iter != args->nil; iter = iter->next) {
     arg_node = (lizard_ast_list_node_t *)iter;
     result = arg_node->ast;
-    if (is_false(result)) {
+    if (lizard_is_false(result)) {
       return result;
     }
   }
@@ -826,7 +826,7 @@ lizard_ast_node_t *lizard_primitive_or(list_t *args, lizard_env_t *env,
   for (iter = args->head; iter != args->nil; iter = iter->next) {
     arg_node = (lizard_ast_list_node_t *)iter;
     result = arg_node->ast;
-    if (is_true(result)) {
+    if (lizard_is_true(result)) {
       return result;
     }
   }
@@ -841,7 +841,7 @@ lizard_ast_node_t *lizard_primitive_not(list_t *args, lizard_env_t *env,
     return lizard_make_error(heap, LIZARD_ERROR_NOT_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
-  if (is_false(node_arg->ast))
+  if (lizard_is_false(node_arg->ast))
     return lizard_make_bool(heap, true);
   else
     return lizard_make_bool(heap, false);
@@ -855,7 +855,7 @@ lizard_ast_node_t *lizard_primitive_xor(list_t *args, lizard_env_t *env,
   (void)env;
   for (iter = args->head; iter != args->nil; iter = iter->next) {
     arg_node = (lizard_ast_list_node_t *)iter;
-    if (is_true(arg_node->ast))
+    if (lizard_is_true(arg_node->ast))
       true_count++;
   }
   return lizard_make_bool(heap, (true_count % 2) != 0);
@@ -864,19 +864,19 @@ lizard_ast_node_t *lizard_primitive_xor(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_nand(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lizard_ast_node_t *and_result = lizard_primitive_and(args, env, heap);
-  return lizard_make_bool(heap, is_false(and_result));
+  return lizard_make_bool(heap, lizard_is_false(and_result));
 }
 
 lizard_ast_node_t *lizard_primitive_nor(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap) {
   lizard_ast_node_t *or_result = lizard_primitive_or(args, env, heap);
-  return lizard_make_bool(heap, is_false(or_result));
+  return lizard_make_bool(heap, lizard_is_false(or_result));
 }
 
 lizard_ast_node_t *lizard_primitive_xnor(list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lizard_ast_node_t *xor_result = lizard_primitive_xor(args, env, heap);
-  return lizard_make_bool(heap, is_false(xor_result));
+  return lizard_make_bool(heap, lizard_is_false(xor_result));
 }
 
 lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,

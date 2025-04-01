@@ -286,7 +286,7 @@ int main(void) {
         // heap);
         //       result = lizard_force(result,heap);
         printf("=> ");
-        print_ast(result, 0);
+        lizard_print_ast(result, 0);
         node = node->next;
       }
       free(input);
