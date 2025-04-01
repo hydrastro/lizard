@@ -4,6 +4,7 @@
 #include "mem.h"
 #include "parser.h"
 #include "primitives.h"
+#include "printer.h"
 #include "tokenizer.h"
 #include <stdio.h>
 #include <stdlib.h>

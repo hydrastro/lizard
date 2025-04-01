@@ -156,7 +156,6 @@ lizard_ast_node_t *lizard_primitive_delay(list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_force(list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap);
 
-void print_ast(lizard_ast_node_t *node, int depth);
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
                                lizard_heap_t *heap, lizard_continuation_t cont);
 lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,

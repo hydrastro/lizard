@@ -3,6 +3,7 @@
 #include "lizard.h"
 #include "mem.h"
 #include "parser.h"
+#include "printer.h"
 #include "tokenizer.h"
 
 #pragma GCC diagnostic push
