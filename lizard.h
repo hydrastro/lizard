@@ -147,6 +147,8 @@ typedef lizard_ast_node_t *(*lizard_continuation_t)(lizard_ast_node_t *result,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap);
 
+lizard_ast_node_t *lizard_convert_list_literal(lizard_ast_node_t *node,
+                                               lizard_heap_t *heap);
 lizard_ast_node_t *lizard_make_promise(lizard_heap_t *heap,
                                        lizard_ast_node_t *expr,
                                        lizard_env_t *env);
