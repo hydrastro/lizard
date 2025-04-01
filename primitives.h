@@ -67,4 +67,7 @@ lizard_ast_node_t *lizard_primitive_not(list_t *args, lizard_env_t *env,
 int is_empty_list(lizard_ast_node_t *node);
 int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
 
+lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
+                                        lizard_heap_t *heap);
+
 #endif /* LIZARD_PRIMITIVES_H */

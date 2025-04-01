@@ -3,6 +3,7 @@
 
 #define LIZARD_ERROR_LIST                                                      \
   X(LIZARD_ERROR_NONE)                                                         \
+  X(LIZARD_ERROR_UNDEFINED)                                                    \
   X(LIZARD_ERROR_UNBOUND_SYMBOL)                                               \
   X(LIZARD_ERROR_INVALID_FUNCTION_DEF)                                         \
   X(LIZARD_ERROR_INVALID_FUNCTION_NAME)                                        \
@@ -13,17 +14,25 @@
   X(LIZARD_ERROR_INVALID_MACRO_NAME)                                           \
   X(LIZARD_ERROR_NODE_TYPE)                                                    \
   X(LIZARD_ERROR_LAMBDA_PARAMS)                                                \
+  X(LIZARD_ERROR_LAMBDA_PARAMS_2)                                              \
   X(LIZARD_ERROR_VARIADIC_UNFOLLOWED)                                          \
   X(LIZARD_ERROR_VARIADIC_SYMBOL)                                              \
   X(LIZARD_ERROR_LAMBDA_ARITY_LESS)                                            \
+  X(LIZARD_ERROR_LAMBDA_ARITY_LESS_2)                                          \
   X(LIZARD_ERROR_LAMBDA_PARAMETER)                                             \
+  X(LIZARD_ERROR_LAMBDA_PARAMETER_2)                                           \
   X(LIZARD_ERROR_LAMBDA_ARITY_MORE)                                            \
+  X(LIZARD_ERROR_LAMBDA_ARITY_MORE_2)                                          \
   X(LIZARD_ERROR_INVALID_APPLY)                                                \
-  X(LIZARD_ERROR_PLUS)                                                         \
+  X(LIZARD_ERROR_INVALID_APPLY_2)                                              \
+  X(LIZARD_ERROR_PLUS_ARGC)                                                    \
+  X(LIZARD_ERROR_PLUS_ARGT)                                                    \
   X(LIZARD_ERROR_MINUS_ARGC)                                                   \
   X(LIZARD_ERROR_MINUS_ARGT)                                                   \
   X(LIZARD_ERROR_MINUS_ARGT_2)                                                 \
-  X(LIZARD_ERROR_MUL)                                                          \
+  X(LIZARD_ERROR_MUL_ARGC)                                                     \
+  X(LIZARD_ERROR_MUL_ARGT)                                                     \
+  X(LIZARD_ERROR_MUL_ARGT_2)                                                   \
   X(LIZARD_ERROR_DIV_ARGC)                                                     \
   X(LIZARD_ERROR_DIV_ARGT)                                                     \
   X(LIZARD_ERROR_DIV_ARGT_2)                                                   \
@@ -55,13 +64,22 @@
   X(LIZARD_ERROR_CDR_NIL)                                                      \
   X(LIZARD_ERROR_TOKENS_ARGC)                                                  \
   X(LIZARD_ERROR_TOKENS_ARGT)                                                  \
+  X(LIZARD_ERROR_TOKENIZATION)                                                 \
+  X(LIZARD_ERROR_AST_ARGC)                                                     \
+  X(LIZARD_ERROR_AST_ARGT)                                                     \
   X(LIZARD_ERROR_EVAL_ARGC)                                                    \
-  X(LIZARD_ERROR_UNQUOTE)                                                      \
   X(LIZARD_ERROR_UNQUOTE_ARGC)                                                 \
+  X(LIZARD_ERROR_UNQUOTE_ARGT)                                                 \
   X(LIZARD_ERROR_INVALID_SPLICE)                                               \
   X(LIZARD_ERROR_CALLCC_ARGC)                                                  \
+  X(LIZARD_ERROR_CALLCC_APPLY)                                                 \
   X(LIZARD_ERROR_INVALID_FORCE)                                                \
-  X(LIZARD_ERROR_INVALID_DELAY)
+  X(LIZARD_ERROR_INVALID_DELAY)                                                \
+  X(LIZARD_ERROR_NULLP_ARGC)                                                   \
+  X(LIZARD_ERROR_PAIRP_ARGC)                                                   \
+  X(LIZARD_ERROR_STRINGP_ARGC)                                                 \
+  X(LIZARD_ERROR_BOOLP_ARGC)                                                   \
+  X(LIZARD_ERROR_NOT_ARGC)
 
 typedef enum lizard_error_code {
 #define X(err) err,

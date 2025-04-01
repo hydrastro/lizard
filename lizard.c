@@ -363,7 +363,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
       param_list =
           ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;
       if (param_list->type != AST_APPLICATION) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS), env,
+        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS_2), env,
                     heap);
       }
       formal_params = param_list->data.application_arguments;
@@ -371,12 +371,12 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
       arg_node = args->head;
       while (param_node != formal_params->nil) {
         if (arg_node == args->nil) {
-          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS),
+          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS_2),
                       env, heap);
         }
         param = (lizard_ast_list_node_t *)param_node;
         if (param->ast->type != AST_SYMBOL) {
-          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER),
+          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER_2),
                       env, heap);
         }
         lizard_env_define(heap, new_env, param->ast->data.variable,
@@ -385,7 +385,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
         arg_node = arg_node->next;
       }
       if (arg_node != args->nil) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
+        return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE_2),
                     env, heap);
       }
       result = NULL;
@@ -399,7 +399,8 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
       return cont(lizard_force(result, heap), env, heap);
     }
   } else {
-    return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env, heap);
+    return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY_2), env,
+                heap);
   }
 }
 
