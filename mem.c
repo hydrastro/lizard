@@ -17,6 +17,11 @@ static const char **lizard_error_messages[LIZARD_LANG_COUNT] = {
 #undef X
 };
 
+size_t align_size(size_t size) {
+  size_t alignment = sizeof(void *);
+  return (size + alignment - 1) & ~(alignment - 1);
+}
+
 lizard_heap_segment_t *lizard_create_heap_segment(size_t size) {
   lizard_heap_segment_t *seg;
   seg = (lizard_heap_segment_t *)malloc(sizeof(lizard_heap_segment_t));
@@ -27,6 +32,7 @@ lizard_heap_segment_t *lizard_create_heap_segment(size_t size) {
   seg->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   if (seg->start == MAP_FAILED) {
+    fprintf(stderr, "mmap failed for segment size %lu\n", size);
     perror("mmap");
     exit(1);
   }
@@ -51,14 +57,12 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   return heap;
 }
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
-  size_t alignment;
   lizard_heap_segment_t *seg;
   void *new_ptr;
   size_t additional;
   size_t copy_size;
 
-  alignment = sizeof(void *);
-  new_size = (new_size + alignment - 1) & ~(alignment - 1);
+  new_size = align_size(new_size);
 
   if (ptr == NULL) {
     return lizard_heap_alloc(new_size);
@@ -86,13 +90,11 @@ void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
 }
 
 void *lizard_heap_alloc(size_t size) {
-  size_t alignment;
   lizard_heap_segment_t *seg;
   void *ptr;
   size_t current_seg_size, new_segment_size;
 
-  alignment = sizeof(void *);
-  size = (size + alignment - 1) & ~(alignment - 1);
+  size = align_size(size);
 
   seg = heap->current;
   if (seg->top + size > seg->end) {
