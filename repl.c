@@ -179,7 +179,11 @@ char *read_input(void) {
   while (paren_balance(buffer) > 0) {
     char *next_line;
     size_t needed;
-    printf(".....> ");
+    int pb;
+    for (pb = paren_balance(buffer); pb > 0; pb--) {
+      printf(".");
+    }
+    printf("> ");
     fflush(stdout);
     next_line = read_line();
     if (!next_line) {
