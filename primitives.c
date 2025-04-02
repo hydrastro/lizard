@@ -4,6 +4,10 @@
 #include "parser.h"
 #include "printer.h"
 #include "tokenizer.h"
+#include <setjmp.h>
+extern jmp_buf callcc_buf;
+extern int callcc_active;
+extern lizard_ast_node_t *callcc_value;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -678,6 +682,13 @@ lizard_ast_node_t *lizard_primitive_callcc(
   proc = arg0->ast;
   if (proc->type != AST_LAMBDA && proc->type != AST_PRIMITIVE) {
     return lizard_make_error(heap, LIZARD_ERROR_CALLCC_APPLY);
+  }
+  if (!callcc_active) {
+    callcc_active = 1;
+    if (setjmp(callcc_buf) != 0) {
+      callcc_active = 0;
+      return callcc_value;
+    }
   }
   cont_obj = lizard_make_continuation(current_cont, heap);
 

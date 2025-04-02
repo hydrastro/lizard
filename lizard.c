@@ -6,11 +6,18 @@
 #include <ctype.h>
 #include <ds.h>
 #include <gmp.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+jmp_buf callcc_buf;
+int callcc_active = 0;
+lizard_ast_node_t *callcc_value = NULL;
+
+int lizard_continuation_jumped = 0;
+lizard_ast_node_t *lizard_jump_value = NULL;
 
 lizard_ast_node_t *lizard_convert_list_literal(lizard_ast_node_t *node,
                                                lizard_heap_t *heap) {
@@ -235,16 +242,19 @@ lizard_ast_node_t *lizard_eval(
         list_append(arg_list, &new_arg_node->node);
       }
       if (func->type == AST_CONTINUATION) {
-        {
-          list_node_t *arg;
-          lizard_ast_node_t *value;
-          arg = arg_list->head;
-          value = (arg != arg_list->nil)
-                      ? lizard_force(((lizard_ast_list_node_t *)arg)->ast, heap)
-                      : lizard_make_nil(heap);
-          return func->data.continuation.captured_cont(value, env, heap);
+        list_node_t *arg;
+        lizard_ast_node_t *value;
+        arg = arg_list->head;
+        value = (arg != arg_list->nil)
+                    ? lizard_force(((lizard_ast_list_node_t *)arg)->ast, heap)
+                    : lizard_make_nil(heap);
+        if (callcc_active) {
+          callcc_value = value;
+          longjmp(callcc_buf, 1);
         }
+        return func->data.continuation.captured_cont(value, env, heap);
       }
+
       if (func->type == AST_PRIMITIVE) {
         {
           list_node_t *cur;
@@ -262,6 +272,7 @@ lizard_ast_node_t *lizard_eval(
           list_node_t *param_node, *arg_iter;
           lizard_ast_list_node_t *param;
           list_node_t *body_node;
+          lizard_ast_node_t *result;
           new_env = lizard_env_create(heap, func->data.lambda.closure_env);
           param_list =
               ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)
@@ -294,19 +305,19 @@ lizard_ast_node_t *lizard_eval(
             return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
                         env, heap);
           }
-          body_node = func->data.lambda.parameters->head->next;
-          while (body_node->next != func->data.lambda.parameters->nil) {
-            {
-              lizard_ast_list_node_t *body_expr;
-              body_expr = (lizard_ast_list_node_t *)body_node;
-              (void)lizard_eval(body_expr->ast, new_env, heap,
-                                lizard_identity_cont);
+          result = NULL;
+          for (body_node = func->data.lambda.parameters->head->next;
+               body_node != func->data.lambda.parameters->nil;
+               body_node = body_node->next) {
+            lizard_ast_list_node_t *body_expr =
+                (lizard_ast_list_node_t *)body_node;
+            result = lizard_eval(body_expr->ast, new_env, heap, cont);
+            if (lizard_continuation_jumped) {
+              lizard_continuation_jumped = 0;
+              return cont(lizard_force(lizard_jump_value, heap), env, heap);
             }
-            body_node = body_node->next;
           }
-          node = lizard_force(((lizard_ast_list_node_t *)body_node)->ast, heap);
-          env = new_env;
-          continue;
+          return cont(lizard_force(result, heap), env, heap);
         }
       } else if (func->type == AST_CALLCC) {
         return lizard_primitive_callcc(arg_list, env, heap, cont);
@@ -391,8 +402,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
       list_node_t *param_node, *arg_node;
       lizard_ast_list_node_t *param;
       lizard_ast_node_t *result;
-      list_node_t *body_node;
-      lizard_ast_list_node_t *body_expr;
+      list_node_t *body_iter;
       new_env = lizard_env_create(heap, func->data.lambda.closure_env);
       param_list =
           ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;
@@ -422,14 +432,15 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, list_t *args,
         return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE_2),
                     env, heap);
       }
+      body_iter = func->data.lambda.parameters->head->next;
       result = NULL;
-      for (body_node = func->data.lambda.parameters->head->next;
-           body_node != func->data.lambda.parameters->nil;
-           body_node = body_node->next) {
-        body_expr = (lizard_ast_list_node_t *)body_node;
-        result =
-            lizard_eval(body_expr->ast, new_env, heap, lizard_identity_cont);
+      while (body_iter->next != func->data.lambda.parameters->nil) {
+        lizard_ast_list_node_t *body_expr = (lizard_ast_list_node_t *)body_iter;
+        lizard_eval(body_expr->ast, new_env, heap, cont);
+        body_iter = body_iter->next;
       }
+      result = lizard_eval(((lizard_ast_list_node_t *)body_iter)->ast, new_env,
+                           heap, cont);
       return cont(lizard_force(result, heap), env, heap);
     }
   } else {
