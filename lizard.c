@@ -195,18 +195,18 @@ lizard_ast_node_t *lizard_eval(
 
     case AST_BEGIN: {
       list_node_t *iter;
-      lizard_ast_list_node_t *last_expr = NULL;
+      lizard_ast_node_t *result;
+      result = lizard_make_nil(heap);
       for (iter = node->data.begin_expressions->head;
            iter != node->data.begin_expressions->nil; iter = iter->next) {
-        last_expr = (lizard_ast_list_node_t *)iter;
-        lizard_eval(last_expr->ast, env, heap, lizard_identity_cont);
+        lizard_ast_list_node_t *expr;
+        expr = (lizard_ast_list_node_t *)iter;
+        result = lizard_eval(expr->ast, env, heap, lizard_identity_cont);
+        if (result->type == AST_ERROR) {
+          return cont(result, env, heap);
+        }
       }
-      if (last_expr) {
-        node = lizard_force(last_expr->ast, heap);
-      } else {
-        node = lizard_make_nil(heap);
-      }
-      continue;
+      return cont(lizard_force(result, heap), env, heap);
     }
 
     case AST_LAMBDA: {
@@ -224,6 +224,10 @@ lizard_ast_node_t *lizard_eval(
       list_t *arg_list;
       list_node_t *arg_node;
       func_node = node->data.application_arguments->head;
+      if (func_node == node->data.application_arguments->nil) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,
+                    heap);
+      }
       func =
           lizard_force(lizard_eval(((lizard_ast_list_node_t *)func_node)->ast,
                                    env, heap, lizard_identity_cont),

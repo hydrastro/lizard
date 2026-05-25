@@ -1,54 +1,60 @@
-CC = gcc
-AR = ar
-CFLAGS = -c -std=c89 -lgmp
-CFLAGS += -O2 -march=native -mtune=native
-CFLAGS += -Wall -Wextra -Werror -pedantic -pedantic-errors
-CFLAGS += -fno-common -Wl,--gc-sections -Wredundant-decls -Wno-unused-parameter
-CFLAGS += -fstack-protector-strong #-fPIE
-CFLAGS += -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
-CFLAGS += -fstack-clash-protection -z noexecstack -z relro -z now
-CFLAGS += -Wl,-z,relro,-z,now -Wl,-pie #-fpie
-CFLAGS += -Waggregate-return -Wbad-function-cast -Wcast-align -Wcast-qual -Wdeclaration-after-statement
-CLFAGS += -Wfloat-equal -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wmissing-prototypes -Wnested-externs
-CFLAGS += -Wpointer-arith -Wredundant-decls -Wsequence-point -Wstrict-prototypes
-CFLAGS += -Wswitch -Wundef -Wunreachable-code -Wwrite-strings -Wconversion
-
-CFLAGS_DEBUG = -g -fno-omit-frame-pointer -fsanitize=address,undefined -fsanitize=leak
-
-LDFLAGS = -shared
+CC ?= gcc
+AR ?= ar
+INSTALL ?= install
 
 PREFIX ?= /usr/local
-LIB_DIR = ./
-OUT_LIB_DIR = $(PREFIX)/lib
-OUT_INCLUDE_DIR = $(PREFIX)/include/lib
+INCLUDEDIR ?= $(PREFIX)/include
+LIBDIR ?= $(PREFIX)/lib
+BINDIR ?= $(PREFIX)/bin
 
-#SRC_FILES = $(wildcard $(LIB_DIR)/*.c)
-#SRC_FILES = lizard.c
-SRC_FILES = lizard.c env.c mem.c parser.c primitives.c tokenizer.c
-OBJ_FILES = $(SRC_FILES:.c=.o)
+CPPFLAGS ?=
+CFLAGS ?= -std=c89 -O2 -fPIC \
+  -Wall -Wextra -Werror -pedantic -pedantic-errors \
+  -Waggregate-return -Wbad-function-cast -Wcast-align -Wcast-qual \
+  -Wdeclaration-after-statement -Wfloat-equal -Wlogical-op \
+  -Wmissing-declarations -Wmissing-include-dirs -Wmissing-prototypes \
+  -Wnested-externs -Wpointer-arith -Wredundant-decls -Wsequence-point \
+  -Wstrict-prototypes -Wswitch -Wundef -Wunreachable-code \
+  -Wwrite-strings -Wconversion -Wno-unused-parameter \
+  -fno-common -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+  -Wformat -Wformat-security
+LDFLAGS ?=
+LDLIBS ?= -lds -lgmp -pthread
+ARFLAGS ?= rcs
 
-all: liblizard.a liblizard.so
+LIB_SRCS := lizard.c env.c mem.c parser.c primitives.c tokenizer.c printer.c
+LIB_OBJS := $(LIB_SRCS:.c=.o)
+REPL_SRCS := repl.c
+REPL_OBJS := $(REPL_SRCS:.c=.o)
 
-liblizard.a: $(OBJ_FILES)
-	$(AR) rcs $@ $^
+.PHONY: all clean install uninstall
+all: liblizard.a liblizard.so lizard
 
-liblizard.so: $(OBJ_FILES)
-	$(CC) $(LDFLAGS) -o $@ $^
+liblizard.a: $(LIB_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
+
+liblizard.so: $(LIB_OBJS)
+	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+lizard: $(REPL_OBJS) liblizard.a
+	$(CC) $(LDFLAGS) -o $@ $(REPL_OBJS) liblizard.a $(LDLIBS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 install: all
-	mkdir -p $(OUT_LIB_DIR)
-	mkdir -p $(OUT_INCLUDE_DIR)
-	cp liblizard.a liblizard.so $(OUT_LIB_DIR)/
-	cp $(LIB_DIR)/*.h $(OUT_INCLUDE_DIR)/
-	cp lizard.h $(PREFIX)/include/
+	$(INSTALL) -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(INCLUDEDIR)/lizard $(DESTDIR)$(BINDIR)
+	$(INSTALL) -m 0644 liblizard.a $(DESTDIR)$(LIBDIR)/
+	$(INSTALL) -m 0755 liblizard.so $(DESTDIR)$(LIBDIR)/
+	$(INSTALL) -m 0755 lizard $(DESTDIR)$(BINDIR)/
+	$(INSTALL) -m 0644 *.h $(DESTDIR)$(INCLUDEDIR)/lizard/
+	$(INSTALL) -m 0644 lizard.h $(DESTDIR)$(INCLUDEDIR)/
 
 uninstall:
-	rm -f $(OUT_LIB_DIR)/liblizard.a $(OUT_LIB_DIR)/liblizard.so
-	rm -rf $(OUT_INCLUDE_DIR)
-	rm -f $(PREFIX)/include/lizard.h
+	rm -f $(DESTDIR)$(LIBDIR)/liblizard.a $(DESTDIR)$(LIBDIR)/liblizard.so
+	rm -f $(DESTDIR)$(BINDIR)/lizard
+	rm -rf $(DESTDIR)$(INCLUDEDIR)/lizard
+	rm -f $(DESTDIR)$(INCLUDEDIR)/lizard.h
 
 clean:
-	rm -f $(OBJ_FILES) $(OBJ_FILES_SAFE) liblizard.a liblizard.so
+	rm -f $(LIB_OBJS) $(REPL_OBJS) liblizard.a liblizard.so lizard

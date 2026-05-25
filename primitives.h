@@ -63,6 +63,14 @@ lizard_ast_node_t *lizard_primitive_or(list_t *args, lizard_env_t *env,
                                        lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_not(list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_xor(list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_nand(list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_nor(list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_xnor(list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap);
 
 int lizard_is_empty_list(lizard_ast_node_t *node);
 int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);

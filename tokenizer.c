@@ -127,7 +127,7 @@ list_t *lizard_tokenize(const char *input) {
   return list;
 }
 
-void lizard_destroy_token(list_node_t *node) {
+static void lizard_destroy_token(list_node_t *node) {
   lizard_token_list_node_t *token_node = CAST(node, lizard_token_list_node_t);
   lizard_token_t *token = &token_node->token;
 
@@ -146,6 +146,6 @@ void lizard_destroy_token(list_node_t *node) {
   lizard_heap_free(token_node);
 }
 
-void lizard_lizard_heap_free_tokens(list_t *token_list) {
+void lizard_free_tokens(list_t *token_list) {
   list_destroy(token_list, lizard_destroy_token);
 }

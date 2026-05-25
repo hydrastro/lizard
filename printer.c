@@ -5,7 +5,8 @@
 #include <string.h>
 
 void lizard_print_indent(int depth) {
-  for (int i = 0; i < depth; i++) {
+  int i;
+  for (i = 0; i < depth; i++) {
     printf("  ");
   }
 }
@@ -22,7 +23,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
     break;
   case AST_NUMBER:
     fprintf(fp, "Number: ");
-    gmp_printf("%Zd", node->data.number);
+    mpz_out_str(fp, 10, node->data.number);
     fprintf(fp, "\n");
     break;
   case AST_SYMBOL:
@@ -124,7 +125,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
       lizard_fprint_ast(fp, node->data.promise.expr, depth + 1);
     break;
   case AST_CONTINUATION:
-    fprintf(fp, "Continuation: %p\n", node->data.continuation.captured_cont);
+    fprintf(fp, "Continuation\n");
     break;
   case AST_CALLCC:
     fprintf(fp, "Call/cc:\n");

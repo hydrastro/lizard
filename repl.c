@@ -16,12 +16,23 @@
 #define KEY_UP 'A'
 #define KEY_DOWN 'B'
 
-char *history[HISTORY_SIZE] = {0};
-int history_count = 0;
-int history_index = 0;
+static char *history[HISTORY_SIZE] = {0};
+static int history_count = 0;
+static int history_index = 0;
 lizard_heap_t *heap;
 
-void add_to_history(const char *line) {
+static char *lizard_repl_strdup(const char *s) {
+  size_t n;
+  char *copy;
+  n = strlen(s) + 1U;
+  copy = (char *)malloc(n);
+  if (copy != NULL) {
+    memcpy(copy, s, n);
+  }
+  return copy;
+}
+
+static void add_to_history(const char *line) {
   if (line[0] == '\0') {
     return;
   }
@@ -29,28 +40,46 @@ void add_to_history(const char *line) {
     return;
   }
   free(history[history_count % HISTORY_SIZE]);
-  history[history_count % HISTORY_SIZE] = strdup(line);
+  history[history_count % HISTORY_SIZE] = lizard_repl_strdup(line);
   history_count++;
   history_index = history_count;
 }
 
-char *read_line(void) {
+static char *read_line(void) {
   char *buffer;
   int position, length;
-  char c;
+  int c;
+  char input_char;
   ssize_t bytes_read;
   buffer = (char *)malloc(REPL_BUFFER_SIZE);
+  if (buffer == NULL) {
+    return NULL;
+  }
   position = 0;
   length = 0;
   buffer[0] = '\0';
+  if (!isatty(STDIN_FILENO)) {
+    if (fgets(buffer, REPL_BUFFER_SIZE, stdin) == NULL) {
+      free(buffer);
+      return NULL;
+    }
+    buffer[strcspn(buffer, "\r\n")] = '\0';
+    return buffer;
+  }
   if (isatty(STDIN_FILENO)) {
-    system("stty raw -echo");
+    int stty_status;
+    stty_status = system("stty raw -echo");
+    (void)stty_status;
   }
   for (;;) {
     if (isatty(STDIN_FILENO)) {
       c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
     } else {
-      bytes_read = read(STDIN_FILENO, &c, 1);
+      bytes_read = read(STDIN_FILENO, &input_char, 1);
       if (bytes_read == 0) {
         printf("EOF\n");
         exit(0);
@@ -58,10 +87,13 @@ char *read_line(void) {
         perror("read error");
         exit(1);
       }
+      c = (unsigned char)input_char;
     }
     if (c == 3 || c == 4) {
       if (isatty(STDIN_FILENO)) {
-        system("stty cooked echo");
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
       }
       if (c == 3) {
         printf("\n^C\n");
@@ -72,8 +104,12 @@ char *read_line(void) {
       exit(0);
     }
     if (c == '\033') {
-      getchar();
+      (void)getchar();
       c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
       if (c == KEY_UP && history_count > 0) {
         if (history_index > 0) {
           history_index--;
@@ -83,7 +119,7 @@ char *read_line(void) {
           }
           strcpy(buffer, history[history_index % HISTORY_SIZE]);
           printf("%s", buffer);
-          position = strlen(buffer);
+          position = (int)strlen(buffer);
           length = position;
         }
         continue;
@@ -100,7 +136,7 @@ char *read_line(void) {
             strcpy(buffer, history[history_index % HISTORY_SIZE]);
           }
           printf("%s", buffer);
-          position = strlen(buffer);
+          position = (int)strlen(buffer);
           length = position;
         }
         continue;
@@ -120,7 +156,9 @@ char *read_line(void) {
     }
     if (c == '\r' || c == '\n') {
       if (isatty(STDIN_FILENO)) {
-        system("stty cooked echo");
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
       }
       printf("\n");
       buffer[length] = '\0';
@@ -130,11 +168,11 @@ char *read_line(void) {
         position--;
         length--;
         printf("\b \b");
-        memmove(&buffer[position], &buffer[position + 1], length - position);
+        memmove(&buffer[position], &buffer[position + 1], (size_t)(length - position));
       }
     } else if (position < REPL_BUFFER_SIZE - 1) {
-      memmove(&buffer[position + 1], &buffer[position], length - position);
-      buffer[position] = c;
+      memmove(&buffer[position + 1], &buffer[position], (size_t)(length - position));
+      buffer[position] = (char)c;
       position++;
       length++;
       buffer[length] = '\0';
@@ -150,7 +188,7 @@ char *read_line(void) {
   }
 }
 
-int paren_balance(const char *s) {
+static int paren_balance(const char *s) {
   int balance;
   balance = 0;
   for (; *s; s++) {
@@ -163,7 +201,7 @@ int paren_balance(const char *s) {
   return balance;
 }
 
-char *read_input(void) {
+static char *read_input(void) {
   size_t total_size;
   char *buffer;
   char *line;
@@ -190,7 +228,7 @@ char *read_input(void) {
     if (!next_line) {
       printf("Incomplete expression discarded.\n");
       free(buffer);
-      return strdup("");
+      return lizard_repl_strdup("");
     }
     needed = strlen(buffer) + strlen(next_line) + 2;
     if (needed > total_size) {
@@ -205,12 +243,12 @@ char *read_input(void) {
   return buffer;
 }
 
-void lizard_define_primitive(lizard_heap_t *heap, lizard_env_t *global_env,
+static void lizard_define_primitive(lizard_heap_t *heap, lizard_env_t *global_env,
                              const char *name, lizard_primitive_func_t func) {
   lizard_env_define(heap, global_env, name, lizard_make_primitive(heap, func));
 }
 
-void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
+static void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
   lizard_define_primitive(heap, global_env, "null?", lizard_primitive_nullp);
   lizard_define_primitive(heap, global_env, "pair?", lizard_primitive_pairp);
   lizard_define_primitive(heap, global_env, "string?",
@@ -239,6 +277,10 @@ void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
   lizard_define_primitive(heap, global_env, "and", lizard_primitive_and);
   lizard_define_primitive(heap, global_env, "or", lizard_primitive_or);
   lizard_define_primitive(heap, global_env, "not", lizard_primitive_not);
+  lizard_define_primitive(heap, global_env, "xor", lizard_primitive_xor);
+  lizard_define_primitive(heap, global_env, "nand", lizard_primitive_nand);
+  lizard_define_primitive(heap, global_env, "nor", lizard_primitive_nor);
+  lizard_define_primitive(heap, global_env, "xnor", lizard_primitive_xnor);
 }
 
 int main(void) {
@@ -260,8 +302,10 @@ int main(void) {
     define_primitives(heap, global_env);
 
     while (1) {
-      printf("lizard> ");
-      fflush(stdout);
+      if (isatty(STDIN_FILENO)) {
+        printf("lizard> ");
+        fflush(stdout);
+      }
       input = read_input();
       if (input == NULL) {
         break;
@@ -282,9 +326,8 @@ int main(void) {
         expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
         result =
             lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
-        // lizard_force_all(            result->data.application_arguments,
-        // heap);
-        //       result = lizard_force(result,heap);
+        /* lizard_force_all(result->data.application_arguments, heap); */
+        /* result = lizard_force(result, heap); */
         printf("=> ");
         lizard_print_ast(result, 0);
         node = node->next;
