@@ -13,7 +13,7 @@ bool lizard_is_digit(const char *input, int i) {
   return false;
 }
 
-void lizard_add_token(ds_list_t *list, lizard_token_type_t token_type,
+void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
                       char *data) {
 
   lizard_token_list_node_t *node;
@@ -39,8 +39,8 @@ void lizard_add_token(ds_list_t *list, lizard_token_type_t token_type,
   list_append(list, &node->node);
 }
 
-ds_list_t *lizard_tokenize(const char *input) {
-  ds_list_t *list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+lz_list_t *lizard_tokenize(const char *input) {
+  lz_list_t *list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   int i, j, k;
   char *buffer;
   i = 0;
@@ -136,7 +136,7 @@ ds_list_t *lizard_tokenize(const char *input) {
   return list;
 }
 
-void lizard_destroy_token(ds_list_node_t *node) {
+static void lizard_destroy_token(lz_list_node_t *node) {
   lizard_token_list_node_t *token_node = CAST(node, lizard_token_list_node_t);
   lizard_token_t *token = &token_node->token;
 
@@ -155,6 +155,6 @@ void lizard_destroy_token(ds_list_node_t *node) {
   lizard_heap_free(token_node);
 }
 
-void lizard_free_tokens(ds_list_t *token_list) {
+void lizard_free_tokens(lz_list_t *token_list) {
   list_destroy(token_list, lizard_destroy_token);
 }

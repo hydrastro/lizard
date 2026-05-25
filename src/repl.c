@@ -16,10 +16,21 @@
 #define KEY_UP 'A'
 #define KEY_DOWN 'B'
 
-char *history[HISTORY_SIZE] = {0};
-int history_count = 0;
-int history_index = 0;
+static char *history[HISTORY_SIZE] = {0};
+static int history_count = 0;
+static int history_index = 0;
 lizard_heap_t *heap;
+
+static char *lizard_repl_strdup(const char *s) {
+  size_t n;
+  char *copy;
+  n = strlen(s) + 1U;
+  copy = (char *)malloc(n);
+  if (copy != NULL) {
+    memcpy(copy, s, n);
+  }
+  return copy;
+}
 
 static void add_to_history(const char *line) {
   if (line[0] == '\0') {
@@ -29,7 +40,7 @@ static void add_to_history(const char *line) {
     return;
   }
   free(history[history_count % HISTORY_SIZE]);
-  history[history_count % HISTORY_SIZE] = strdup(line);
+  history[history_count % HISTORY_SIZE] = lizard_repl_strdup(line);
   history_count++;
   history_index = history_count;
 }
@@ -37,29 +48,53 @@ static void add_to_history(const char *line) {
 static char *read_line(void) {
   char *buffer;
   int position, length;
-  char c;
+  int c;
+  char input_char;
+  ssize_t bytes_read;
   buffer = (char *)malloc(REPL_BUFFER_SIZE);
+  if (buffer == NULL) {
+    return NULL;
+  }
   position = 0;
   length = 0;
   buffer[0] = '\0';
   if (!isatty(STDIN_FILENO)) {
-    /* Non-interactive: read one line, no raw-mode editor, no echo. */
-    size_t n;
-    if (!fgets(buffer, REPL_BUFFER_SIZE, stdin)) {
+    if (fgets(buffer, REPL_BUFFER_SIZE, stdin) == NULL) {
       free(buffer);
       return NULL;
     }
-    n = strlen(buffer);
-    if (n > 0 && buffer[n - 1] == '\n') {
-      buffer[n - 1] = '\0';
-    }
+    buffer[strcspn(buffer, "\r\n")] = '\0';
     return buffer;
   }
-  (void)!system("stty raw -echo");
+  if (isatty(STDIN_FILENO)) {
+    int stty_status;
+    stty_status = system("stty raw -echo");
+    (void)stty_status;
+  }
   for (;;) {
-    c = (char)getchar();
+    if (isatty(STDIN_FILENO)) {
+      c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
+    } else {
+      bytes_read = read(STDIN_FILENO, &input_char, 1);
+      if (bytes_read == 0) {
+        printf("EOF\n");
+        exit(0);
+      } else if (bytes_read < 0) {
+        perror("read error");
+        exit(1);
+      }
+      c = (unsigned char)input_char;
+    }
     if (c == 3 || c == 4) {
-      (void)!system("stty cooked echo");
+      if (isatty(STDIN_FILENO)) {
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
+      }
       if (c == 3) {
         printf("\n^C\n");
       } else {
@@ -69,8 +104,12 @@ static char *read_line(void) {
       exit(0);
     }
     if (c == '\033') {
-      getchar();
-      c = (char)getchar();
+      (void)getchar();
+      c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
       if (c == KEY_UP && history_count > 0) {
         if (history_index > 0) {
           history_index--;
@@ -116,7 +155,11 @@ static char *read_line(void) {
       }
     }
     if (c == '\r' || c == '\n') {
-      (void)!system("stty cooked echo");
+      if (isatty(STDIN_FILENO)) {
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
+      }
       printf("\n");
       buffer[length] = '\0';
       return buffer;
@@ -129,7 +172,7 @@ static char *read_line(void) {
       }
     } else if (position < REPL_BUFFER_SIZE - 1) {
       memmove(&buffer[position + 1], &buffer[position], (size_t)(length - position));
-      buffer[position] = c;
+      buffer[position] = (char)c;
       position++;
       length++;
       buffer[length] = '\0';
@@ -191,16 +234,15 @@ static char *read_input(void) {
         printf("Incomplete expression discarded.\n");
       }
       free(buffer);
-      return strdup("");
+      return lizard_repl_strdup("");
     }
     needed = strlen(buffer) + strlen(next_line) + 2;
     if (needed > total_size) {
       total_size = needed;
       buffer = (char *)realloc(buffer, total_size);
     }
-    /* Use newline as the joiner so ; comments terminate at the
-       end of their original source line, not the end of the whole
-       multi-line expression. */
+    /* Join with newline so ; comments terminate at the original
+       line boundary instead of swallowing the rest of the form. */
     strcat(buffer, "\n");
     strcat(buffer, next_line);
     free(next_line);
@@ -209,53 +251,14 @@ static char *read_input(void) {
   return buffer;
 }
 
-static void lizard_define_primitive(lizard_heap_t *heap, lizard_env_t *global_env,
-                             const char *name, lizard_primitive_func_t func) {
-  lizard_env_define(heap, global_env, name, lizard_make_primitive(heap, func));
-}
-
-static void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
-  lizard_define_primitive(heap, global_env, "null?", lizard_primitive_nullp);
-  lizard_define_primitive(heap, global_env, "pair?", lizard_primitive_pairp);
-  lizard_define_primitive(heap, global_env, "string?",
-                          lizard_primitive_stringp);
-  lizard_define_primitive(heap, global_env, "bool?", lizard_primitive_boolp);
-  lizard_define_primitive(heap, global_env, "+", lizard_primitive_plus);
-  lizard_define_primitive(heap, global_env, "-", lizard_primitive_minus);
-  lizard_define_primitive(heap, global_env, "*", lizard_primitive_multiply);
-  lizard_define_primitive(heap, global_env, "/", lizard_primitive_divide);
-  lizard_define_primitive(heap, global_env, "=", lizard_primitive_equal);
-  lizard_define_primitive(heap, global_env, "^", lizard_primitive_pow);
-  lizard_define_primitive(heap, global_env, "%", lizard_primitive_mod);
-  lizard_define_primitive(heap, global_env, "<", lizard_primitive_lt);
-  lizard_define_primitive(heap, global_env, "<=", lizard_primitive_le);
-  lizard_define_primitive(heap, global_env, ">", lizard_primitive_gt);
-  lizard_define_primitive(heap, global_env, ">=", lizard_primitive_ge);
-  lizard_define_primitive(heap, global_env, "cons", lizard_primitive_cons);
-  lizard_define_primitive(heap, global_env, "car", lizard_primitive_car);
-  lizard_define_primitive(heap, global_env, "cdr", lizard_primitive_cdr);
-  lizard_define_primitive(heap, global_env, "list", lizard_primitive_list);
-  lizard_define_primitive(heap, global_env, "eval", lizard_primitive_eval);
-  lizard_define_primitive(heap, global_env, "unquote",
-                          lizard_primitive_unquote);
-  lizard_define_primitive(heap, global_env, "tokens", lizard_primitive_tokens);
-  lizard_define_primitive(heap, global_env, "ast", lizard_primitive_ast);
-  lizard_define_primitive(heap, global_env, "and", lizard_primitive_and);
-  lizard_define_primitive(heap, global_env, "or", lizard_primitive_or);
-  lizard_define_primitive(heap, global_env, "not", lizard_primitive_not);
-  lizard_define_primitive(heap, global_env, "display",
-                          lizard_primitive_display);
-  lizard_define_primitive(heap, global_env, "write", lizard_primitive_write);
-  lizard_define_primitive(heap, global_env, "newline",
-                          lizard_primitive_newline);
-}
+/* primitive registration is now provided by liblizard so tests can use it */
 
 int main(void) {
   char *input;
   int i;
-  ds_list_t *tokens;
-  ds_list_t *ast_list;
-  ds_list_node_t *node;
+  lz_list_t *tokens;
+  lz_list_t *ast_list;
+  lz_list_node_t *node;
   lizard_ast_list_node_t *expr_node;
   lizard_ast_node_t *expanded_ast;
   lizard_ast_node_t *result;
@@ -266,7 +269,7 @@ int main(void) {
     lizard_env_t *global_env;
     global_env = lizard_env_create(heap, NULL);
 
-    define_primitives(heap, global_env);
+    lizard_install_primitives(heap, global_env);
 
     while (1) {
       if (isatty(STDIN_FILENO)) {

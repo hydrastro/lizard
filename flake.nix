@@ -6,41 +6,62 @@
     ds.url = "github:hydrastro/ds";
   };
 
-  outputs = { self, nixpkgs, ds }: {
-    packages = nixpkgs.lib.genAttrs [ "x86_64-linux" ] (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-      in rec {
-        lizard = pkgs.stdenv.mkDerivation {
-          pname = "lizard";
-          version = "0.0.0";
+  outputs = { self, nixpkgs, ds }:
+    let
+      systems = [ "x86_64-linux" ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      dsFor = system:
+        if ds.packages.${system} ? default then ds.packages.${system}.default
+        else if ds.packages.${system} ? ds then ds.packages.${system}.ds
+        else ds.defaultPackage.${system};
+    in {
+      packages = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          dsPackage = dsFor system;
+        in rec {
+          lizard = pkgs.stdenv.mkDerivation {
+            pname = "lizard";
+            version = "0.0.0";
+            src = ./.;
 
-          src = ./.;
+            nativeBuildInputs = [ pkgs.gnumake ];
+            buildInputs = [ pkgs.gmp dsPackage ];
 
-          # (pkgs.callPackage ds { })
-          buildInputs = [ pkgs.stdenv.cc pkgs.gmp ds.defaultPackage.x86_64-linux ];
+            buildPhase = ''
+              make
+            '';
 
-          buildPhase = ''
-            make PREFIX=$out
-          '';
+            installPhase = ''
+              make install PREFIX=$out
+            '';
 
-          installPhase = ''
-            make install PREFIX=$out
-          '';
-          #postInstall = ''
-          #  cp $out/bin/lizard ./lizard
-          #'';
-
-          meta = with pkgs.lib; {
-            description = "lizard wizard";
-            #license = licenses.mit;
-            #maintainers = [ maintainers.yourname ];
-            platforms = platforms.unix;
+            meta = with pkgs.lib; {
+              description = "Lizard Lisp wizard; a Scheme interpreter library written in C89";
+              platforms = platforms.unix;
+            };
           };
-        };
-      });
 
-    defaultPackage = { x86_64-linux = self.packages.x86_64-linux.lizard; };
+          default = lizard;
+        });
 
-  };
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          dsPackage = dsFor system;
+        in {
+          default = pkgs.mkShell {
+            packages = [
+              pkgs.gcc
+              pkgs.gnumake
+              pkgs.gdb
+              pkgs.valgrind
+              pkgs.gmp
+              dsPackage
+            ];
+          };
+        });
+
+      defaultPackage = forAllSystems (system: self.packages.${system}.default);
+    };
 }

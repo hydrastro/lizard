@@ -13,16 +13,16 @@ lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   return canonical_empty_list;
 }
 
-lizard_ast_node_t *lizard_parse_expression(ds_list_t *token_list,
-                                           ds_list_node_t **current_node_pointer,
+lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
+                                           lz_list_node_t **current_node_pointer,
                                            int *depth, lizard_heap_t *heap) {
   lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
       *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
       *transformer;
-  ds_list_node_t *current_node, *val_iter, *p;
+  lz_list_node_t *current_node, *val_iter, *p;
   lizard_ast_list_node_t *ast_list_node, *name_node, *params_wrapper,
       *body_wrapper, *val_list_node, *var_list_node, *lambda_wrapper;
-  ds_list_t *params_list, *bindings, *values;
+  lz_list_t *params_list, *bindings, *values;
   const char *fn_name;
   int current_depth;
   lizard_token_t *current_token;
@@ -99,7 +99,7 @@ lizard_ast_node_t *lizard_parse_expression(ds_list_t *token_list,
         current_node = *current_node_pointer;
 
         if (var_node->type == AST_APPLICATION) {
-          ds_list_t *app_args = var_node->data.application_arguments;
+          lz_list_t *app_args = var_node->data.application_arguments;
           if (app_args->head == app_args->nil) {
             fprintf(stderr, "Error: invalid function definition syntax.\n");
             exit(1);
@@ -690,9 +690,9 @@ lizard_ast_node_t *lizard_parse_expression(ds_list_t *token_list,
   return ast_node;
 }
 
-ds_list_t *lizard_parse(ds_list_t *token_list, lizard_heap_t *heap) {
-  ds_list_t *ast_list;
-  ds_list_node_t *current;
+lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
+  lz_list_t *ast_list;
+  lz_list_node_t *current;
   int depth;
 
   ast_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);

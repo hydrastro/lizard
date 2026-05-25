@@ -81,7 +81,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_LAMBDA:
     fprintf(fp, "Lambda:\n");
     if (node->data.lambda.parameters) {
-      ds_list_node_t *iter = node->data.lambda.parameters->head;
+      lz_list_node_t *iter = node->data.lambda.parameters->head;
       while (iter != node->data.lambda.parameters->nil) {
         lizard_fprint_ast(fp, ((lizard_ast_list_node_t *)iter)->ast, depth + 1);
         iter = iter->next;
@@ -91,7 +91,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_BEGIN:
     fprintf(fp, "Begin:\n");
     {
-      ds_list_node_t *iter = node->data.begin_expressions->head;
+      lz_list_node_t *iter = node->data.begin_expressions->head;
       while (iter != node->data.begin_expressions->nil) {
         lizard_fprint_ast(fp, ((lizard_ast_list_node_t *)iter)->ast, depth + 1);
         iter = iter->next;
@@ -101,7 +101,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_APPLICATION:
     fprintf(fp, "Application:\n");
     {
-      ds_list_node_t *iter = node->data.application_arguments->head;
+      lz_list_node_t *iter = node->data.application_arguments->head;
       if (iter == node->data.application_arguments->nil) {
         lizard_print_indent(depth + 1);
         fprintf(fp, "Empty application\n");
@@ -132,7 +132,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_CALLCC:
     fprintf(fp, "Call/cc:\n");
     {
-      ds_list_node_t *iter = node->data.application_arguments->head;
+      lz_list_node_t *iter = node->data.application_arguments->head;
       while (iter != node->data.application_arguments->nil) {
         lizard_fprint_ast(fp, ((lizard_ast_list_node_t *)iter)->ast, depth + 1);
         iter = iter->next;
@@ -142,7 +142,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_ERROR:
     fprintf(fp, "Error (code %d):\n", node->data.error.code);
     {
-      ds_list_node_t *iter = node->data.error.data->head;
+      lz_list_node_t *iter = node->data.error.data->head;
       while (iter != node->data.error.data->nil) {
         lizard_fprint_ast(fp, ((lizard_ast_list_node_t *)iter)->ast, depth + 1);
         iter = iter->next;
@@ -236,7 +236,7 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
   }
   case AST_APPLICATION: {
     /* A "list literal" produced by quote — print like a list. */
-    ds_list_node_t *iter;
+    lz_list_node_t *iter;
     int first = 1;
     fprintf(fp, "(");
     for (iter = node->data.application_arguments->head;
@@ -270,7 +270,7 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     }
     return;
   case AST_ERROR: {
-    ds_list_node_t *iter = node->data.error.data->head;
+    lz_list_node_t *iter = node->data.error.data->head;
     if (iter != node->data.error.data->nil) {
       lizard_ast_node_t *msg = ((lizard_ast_list_node_t *)iter)->ast;
       if (msg->type == AST_STRING) {

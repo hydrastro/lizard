@@ -21,7 +21,7 @@ lizard_ast_node_t *lizard_jump_value = NULL;
 
 lizard_ast_node_t *lizard_convert_list_literal(lizard_ast_node_t *node,
                                                lizard_heap_t *heap) {
-  ds_list_t *args, *rest_args;
+  lz_list_t *args, *rest_args;
   lizard_ast_list_node_t *first;
   lizard_ast_node_t *car, *rest_app, *cdr, *pair;
   if (node->type != AST_APPLICATION) {
@@ -73,7 +73,7 @@ lizard_ast_node_t *lizard_force(lizard_ast_node_t *node, lizard_heap_t *heap) {
   return node;
 }
 
-lizard_ast_node_t *lizard_primitive_delay(ds_list_t *args, lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_delay(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *expr;
   if (args->head == args->nil) {
@@ -83,7 +83,7 @@ lizard_ast_node_t *lizard_primitive_delay(ds_list_t *args, lizard_env_t *env,
   return lizard_make_promise(heap, expr, env);
 }
 
-lizard_ast_node_t *lizard_primitive_force(ds_list_t *args, lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_force(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *node;
   if (args->head == args->nil) {
@@ -194,8 +194,8 @@ lizard_ast_node_t *lizard_eval(
     }
 
     case AST_BEGIN: {
-      ds_list_node_t *iter;
-      ds_list_node_t *last = node->data.begin_expressions->nil;
+      lz_list_node_t *iter;
+      lz_list_node_t *last = node->data.begin_expressions->nil;
       /* find the tail without evaluating */
       for (iter = node->data.begin_expressions->head;
            iter != node->data.begin_expressions->nil; iter = iter->next) {
@@ -230,7 +230,7 @@ lizard_ast_node_t *lizard_eval(
          Each clause is itself an AST_APPLICATION whose head is the test
          and whose tail is the body to evaluate when the test holds.
          A clause whose head is the symbol `else` is unconditional. */
-      ds_list_node_t *clause_iter;
+      lz_list_node_t *clause_iter;
       lizard_ast_node_t *chosen_body_seq = NULL;
       int matched = 0;
       for (clause_iter = node->data.cond_clauses->head;
@@ -238,7 +238,7 @@ lizard_ast_node_t *lizard_eval(
            clause_iter = clause_iter->next) {
         lizard_ast_node_t *clause =
             ((lizard_ast_list_node_t *)clause_iter)->ast;
-        ds_list_node_t *cl_head;
+        lz_list_node_t *cl_head;
         lizard_ast_node_t *test_expr;
         lizard_ast_node_t *test_val;
         int is_else;
@@ -259,8 +259,8 @@ lizard_ast_node_t *lizard_eval(
         }
         if (lizard_is_true(test_val)) {
           /* Build a BEGIN over the rest of the clause's elements. */
-          ds_list_t *body_list;
-          ds_list_node_t *body_iter;
+          lz_list_t *body_list;
+          lz_list_node_t *body_iter;
           lizard_ast_node_t *begin_node;
           body_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
           for (body_iter = cl_head->next;
@@ -291,10 +291,10 @@ lizard_ast_node_t *lizard_eval(
     }
 
     case AST_APPLICATION: {
-      ds_list_node_t *func_node;
+      lz_list_node_t *func_node;
       lizard_ast_node_t *func;
-      ds_list_t *arg_list;
-      ds_list_node_t *arg_node;
+      lz_list_t *arg_list;
+      lz_list_node_t *arg_node;
       func_node = node->data.application_arguments->head;
       func =
           lizard_force(lizard_eval(((lizard_ast_list_node_t *)func_node)->ast,
@@ -319,7 +319,7 @@ lizard_ast_node_t *lizard_eval(
         list_append(arg_list, &new_arg_node->node);
       }
       if (func->type == AST_CONTINUATION) {
-        ds_list_node_t *arg;
+        lz_list_node_t *arg;
         lizard_ast_node_t *value;
         arg = arg_list->head;
         value = (arg != arg_list->nil)
@@ -334,7 +334,7 @@ lizard_ast_node_t *lizard_eval(
 
       if (func->type == AST_PRIMITIVE) {
         {
-          ds_list_node_t *cur;
+          lz_list_node_t *cur;
           for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
             ((lizard_ast_list_node_t *)cur)->ast =
                 lizard_force(((lizard_ast_list_node_t *)cur)->ast, heap);
@@ -345,23 +345,33 @@ lizard_ast_node_t *lizard_eval(
         {
           lizard_env_t *new_env;
           lizard_ast_node_t *param_list;
-          ds_list_t *formal_params;
-          ds_list_node_t *param_node, *arg_iter;
+          lz_list_t *formal_params;
+          lz_list_node_t *param_node, *arg_iter;
           lizard_ast_list_node_t *param;
-          ds_list_node_t *body_node;
+          lz_list_node_t *body_node;
           lizard_ast_node_t *result;
           new_env = lizard_env_create(heap, func->data.lambda.closure_env);
           param_list =
               ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)
                   ->ast;
-          if (param_list->type != AST_APPLICATION) {
+          if (param_list->type == AST_NIL) {
+            /* zero-parameter lambda: nothing to bind */
+            if (arg_list->head != arg_list->nil) {
+              return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
+                          env, heap);
+            }
+            param_node = NULL;
+            arg_iter = NULL;
+            formal_params = NULL;
+          } else if (param_list->type == AST_APPLICATION) {
+            formal_params = param_list->data.application_arguments;
+            param_node = formal_params->head;
+            arg_iter = arg_list->head;
+          } else {
             return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS),
                         env, heap);
           }
-          formal_params = param_list->data.application_arguments;
-          param_node = formal_params->head;
-          arg_iter = arg_list->head;
-          while (param_node != formal_params->nil) {
+          while (formal_params && param_node != formal_params->nil) {
             if (arg_iter == arg_list->nil) {
               return cont(
                   lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS), env,
@@ -378,7 +388,7 @@ lizard_ast_node_t *lizard_eval(
             param_node = param_node->next;
             arg_iter = arg_iter->next;
           }
-          if (arg_iter != arg_list->nil) {
+          if (arg_iter && arg_iter != arg_list->nil) {
             return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
                         env, heap);
           }
@@ -427,10 +437,10 @@ lizard_ast_node_t *lizard_eval(
 
     case AST_CALLCC: {
       {
-        ds_list_node_t *func_node;
-        ds_list_node_t *cur;
-        ds_list_t *arg_list;
-        ds_list_node_t *arg_node;
+        lz_list_node_t *func_node;
+        lz_list_node_t *cur;
+        lz_list_t *arg_list;
+        lz_list_node_t *arg_node;
         func_node = node->data.application_arguments->head;
         arg_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
         for (arg_node = func_node->next;
@@ -462,14 +472,14 @@ lizard_ast_node_t *lizard_eval(
   }
 }
 
-lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, ds_list_t *args,
+lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
                                 lizard_env_t *env, lizard_heap_t *heap,
                                 lizard_ast_node_t *(*cont)(lizard_ast_node_t *,
                                                            lizard_env_t *,
                                                            lizard_heap_t *)) {
   if (func->type == AST_PRIMITIVE) {
     {
-      ds_list_node_t *cur;
+      lz_list_node_t *cur;
       for (cur = args->head; cur != args->nil; cur = cur->next) {
         ((lizard_ast_list_node_t *)cur)->ast =
             lizard_force(((lizard_ast_list_node_t *)cur)->ast, heap);
@@ -480,22 +490,32 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, ds_list_t *args,
     {
       lizard_env_t *new_env;
       lizard_ast_node_t *param_list;
-      ds_list_t *formal_params;
-      ds_list_node_t *param_node, *arg_node;
+      lz_list_t *formal_params;
+      lz_list_node_t *param_node, *arg_node;
       lizard_ast_list_node_t *param;
       lizard_ast_node_t *result;
-      ds_list_node_t *body_iter;
+      lz_list_node_t *body_iter;
       new_env = lizard_env_create(heap, func->data.lambda.closure_env);
       param_list =
           ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;
-      if (param_list->type != AST_APPLICATION) {
+      if (param_list->type == AST_NIL) {
+        /* zero-parameter lambda */
+        if (args->head != args->nil) {
+          return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE_2),
+                      env, heap);
+        }
+        param_node = NULL;
+        arg_node = NULL;
+        formal_params = NULL;
+      } else if (param_list->type == AST_APPLICATION) {
+        formal_params = param_list->data.application_arguments;
+        param_node = formal_params->head;
+        arg_node = args->head;
+      } else {
         return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMS_2), env,
                     heap);
       }
-      formal_params = param_list->data.application_arguments;
-      param_node = formal_params->head;
-      arg_node = args->head;
-      while (param_node != formal_params->nil) {
+      while (formal_params && param_node != formal_params->nil) {
         if (arg_node == args->nil) {
           return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_LESS_2),
                       env, heap);
@@ -510,7 +530,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, ds_list_t *args,
         param_node = param_node->next;
         arg_node = arg_node->next;
       }
-      if (arg_node != args->nil) {
+      if (arg_node && arg_node != args->nil) {
         return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE_2),
                     env, heap);
       }
@@ -534,10 +554,10 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, ds_list_t *args,
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env,
                                         lizard_heap_t *heap) {
-  ds_list_node_t *first, *arg, *expr;
+  lz_list_node_t *first, *arg, *expr;
   lizard_ast_node_t *operator, * binding, *expanded;
   lizard_ast_list_node_t *copy;
-  ds_list_t *macro_args;
+  lz_list_t *macro_args;
   if (!node) {
     return NULL;
   }
@@ -599,7 +619,7 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
     }
     break;
   case AST_LAMBDA: {
-    ds_list_node_t *body_node;
+    lz_list_node_t *body_node;
     lizard_ast_list_node_t *body_expr;
     if (node->data.lambda.parameters->head !=
         node->data.lambda.parameters->nil) {
@@ -628,8 +648,8 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
 lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
-  ds_list_t *expanded_list;
-  ds_list_node_t *iter;
+  lz_list_t *expanded_list;
+  lz_list_node_t *iter;
   lizard_ast_list_node_t *elem;
   lizard_ast_node_t *expanded_elem;
   lizard_ast_list_node_t *new_elem;
@@ -656,7 +676,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
         expanded_elem = expanded_elem->data.quoted;
       } else if (expanded_elem->type == AST_UNQUOTE_SPLICING) {
         {
-          ds_list_node_t *splice_iter;
+          lz_list_node_t *splice_iter;
           lizard_ast_node_t *spliced;
           lizard_ast_node_t *quoted_value = expanded_elem->data.quoted;
           spliced = lizard_eval(quoted_value, env, heap, lizard_identity_cont);
@@ -732,7 +752,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
     return new_node;
   }
   case AST_BEGIN: {
-    ds_list_t *exprs;
+    lz_list_t *exprs;
     exprs = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
     for (iter = node->data.begin_expressions->head;
          iter != node->data.begin_expressions->nil; iter = iter->next) {
@@ -747,7 +767,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
     return new_node;
   }
   case AST_LAMBDA: {
-    ds_list_t *params;
+    lz_list_t *params;
     params = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
     for (iter = node->data.lambda.parameters->head;
          iter != node->data.lambda.parameters->nil; iter = iter->next) {

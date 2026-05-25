@@ -21,14 +21,13 @@ typedef struct lizard_token {
 } lizard_token_t;
 
 typedef struct lizard_token_list_node {
-  ds_list_node_t node;
+  lz_list_node_t node;
   lizard_token_t token;
 } lizard_token_list_node_t;
 
 bool lizard_is_digit(const char *input, int i);
-void lizard_add_token(ds_list_t *list, lizard_token_type_t token_type, char *data);
-ds_list_t *lizard_tokenize(const char *input);
-void lizard_destroy_token(ds_list_node_t *node);
-void lizard_free_tokens(ds_list_t *token_list);
+void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type, char *data);
+lz_list_t *lizard_tokenize(const char *input);
+void lizard_free_tokens(lz_list_t *token_list);
 
 #endif /* LIZARD_TOKENIZER_H */
