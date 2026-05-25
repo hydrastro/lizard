@@ -194,6 +194,7 @@ lizard_ast_node_t *lizard_eval(
     }
 
     case AST_BEGIN: {
+<<<<<<< HEAD
       ds_list_node_t *iter;
       ds_list_node_t *last = node->data.begin_expressions->nil;
       /* find the tail without evaluating */
@@ -214,6 +215,21 @@ lizard_ast_node_t *lizard_eval(
       /* trampoline the tail so it's in tail position */
       node = ((lizard_ast_list_node_t *)last)->ast;
       continue;
+=======
+      list_node_t *iter;
+      lizard_ast_node_t *result;
+      result = lizard_make_nil(heap);
+      for (iter = node->data.begin_expressions->head;
+           iter != node->data.begin_expressions->nil; iter = iter->next) {
+        lizard_ast_list_node_t *expr;
+        expr = (lizard_ast_list_node_t *)iter;
+        result = lizard_eval(expr->ast, env, heap, lizard_identity_cont);
+        if (result->type == AST_ERROR) {
+          return cont(result, env, heap);
+        }
+      }
+      return cont(lizard_force(result, heap), env, heap);
+>>>>>>> refs/remotes/origin/master
     }
 
     case AST_LAMBDA: {
@@ -296,6 +312,10 @@ lizard_ast_node_t *lizard_eval(
       ds_list_t *arg_list;
       ds_list_node_t *arg_node;
       func_node = node->data.application_arguments->head;
+      if (func_node == node->data.application_arguments->nil) {
+        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,
+                    heap);
+      }
       func =
           lizard_force(lizard_eval(((lizard_ast_list_node_t *)func_node)->ast,
                                    env, heap, lizard_identity_cont),
@@ -319,7 +339,11 @@ lizard_ast_node_t *lizard_eval(
         list_append(arg_list, &new_arg_node->node);
       }
       if (func->type == AST_CONTINUATION) {
+<<<<<<< HEAD
         ds_list_node_t *arg;
+=======
+        list_node_t *arg;
+>>>>>>> refs/remotes/origin/master
         lizard_ast_node_t *value;
         arg = arg_list->head;
         value = (arg != arg_list->nil)
@@ -348,7 +372,11 @@ lizard_ast_node_t *lizard_eval(
           ds_list_t *formal_params;
           ds_list_node_t *param_node, *arg_iter;
           lizard_ast_list_node_t *param;
+<<<<<<< HEAD
           ds_list_node_t *body_node;
+=======
+          list_node_t *body_node;
+>>>>>>> refs/remotes/origin/master
           lizard_ast_node_t *result;
           new_env = lizard_env_create(heap, func->data.lambda.closure_env);
           param_list =
@@ -484,7 +512,11 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, ds_list_t *args,
       ds_list_node_t *param_node, *arg_node;
       lizard_ast_list_node_t *param;
       lizard_ast_node_t *result;
+<<<<<<< HEAD
       ds_list_node_t *body_iter;
+=======
+      list_node_t *body_iter;
+>>>>>>> refs/remotes/origin/master
       new_env = lizard_env_create(heap, func->data.lambda.closure_env);
       param_list =
           ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)->ast;

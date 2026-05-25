@@ -12,7 +12,21 @@ extern lizard_ast_node_t *callcc_value;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+<<<<<<< HEAD
 lizard_ast_node_t *lizard_primitive_plus(ds_list_t *args, lizard_env_t *env,
+=======
+static lizard_ast_node_t *lizard_make_number_copy(lizard_heap_t *heap,
+                                                   lizard_ast_node_t *source) {
+  lizard_ast_node_t *copy;
+  copy = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  copy->type = AST_NUMBER;
+  mpz_init(copy->data.number);
+  mpz_set(copy->data.number, source->data.number);
+  return copy;
+}
+
+lizard_ast_node_t *lizard_primitive_plus(list_t *args, lizard_env_t *env,
+>>>>>>> refs/remotes/origin/master
                                          lizard_heap_t *heap) {
   ds_list_node_t *node;
   lizard_ast_list_node_t *arg_node;
@@ -49,6 +63,7 @@ lizard_ast_node_t *lizard_primitive_minus(ds_list_t *args, lizard_env_t *env,
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGC);
   }
   first_arg_node = (lizard_ast_list_node_t *)node;
+<<<<<<< HEAD
   first = first_arg_node->ast;
   if (first->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT);
@@ -56,6 +71,13 @@ lizard_ast_node_t *lizard_primitive_minus(ds_list_t *args, lizard_env_t *env,
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
+=======
+  arg = first_arg_node->ast;
+  if (arg->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT);
+  }
+  acc = lizard_make_number_copy(heap, arg);
+>>>>>>> refs/remotes/origin/master
   node = node->next;
   if (node == args->nil) {
     mpz_neg(result->data.number, first->data.number);
@@ -91,10 +113,14 @@ lizard_ast_node_t *lizard_primitive_multiply(ds_list_t *args, lizard_env_t *env,
   if (first->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGT);
   }
+<<<<<<< HEAD
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
   mpz_set(result->data.number, first->data.number);
+=======
+  acc = lizard_make_number_copy(heap, acc);
+>>>>>>> refs/remotes/origin/master
   node = node->next;
   while (node != args->nil) {
     arg_node = (lizard_ast_list_node_t *)node;
@@ -123,10 +149,14 @@ lizard_ast_node_t *lizard_primitive_divide(ds_list_t *args, lizard_env_t *env,
   if (first->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT);
   }
+<<<<<<< HEAD
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
   mpz_set(result->data.number, first->data.number);
+=======
+  acc = lizard_make_number_copy(heap, acc);
+>>>>>>> refs/remotes/origin/master
   node = node->next;
   while (node != args->nil) {
     arg_node = (lizard_ast_list_node_t *)node;
@@ -481,6 +511,9 @@ lizard_ast_node_t *lizard_primitive_mod(ds_list_t *args, lizard_env_t *env,
   if (dividend->type != AST_NUMBER || divisor->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MOD_ARGT);
   }
+  if (mpz_cmp_ui(divisor->data.number, 0) == 0) {
+    return lizard_make_error(heap, LIZARD_ERROR_DIV_ZERO);
+  }
 
   ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   ret->type = AST_NUMBER;
@@ -517,6 +550,9 @@ lizard_ast_node_t *lizard_primitive_car(ds_list_t *args, lizard_env_t *env,
     return lizard_make_error(heap, LIZARD_ERROR_CAR_ARGC);
   }
   node = (lizard_ast_list_node_t *)args->head;
+  if (node->ast->type == AST_NIL) {
+    return lizard_make_error(heap, LIZARD_ERROR_CAR_NIL);
+  }
   if (node->ast->type != AST_PAIR) {
     return lizard_make_error(heap, LIZARD_ERROR_CAR_ARGT);
   }
@@ -530,6 +566,9 @@ lizard_ast_node_t *lizard_primitive_cdr(ds_list_t *args, lizard_env_t *env,
     return lizard_make_error(heap, LIZARD_ERROR_CDR_ARGC);
   }
   node = (lizard_ast_list_node_t *)args->head;
+  if (node->ast->type == AST_NIL) {
+    return lizard_make_error(heap, LIZARD_ERROR_CDR_NIL);
+  }
   if (node->ast->type != AST_PAIR) {
     return lizard_make_error(heap, LIZARD_ERROR_CDR_ARGT);
   }
@@ -739,7 +778,7 @@ lizard_ast_node_t *lizard_primitive_nullp(ds_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env; /* unused */
-  if (args->head == args->nil) {
+  if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_NULLP_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
@@ -753,14 +792,18 @@ lizard_ast_node_t *lizard_primitive_pairp(ds_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env;
-  if (args->head == args->nil) {
+  if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_PAIRP_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
+<<<<<<< HEAD
   if (node_arg->ast->type == AST_PAIR ||
       (node_arg->ast->type == AST_APPLICATION &&
        node_arg->ast->data.application_arguments->head !=
            node_arg->ast->data.application_arguments->nil)) {
+=======
+  if (node_arg->ast->type == AST_PAIR)
+>>>>>>> refs/remotes/origin/master
     return lizard_make_bool(heap, true);
   }
   return lizard_make_bool(heap, false);
@@ -770,7 +813,7 @@ lizard_ast_node_t *lizard_primitive_stringp(ds_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env;
-  if (args->head == args->nil) {
+  if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_STRINGP_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
@@ -784,7 +827,7 @@ lizard_ast_node_t *lizard_primitive_boolp(ds_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env;
-  if (args->head == args->nil) {
+  if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_BOOLP_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
@@ -831,7 +874,7 @@ lizard_ast_node_t *lizard_primitive_not(ds_list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env;
-  if (args->head == args->nil) {
+  if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_NOT_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;

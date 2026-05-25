@@ -63,6 +63,7 @@ lizard_ast_node_t *lizard_primitive_or(ds_list_t *args, lizard_env_t *env,
                                        lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_not(ds_list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap);
+<<<<<<< HEAD
 lizard_ast_node_t *lizard_primitive_xor(ds_list_t *args, lizard_env_t *env,
                                         lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_nand(ds_list_t *args, lizard_env_t *env,
@@ -78,6 +79,16 @@ lizard_ast_node_t *lizard_primitive_write(ds_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_newline(ds_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
+=======
+lizard_ast_node_t *lizard_primitive_xor(list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_nand(list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_nor(list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_xnor(list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap);
+>>>>>>> refs/remotes/origin/master
 
 int lizard_is_empty_list(lizard_ast_node_t *node);
 int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);

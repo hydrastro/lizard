@@ -9,6 +9,10 @@
 #include <string.h>
 #include <sys/mman.h>
 
+/* Compatibility with ds versions that expose only the ds_* list names. */
+typedef ds_list_t list_t;
+typedef ds_list_node_t list_node_t;
+
 /*
 ___                     .-*''*-.
  '.* *'.        .|     *       _*

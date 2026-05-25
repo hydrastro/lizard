@@ -24,7 +24,7 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
     break;
   case AST_NUMBER:
     fprintf(fp, "Number: ");
-    gmp_printf("%Zd", node->data.number);
+    mpz_out_str(fp, 10, node->data.number);
     fprintf(fp, "\n");
     break;
   case AST_SYMBOL:
@@ -126,8 +126,12 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
       lizard_fprint_ast(fp, node->data.promise.expr, depth + 1);
     break;
   case AST_CONTINUATION:
+<<<<<<< HEAD
     fprintf(fp, "Continuation: %p\n",
             (void *)(uintptr_t)node->data.continuation.captured_cont);
+=======
+    fprintf(fp, "Continuation\n");
+>>>>>>> refs/remotes/origin/master
     break;
   case AST_CALLCC:
     fprintf(fp, "Call/cc:\n");

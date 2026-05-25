@@ -16,11 +16,25 @@
 #define KEY_UP 'A'
 #define KEY_DOWN 'B'
 
-char *history[HISTORY_SIZE] = {0};
-int history_count = 0;
-int history_index = 0;
+static char *history[HISTORY_SIZE] = {0};
+static int history_count = 0;
+static int history_index = 0;
 lizard_heap_t *heap;
 
+<<<<<<< HEAD
+=======
+static char *lizard_repl_strdup(const char *s) {
+  size_t n;
+  char *copy;
+  n = strlen(s) + 1U;
+  copy = (char *)malloc(n);
+  if (copy != NULL) {
+    memcpy(copy, s, n);
+  }
+  return copy;
+}
+
+>>>>>>> refs/remotes/origin/master
 static void add_to_history(const char *line) {
   if (line[0] == '\0') {
     return;
@@ -29,7 +43,7 @@ static void add_to_history(const char *line) {
     return;
   }
   free(history[history_count % HISTORY_SIZE]);
-  history[history_count % HISTORY_SIZE] = strdup(line);
+  history[history_count % HISTORY_SIZE] = lizard_repl_strdup(line);
   history_count++;
   history_index = history_count;
 }
@@ -37,17 +51,58 @@ static void add_to_history(const char *line) {
 static char *read_line(void) {
   char *buffer;
   int position, length;
+<<<<<<< HEAD
   char c;
+=======
+  int c;
+  char input_char;
+  ssize_t bytes_read;
+>>>>>>> refs/remotes/origin/master
   buffer = (char *)malloc(REPL_BUFFER_SIZE);
+  if (buffer == NULL) {
+    return NULL;
+  }
   position = 0;
   length = 0;
   buffer[0] = '\0';
   if (!isatty(STDIN_FILENO)) {
+<<<<<<< HEAD
     /* Non-interactive: read one line, no raw-mode editor, no echo. */
     size_t n;
     if (!fgets(buffer, REPL_BUFFER_SIZE, stdin)) {
       free(buffer);
       return NULL;
+=======
+    if (fgets(buffer, REPL_BUFFER_SIZE, stdin) == NULL) {
+      free(buffer);
+      return NULL;
+    }
+    buffer[strcspn(buffer, "\r\n")] = '\0';
+    return buffer;
+  }
+  if (isatty(STDIN_FILENO)) {
+    int stty_status;
+    stty_status = system("stty raw -echo");
+    (void)stty_status;
+  }
+  for (;;) {
+    if (isatty(STDIN_FILENO)) {
+      c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
+    } else {
+      bytes_read = read(STDIN_FILENO, &input_char, 1);
+      if (bytes_read == 0) {
+        printf("EOF\n");
+        exit(0);
+      } else if (bytes_read < 0) {
+        perror("read error");
+        exit(1);
+      }
+      c = (unsigned char)input_char;
+>>>>>>> refs/remotes/origin/master
     }
     n = strlen(buffer);
     if (n > 0 && buffer[n - 1] == '\n') {
@@ -59,7 +114,15 @@ static char *read_line(void) {
   for (;;) {
     c = (char)getchar();
     if (c == 3 || c == 4) {
+<<<<<<< HEAD
       (void)!system("stty cooked echo");
+=======
+      if (isatty(STDIN_FILENO)) {
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
+      }
+>>>>>>> refs/remotes/origin/master
       if (c == 3) {
         printf("\n^C\n");
       } else {
@@ -69,8 +132,17 @@ static char *read_line(void) {
       exit(0);
     }
     if (c == '\033') {
+<<<<<<< HEAD
       getchar();
       c = (char)getchar();
+=======
+      (void)getchar();
+      c = getchar();
+      if (c == EOF) {
+        free(buffer);
+        exit(0);
+      }
+>>>>>>> refs/remotes/origin/master
       if (c == KEY_UP && history_count > 0) {
         if (history_index > 0) {
           history_index--;
@@ -116,7 +188,15 @@ static char *read_line(void) {
       }
     }
     if (c == '\r' || c == '\n') {
+<<<<<<< HEAD
       (void)!system("stty cooked echo");
+=======
+      if (isatty(STDIN_FILENO)) {
+        int stty_status;
+        stty_status = system("stty cooked echo");
+        (void)stty_status;
+      }
+>>>>>>> refs/remotes/origin/master
       printf("\n");
       buffer[length] = '\0';
       return buffer;
@@ -129,7 +209,11 @@ static char *read_line(void) {
       }
     } else if (position < REPL_BUFFER_SIZE - 1) {
       memmove(&buffer[position + 1], &buffer[position], (size_t)(length - position));
+<<<<<<< HEAD
       buffer[position] = c;
+=======
+      buffer[position] = (char)c;
+>>>>>>> refs/remotes/origin/master
       position++;
       length++;
       buffer[length] = '\0';
@@ -191,7 +275,7 @@ static char *read_input(void) {
         printf("Incomplete expression discarded.\n");
       }
       free(buffer);
-      return strdup("");
+      return lizard_repl_strdup("");
     }
     needed = strlen(buffer) + strlen(next_line) + 2;
     if (needed > total_size) {
@@ -243,11 +327,18 @@ static void define_primitives(lizard_heap_t *heap, lizard_env_t *global_env) {
   lizard_define_primitive(heap, global_env, "and", lizard_primitive_and);
   lizard_define_primitive(heap, global_env, "or", lizard_primitive_or);
   lizard_define_primitive(heap, global_env, "not", lizard_primitive_not);
+<<<<<<< HEAD
   lizard_define_primitive(heap, global_env, "display",
                           lizard_primitive_display);
   lizard_define_primitive(heap, global_env, "write", lizard_primitive_write);
   lizard_define_primitive(heap, global_env, "newline",
                           lizard_primitive_newline);
+=======
+  lizard_define_primitive(heap, global_env, "xor", lizard_primitive_xor);
+  lizard_define_primitive(heap, global_env, "nand", lizard_primitive_nand);
+  lizard_define_primitive(heap, global_env, "nor", lizard_primitive_nor);
+  lizard_define_primitive(heap, global_env, "xnor", lizard_primitive_xnor);
+>>>>>>> refs/remotes/origin/master
 }
 
 int main(void) {
@@ -293,6 +384,7 @@ int main(void) {
         expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
         result =
             lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
+<<<<<<< HEAD
         if (isatty(STDIN_FILENO)) {
           /* Interactive REPL: echo every result. */
           printf("=> ");
@@ -303,6 +395,12 @@ int main(void) {
           lizard_print_value(result);
           printf("\n");
         }
+=======
+        /* lizard_force_all(result->data.application_arguments, heap); */
+        /* result = lizard_force(result, heap); */
+        printf("=> ");
+        lizard_print_ast(result, 0);
+>>>>>>> refs/remotes/origin/master
         node = node->next;
       }
       free(input);
