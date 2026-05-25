@@ -1081,6 +1081,218 @@ static void install_one(lizard_heap_t *heap, lizard_env_t *env,
   lizard_env_define(heap, env, name, lizard_make_primitive(heap, func));
 }
 
+/* ---- Fast bignum primitives ----
+ *
+ * Idiomatic Scheme code often expresses big computations via repeated
+ * doubling, addition, or division — patterns that allocate O(N) fresh
+ * bignums under lizard's grow-only arena. The primitives below let the
+ * user defer to GMP's optimised routines which complete the same
+ * computation in O(log N) or O(1) GMP calls, avoiding the allocator
+ * blow-up entirely. For example:
+ *
+ *     (arithmetic-shift 1 1000000)   ; 2^1000000 in one mpz_mul_2exp
+ *     (expt 3 1000)                  ; 3^1000 via mpz_pow_ui
+ *     (gcd huge-a huge-b)            ; one mpz_gcd
+ */
+
+static lizard_ast_node_t *unary_number(lz_list_t *args, lizard_heap_t *heap,
+                                       lizard_ast_node_t **out) {
+  lizard_ast_list_node_t *node;
+  if (args->head == args->nil || args->head->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  node = (lizard_ast_list_node_t *)args->head;
+  if (node->ast->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  *out = node->ast;
+  return NULL;
+}
+
+static int binary_numbers(lz_list_t *args, lizard_heap_t *heap,
+                          lizard_ast_node_t **a, lizard_ast_node_t **b,
+                          lizard_ast_node_t **err) {
+  lizard_ast_list_node_t *na, *nb;
+  if (args->head == args->nil || args->head->next == args->nil ||
+      args->head->next->next != args->nil) {
+    *err = lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+    return 0;
+  }
+  na = (lizard_ast_list_node_t *)args->head;
+  nb = (lizard_ast_list_node_t *)args->head->next;
+  if (na->ast->type != AST_NUMBER || nb->ast->type != AST_NUMBER) {
+    *err = lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+    return 0;
+  }
+  *a = na->ast;
+  *b = nb->ast;
+  return 1;
+}
+
+/* (arithmetic-shift x n) — shift x left by n bits if n>0, right if n<0.
+ * Uses mpz_mul_2exp / mpz_fdiv_q_2exp: one GMP call. */
+lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args, lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *x, *n, *err = NULL;
+  lizard_ast_node_t *result;
+  long shift;
+  (void)env;
+  if (!binary_numbers(args, heap, &x, &n, &err)) return err;
+  if (!mpz_fits_slong_p(n->data.number)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  shift = mpz_get_si(n->data.number);
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  if (shift >= 0) {
+    mpz_mul_2exp(result->data.number, x->data.number, (unsigned long)shift);
+  } else {
+    mpz_fdiv_q_2exp(result->data.number, x->data.number,
+                    (unsigned long)(-shift));
+  }
+  return result;
+}
+
+/* (expt base exp) — base^exp where exp is a non-negative fixnum.
+ * Uses mpz_pow_ui: GMP's optimised power routine, O(log exp). */
+lizard_ast_node_t *lizard_primitive_expt(lz_list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *b, *e, *err = NULL;
+  lizard_ast_node_t *result;
+  unsigned long exp;
+  (void)env;
+  if (!binary_numbers(args, heap, &b, &e, &err)) return err;
+  if (mpz_sgn(e->data.number) < 0 || !mpz_fits_ulong_p(e->data.number)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  exp = mpz_get_ui(e->data.number);
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_pow_ui(result->data.number, b->data.number, exp);
+  return result;
+}
+
+/* (gcd a b) — greatest common divisor via mpz_gcd. */
+lizard_ast_node_t *lizard_primitive_gcd(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *b, *err = NULL;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_gcd(result->data.number, a->data.number, b->data.number);
+  return result;
+}
+
+/* (lcm a b) — least common multiple via mpz_lcm. */
+lizard_ast_node_t *lizard_primitive_lcm(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *b, *err = NULL;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_lcm(result->data.number, a->data.number, b->data.number);
+  return result;
+}
+
+/* (quotient a b) — truncating integer division. */
+lizard_ast_node_t *lizard_primitive_quotient(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *b, *err = NULL;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
+  if (mpz_sgn(b->data.number) == 0) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_tdiv_q(result->data.number, a->data.number, b->data.number);
+  return result;
+}
+
+/* (remainder a b) — truncating-division remainder (same sign as a). */
+lizard_ast_node_t *lizard_primitive_remainder(lz_list_t *args, lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *b, *err = NULL;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
+  if (mpz_sgn(b->data.number) == 0) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_tdiv_r(result->data.number, a->data.number, b->data.number);
+  return result;
+}
+
+/* (abs n). */
+lizard_ast_node_t *lizard_primitive_abs(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *x = NULL, *err;
+  lizard_ast_node_t *result;
+  (void)env;
+  err = unary_number(args, heap, &x);
+  if (err) return err;
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_abs(result->data.number, x->data.number);
+  return result;
+}
+
+/* (square n) — one mpz_mul instead of (* n n) which would force-and-copy. */
+lizard_ast_node_t *lizard_primitive_square(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *x = NULL, *err;
+  lizard_ast_node_t *result;
+  (void)env;
+  err = unary_number(args, heap, &x);
+  if (err) return err;
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_mul(result->data.number, x->data.number, x->data.number);
+  return result;
+}
+
+/* (modular-expt base exp mod) — modular exponentiation, O(log exp) and
+ * keeps intermediates bounded by mod. */
+lizard_ast_node_t *lizard_primitive_modexpt(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_list_node_t *na, *nb, *nc;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (args->head == args->nil || args->head->next == args->nil ||
+      args->head->next->next == args->nil ||
+      args->head->next->next->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  na = (lizard_ast_list_node_t *)args->head;
+  nb = (lizard_ast_list_node_t *)args->head->next;
+  nc = (lizard_ast_list_node_t *)args->head->next->next;
+  if (na->ast->type != AST_NUMBER || nb->ast->type != AST_NUMBER ||
+      nc->ast->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
+  mpz_powm(result->data.number, na->ast->data.number, nb->ast->data.number,
+           nc->ast->data.number);
+  return result;
+}
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
@@ -1119,4 +1331,13 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "write",   lizard_primitive_write);
   install_one(heap, env, "newline", lizard_primitive_newline);
   install_one(heap, env, "load",    lizard_primitive_load);
+  install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
+  install_one(heap, env, "expt",            lizard_primitive_expt);
+  install_one(heap, env, "gcd",             lizard_primitive_gcd);
+  install_one(heap, env, "lcm",             lizard_primitive_lcm);
+  install_one(heap, env, "quotient",        lizard_primitive_quotient);
+  install_one(heap, env, "remainder",       lizard_primitive_remainder);
+  install_one(heap, env, "abs",             lizard_primitive_abs);
+  install_one(heap, env, "square",          lizard_primitive_square);
+  install_one(heap, env, "modular-expt",    lizard_primitive_modexpt);
 }

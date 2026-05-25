@@ -42,7 +42,15 @@ lizard_ast_node_t *lizard_convert_list_literal(lizard_ast_node_t *node,
   cdr = lizard_convert_list_literal(rest_app, heap);
   pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   pair->type = AST_PAIR;
-  pair->data.pair.car = lizard_ast_deep_copy(car, heap);
+  /* Recurse into the car too — nested parenthesized forms inside a
+     quote are also list literals, not procedure calls. Without this,
+     `'((1 2) (3 4))` left the inner lists as AST_APPLICATION and
+     `(car (car ...))` later failed with "car expects a list". */
+  if (car->type == AST_APPLICATION) {
+    pair->data.pair.car = lizard_convert_list_literal(car, heap);
+  } else {
+    pair->data.pair.car = lizard_ast_deep_copy(car, heap);
+  }
   pair->data.pair.cdr = cdr;
   return pair;
 }
@@ -152,7 +160,10 @@ lizard_ast_node_t *lizard_eval(
                           lizard_identity_cont);
       lizard_env_define(heap, env,
                         node->data.definition.variable->data.variable, value);
-      return cont(value, env, heap);
+      /* R5RS says (define ...) has unspecified result; we return nil so
+         script-mode REPLs don't echo `=> <procedure>` after every
+         function definition. */
+      return cont(lizard_make_nil(heap), env, heap);
     }
 
     case AST_ASSIGNMENT: {
@@ -168,7 +179,8 @@ lizard_ast_node_t *lizard_eval(
         return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND),
                     env, heap);
       }
-      return cont(value, env, heap);
+      /* set! also returns unspecified per R5RS. */
+      return cont(lizard_make_nil(heap), env, heap);
     }
 
     case AST_IF: {
@@ -348,8 +360,6 @@ lizard_ast_node_t *lizard_eval(
           lz_list_t *formal_params;
           lz_list_node_t *param_node, *arg_iter;
           lizard_ast_list_node_t *param;
-          lz_list_node_t *body_node;
-          lizard_ast_node_t *result;
           new_env = lizard_env_create(heap, func->data.lambda.closure_env);
           param_list =
               ((lizard_ast_list_node_t *)func->data.lambda.parameters->head)
@@ -392,19 +402,44 @@ lizard_ast_node_t *lizard_eval(
             return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
                         env, heap);
           }
-          result = NULL;
-          for (body_node = func->data.lambda.parameters->head->next;
-               body_node != func->data.lambda.parameters->nil;
-               body_node = body_node->next) {
-            lizard_ast_list_node_t *body_expr =
-                (lizard_ast_list_node_t *)body_node;
-            result = lizard_eval(body_expr->ast, new_env, heap, cont);
-            if (lizard_continuation_jumped) {
-              lizard_continuation_jumped = 0;
-              return cont(lizard_force(lizard_jump_value, heap), env, heap);
+          /* Lambda body trampoline.
+             Evaluate every NON-tail body for its side effects with an
+             identity continuation, then tail-call the LAST body by
+             rewriting (node, env) and continuing the outer for(;;)
+             dispatch loop. This eliminates one C stack frame per
+             Scheme call — without it a self-recursive function like
+                (define (pow2 n) (if (= n 0) 1 (* 2 (pow2 (- n 1)))))
+             smashes the C stack at depth ~10⁴, whereas with TCO it
+             runs to arbitrary depth limited only by the heap. */
+          {
+            lz_list_node_t *tail_body;
+            lz_list_node_t *iter;
+            tail_body = func->data.lambda.parameters->nil;
+            for (iter = func->data.lambda.parameters->head->next;
+                 iter != func->data.lambda.parameters->nil; iter = iter->next) {
+              tail_body = iter;
             }
+            if (tail_body == func->data.lambda.parameters->nil) {
+              /* lambda with no body — degenerate but valid; returns nil */
+              return cont(lizard_make_nil(heap), env, heap);
+            }
+            /* non-tail bodies: side effects only */
+            for (iter = func->data.lambda.parameters->head->next;
+                 iter != tail_body; iter = iter->next) {
+              lizard_eval(((lizard_ast_list_node_t *)iter)->ast, new_env, heap,
+                          lizard_identity_cont);
+              if (lizard_continuation_jumped) {
+                lizard_continuation_jumped = 0;
+                return cont(lizard_force(lizard_jump_value, heap), env, heap);
+              }
+            }
+            /* tail body: trampoline. Reuses the outer `cont`, so the
+               result of the tail expression naturally flows out to
+               the original caller. */
+            node = ((lizard_ast_list_node_t *)tail_body)->ast;
+            env = new_env;
+            continue;
           }
-          return cont(lizard_force(result, heap), env, heap);
         }
       } else if (func->type == AST_CALLCC) {
         return lizard_primitive_callcc(arg_list, env, heap, cont);

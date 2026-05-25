@@ -81,6 +81,27 @@ lizard_ast_node_t *lizard_primitive_newline(lz_list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap);
 
+lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_expt(lz_list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_gcd(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_lcm(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_quotient(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_remainder(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_abs(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_square(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_modexpt(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap);
+
 lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,

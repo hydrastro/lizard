@@ -302,7 +302,15 @@ int main(void) {
           lizard_print_value(result);
           printf("\n");
         } else if (result && result->type == AST_ERROR) {
-          /* Script mode: stay silent except for errors. */
+          /* Script mode: errors always surface. */
+          lizard_print_value(result);
+          printf("\n");
+        } else if (result && result->type != AST_NIL) {
+          /* Script mode: print non-nil results so files of bare
+             expressions (e.g. (+ 1 2)) still show their values.
+             Skip nil so (display ...)/(newline)/(define ...) don't
+             produce a noisy `=> ()` after the real output. */
+          printf("=> ");
           lizard_print_value(result);
           printf("\n");
         }

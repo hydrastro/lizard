@@ -108,3 +108,79 @@ ending in `20! is exactly: 2432902008176640000`.
 - Memory: `lizard_heap_destroy` releases everything at REPL exit,
   but inside a long session the bump arena grows and never returns
   memory to the OS (it's grow-only, not a real GC).
+
+# Lizard v4 — performance round
+
+## Tail-call optimisation
+
+Lambda application now tail-calls its **last body expression** by
+trampolining through the existing `for(;;)` dispatch loop in
+`lizard_eval` — the same mechanism that already drove TCO for `if`,
+`begin`, and `cond`. Non-tail bodies are still evaluated for side
+effects only, then `(node, env)` are rewritten to the tail body and
+`continue` is used.
+
+Before this change every Scheme call ate a real C stack frame:
+```lisp
+(define (count n) (if (= n 0) 'done (count (- n 1))))
+(count 100000)    ; segfault — 8MB C stack exhausted around ~10^4
+```
+
+After this change a properly tail-recursive function runs to any
+depth limited only by the heap. The new `tco_test.c` exercises
+100,000 iterations of plain tail recursion, 50,000 of mutual tail
+recursion (`even?`/`odd?`), tail calls out of `cond` clauses, and
+tail calls as the last expression of a `begin`.
+
+## Fast bignum primitives
+
+Lizard's bump-allocator heap is grow-only and has no GC, so
+loops like
+```lisp
+(define (pow2-iter n acc) (if (= n 0) acc (pow2-iter (- n 1) (* 2 acc))))
+(pow2-iter 1000000 1)
+```
+allocate `O(N²)` of intermediate bignums and exhaust memory long
+before they finish — even with TCO eliminating the stack cost.
+MIT Scheme handles this because of its generational GC; lizard
+now sidesteps the problem entirely by exposing GMP's fast routines
+as primitives so the same computation completes in *one* mpz call:
+
+| Primitive            | Backed by         | Cost     |
+| -------------------- | ----------------- | -------- |
+| `arithmetic-shift`   | `mpz_mul_2exp` / `mpz_fdiv_q_2exp` | O(1) GMP |
+| `expt`               | `mpz_pow_ui`      | O(log e) GMP |
+| `gcd`                | `mpz_gcd`         | Lehmer in GMP |
+| `lcm`                | `mpz_lcm`         | Lehmer + multiply |
+| `quotient`           | `mpz_tdiv_q`      | one division |
+| `remainder`          | `mpz_tdiv_r`      | one division |
+| `abs`                | `mpz_abs`         | one op |
+| `square`             | `mpz_mul`         | one op |
+| `modular-expt`       | `mpz_powm`        | O(log e), bounded intermediates |
+
+`(arithmetic-shift 1 1000000)` now produces a 301,030-digit exact
+integer in milliseconds. `(modular-expt 2 65537 (- (expt 2 127) 1))`
+finishes instantly — the RSA-style core works on arbitrary sizes.
+
+## New tests
+
+- `tests/tco_test.c` — depth-100,000 tail recursion, mutual
+  recursion, `cond` and `begin` tail positions.
+- `tests/fastprims_test.c` — arithmetic-shift (left/right/huge),
+  expt, gcd, lcm, quotient/remainder (with negative dividends),
+  abs, square, modular-expt, plus the error paths
+  (`(quotient 1 0)`, `(expt 2 -1)`, type mismatch).
+
+## New example
+
+- `examples/14-perf.lisp` — count-down from 1,000,000;
+  `arithmetic-shift 1 1000000`; `expt 7 5000`; gcd of two giant
+  bignums; a toy RSA encrypt/decrypt cycle.
+
+## What's still not addressed
+
+The arena is still grow-only. Long-running idiomatic Scheme
+without the fast primitives still piles up garbage. A real GC
+is the right next investment — generational, with the arena
+becoming the nursery. That's a larger surgery and was deliberately
+kept out of this round so the TCO + fast-prims wins land cleanly.
