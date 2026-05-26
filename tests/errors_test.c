@@ -98,9 +98,8 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 3));
 
   /* Errors from inside lambdas surface to the caller. */
-  r = lizard_test_eval(&e,
-                       "(define (boom) (/ 1 0))"
-                       "(boom)");
+  r = lizard_test_eval(&e, "(define (boom) (/ 1 0))"
+                           "(boom)");
   TEST_ASSERT(lizard_test_is_error(r));
 
   /* (load "/path/that/does/not/exist") returns an error rather than

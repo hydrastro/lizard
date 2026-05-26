@@ -20,34 +20,30 @@ int main(void) {
   lizard_test_env_init(&e);
 
   /* Pure tail recursion — no bignum growth, only TCO matters. */
-  r = lizard_test_eval(&e,
-                       "(define (count n)"
-                       "  (if (= n 0) 'done (count (- n 1))))"
-                       "(count 100000)");
+  r = lizard_test_eval(&e, "(define (count n)"
+                           "  (if (= n 0) 'done (count (- n 1))))"
+                           "(count 100000)");
   TEST_ASSERT(lizard_test_is_symbol(r, "done"));
 
   /* Mutual tail recursion across two functions. */
-  r = lizard_test_eval(&e,
-                       "(define (even? n) (if (= n 0) #t (odd?  (- n 1))))"
-                       "(define (odd?  n) (if (= n 0) #f (even? (- n 1))))"
-                       "(even? 50000)");
+  r = lizard_test_eval(&e, "(define (even? n) (if (= n 0) #t (odd?  (- n 1))))"
+                           "(define (odd?  n) (if (= n 0) #f (even? (- n 1))))"
+                           "(even? 50000)");
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* Tail call out of a cond clause. */
-  r = lizard_test_eval(&e,
-                       "(define (down n)"
-                       "  (cond ((= n 0) 0)"
-                       "        (else (down (- n 1)))))"
-                       "(down 50000)");
+  r = lizard_test_eval(&e, "(define (down n)"
+                           "  (cond ((= n 0) 0)"
+                           "        (else (down (- n 1)))))"
+                           "(down 50000)");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* Tail call as the last expression of a (begin ...) body. */
-  r = lizard_test_eval(&e,
-                       "(define (loop n)"
-                       "  (begin"
-                       "    (= n n)"
-                       "    (if (= n 0) 'k (loop (- n 1)))))"
-                       "(loop 20000)");
+  r = lizard_test_eval(&e, "(define (loop n)"
+                           "  (begin"
+                           "    (= n n)"
+                           "    (if (= n 0) 'k (loop (- n 1)))))"
+                           "(loop 20000)");
   TEST_ASSERT(lizard_test_is_symbol(r, "k"));
 
   lizard_test_env_destroy(&e);

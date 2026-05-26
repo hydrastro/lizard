@@ -260,7 +260,8 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     size_t i;
     fprintf(fp, "#(");
     for (i = 0; i < node->data.vector.size; i++) {
-      if (i > 0) fprintf(fp, " ");
+      if (i > 0)
+        fprintf(fp, " ");
       lizard_fprint_value(fp, node->data.vector.elements[i]);
     }
     fprintf(fp, ")");
@@ -272,7 +273,8 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, "#hash(");
     for (i = 0; i < node->data.hash.cap; i++) {
       if (node->data.hash.keys[i] != NULL) {
-        if (!first) fprintf(fp, " ");
+        if (!first)
+          fprintf(fp, " ");
         first = 0;
         fprintf(fp, "(");
         lizard_fprint_value(fp, node->data.hash.keys[i]);
@@ -400,7 +402,8 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, " [");
     for (it = node->data.tt_substitution.mappings->head;
          it != node->data.tt_substitution.mappings->nil; it = it->next) {
-      if (it != node->data.tt_substitution.mappings->head) fprintf(fp, " ");
+      if (it != node->data.tt_substitution.mappings->head)
+        fprintf(fp, " ");
       lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
     }
     fprintf(fp, "])");
@@ -443,6 +446,13 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_id_trans.p);
     fprintf(fp, " ");
     lizard_fprint_value(fp, node->data.tt_id_trans.q);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_LAMBDA:
+    fprintf(fp, "(Lambda ");
+    lizard_fprint_value(fp, node->data.tt_lambda.binder);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_lambda.body);
     fprintf(fp, ")");
     return;
   case AST_MACRO:

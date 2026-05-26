@@ -27,11 +27,11 @@ int main(void) {
   r = lizard_test_eval(&e, "(string-append \"\" \"\")");
   TEST_ASSERT_STR(lizard_test_format(r), "\"\"");
   /* Length of append = sum of lengths. */
-  r = lizard_test_eval(&e,
-                       "(- (string-length (string-append \"foo\" \"bar\" \"baz\"))"
-                       "   (+ (string-length \"foo\")"
-                       "      (string-length \"bar\")"
-                       "      (string-length \"baz\")))");
+  r = lizard_test_eval(
+      &e, "(- (string-length (string-append \"foo\" \"bar\" \"baz\"))"
+          "   (+ (string-length \"foo\")"
+          "      (string-length \"bar\")"
+          "      (string-length \"baz\")))");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* substring */
@@ -77,9 +77,8 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_false(r));
 
   /* Round-trip: number -> string -> number. */
-  r = lizard_test_eval(&e,
-                       "(- (string->number (number->string 987654321))"
-                       "   987654321)");
+  r = lizard_test_eval(&e, "(- (string->number (number->string 987654321))"
+                           "   987654321)");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* symbol/string interconversion. */
@@ -88,8 +87,7 @@ int main(void) {
   r = lizard_test_eval(&e, "(string->symbol \"foo-bar\")");
   TEST_ASSERT(lizard_test_is_symbol(r, "foo-bar"));
   /* Round-trip. */
-  r = lizard_test_eval(&e,
-                       "(= (string->symbol (symbol->string 'xyz)) 'xyz)");
+  r = lizard_test_eval(&e, "(= (string->symbol (symbol->string 'xyz)) 'xyz)");
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* Errors. */
@@ -97,7 +95,7 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_error(r));
   r = lizard_test_eval(&e, "(string-append \"x\" 42)");
   TEST_ASSERT(lizard_test_is_error(r));
-  r = lizard_test_eval(&e, "(substring \"x\" 10 20)");  /* out of range */
+  r = lizard_test_eval(&e, "(substring \"x\" 10 20)"); /* out of range */
   TEST_ASSERT(lizard_test_is_error(r));
 
   lizard_test_env_destroy(&e);

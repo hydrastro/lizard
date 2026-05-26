@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "errors.h"
 #include "lizard.h"
 #include "mem.h"
 #include "primitives.h"
@@ -13,9 +14,10 @@ lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   return canonical_empty_list;
 }
 
-lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
-                                           lz_list_node_t **current_node_pointer,
-                                           int *depth, lizard_heap_t *heap) {
+lizard_ast_node_t *
+lizard_parse_expression(lz_list_t *token_list,
+                        lz_list_node_t **current_node_pointer, int *depth,
+                        lizard_heap_t *heap) {
   lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
       *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
       *transformer;
@@ -59,8 +61,8 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
            (let ...), (if ...) etc. inside a quote stay as plain
            pair-chains rather than being pre-specialized into
            AST_LAMBDA / AST_IF. */
-        ast_node->data.quoted = lizard_parse_datum(token_list,
-                                                  current_node_pointer, heap);
+        ast_node->data.quoted =
+            lizard_parse_datum(token_list, current_node_pointer, heap);
         current_node = *current_node_pointer;
 
         *current_node_pointer = current_node->next;
@@ -155,8 +157,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
               }
               body_node = lizard_parse_expression(
                   token_list, current_node_pointer, depth, heap);
-              body_wrapper =
-                  lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+              body_wrapper = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
               body_wrapper->ast = body_node;
               list_append(lambda_node->data.lambda.parameters,
                           &body_wrapper->node);
@@ -496,8 +497,8 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
         /* literals list */
-        literals_datum = lizard_parse_datum(token_list, current_node_pointer,
-                                            heap);
+        literals_datum =
+            lizard_parse_datum(token_list, current_node_pointer, heap);
         literals = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
         for (cur_lit = literals_datum; cur_lit && cur_lit->type == AST_PAIR;
              cur_lit = cur_lit->data.pair.cdr) {
@@ -514,8 +515,8 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
                    TOKEN_RIGHT_PAREN) {
           lizard_ast_node_t *clause_datum;
           lizard_ast_list_node_t *wrap;
-          clause_datum = lizard_parse_datum(token_list, current_node_pointer,
-                                            heap);
+          clause_datum =
+              lizard_parse_datum(token_list, current_node_pointer, heap);
           wrap = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
           wrap->ast = clause_datum;
           list_append(clauses, &wrap->node);
@@ -681,8 +682,8 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
       ast_node->type = AST_QUOTE;
       /* Preserve structure of quoted forms; see the (quote …) path
          in lizard_parse_expression for the same reasoning. */
-      ast_node->data.quoted = lizard_parse_datum(token_list,
-                                                 current_node_pointer, heap);
+      ast_node->data.quoted =
+          lizard_parse_datum(token_list, current_node_pointer, heap);
     } else if (strcmp(current_token->data.symbol, "`") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
@@ -705,7 +706,20 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     } else if (strcmp(current_token->data.symbol, "#") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
+      /* Guard: if `#` was the last token in the stream (which can
+       * happen if the input was truncated or pipe-buffered oddly),
+       * we'd dereference past the end of the list. Detect EOF and
+       * produce an error value instead of crashing. */
+      if (current_node == token_list->nil || current_node == NULL) {
+        fprintf(stderr, "Error: stray # at end of input.\n");
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
+      }
       current_token = &CAST(current_node, lizard_token_list_node_t)->token;
+      if (current_token->type != TOKEN_SYMBOL ||
+          current_token->data.symbol == NULL) {
+        fprintf(stderr, "Error: unexpected token after #.\n");
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
+      }
       if (strcmp(current_token->data.symbol, "t") == 0) {
         ast_node->type = AST_BOOL;
         ast_node->data.boolean = true;
@@ -713,8 +727,9 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         ast_node->type = AST_BOOL;
         ast_node->data.boolean = false;
       } else {
-        fprintf(stderr, "Error: unexpected token after #.\n");
-        exit(1);
+        fprintf(stderr, "Error: unexpected token after #: '%s'.\n",
+                current_token->data.symbol);
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
       }
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
@@ -827,10 +842,14 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
       body = lizard_parse_datum(token_list, cur, heap);
       tag = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       tag->type = AST_SYMBOL;
-      if (strcmp(prefix, "'")  == 0) tag->data.variable = "quote";
-      if (strcmp(prefix, "`")  == 0) tag->data.variable = "quasiquote";
-      if (strcmp(prefix, ",")  == 0) tag->data.variable = "unquote";
-      if (strcmp(prefix, ",@") == 0) tag->data.variable = "unquote-splicing";
+      if (strcmp(prefix, "'") == 0)
+        tag->data.variable = "quote";
+      if (strcmp(prefix, "`") == 0)
+        tag->data.variable = "quasiquote";
+      if (strcmp(prefix, ",") == 0)
+        tag->data.variable = "unquote";
+      if (strcmp(prefix, ",@") == 0)
+        tag->data.variable = "unquote-splicing";
       p2 = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       p2->type = AST_PAIR;
       p2->data.pair.car = body;

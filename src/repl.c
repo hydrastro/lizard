@@ -172,10 +172,12 @@ static char *read_line(void) {
         position--;
         length--;
         printf("\b \b");
-        memmove(&buffer[position], &buffer[position + 1], (size_t)(length - position));
+        memmove(&buffer[position], &buffer[position + 1],
+                (size_t)(length - position));
       }
     } else if (position < REPL_BUFFER_SIZE - 1) {
-      memmove(&buffer[position + 1], &buffer[position], (size_t)(length - position));
+      memmove(&buffer[position + 1], &buffer[position],
+              (size_t)(length - position));
       buffer[position] = (char)c;
       position++;
       length++;

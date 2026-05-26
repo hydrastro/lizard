@@ -88,12 +88,24 @@ lz_list_t *lizard_tokenize(const char *input) {
         if (c == '\\' && j + 1 < i) {
           char esc = input[j + 1];
           switch (esc) {
-          case 'n':  buffer[k++] = '\n'; break;
-          case 't':  buffer[k++] = '\t'; break;
-          case 'r':  buffer[k++] = '\r'; break;
-          case '\\': buffer[k++] = '\\'; break;
-          case '"':  buffer[k++] = '"';  break;
-          case '0':  buffer[k++] = '\0'; break;
+          case 'n':
+            buffer[k++] = '\n';
+            break;
+          case 't':
+            buffer[k++] = '\t';
+            break;
+          case 'r':
+            buffer[k++] = '\r';
+            break;
+          case '\\':
+            buffer[k++] = '\\';
+            break;
+          case '"':
+            buffer[k++] = '"';
+            break;
+          case '0':
+            buffer[k++] = '\0';
+            break;
           default:
             /* unknown escape — keep the literal character */
             buffer[k++] = esc;

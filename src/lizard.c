@@ -374,8 +374,8 @@ lizard_ast_node_t *lizard_eval(
           lz_list_node_t *cur;
           lizard_ast_node_t *last = lizard_make_bool(heap, true);
           for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
-            lizard_ast_node_t *v = lizard_force(
-                ((lizard_ast_list_node_t *)cur)->ast, heap);
+            lizard_ast_node_t *v =
+                lizard_force(((lizard_ast_list_node_t *)cur)->ast, heap);
             if (v && v->type == AST_ERROR) {
               return cont(v, env, heap);
             }
@@ -390,8 +390,8 @@ lizard_ast_node_t *lizard_eval(
           lz_list_node_t *cur;
           lizard_ast_node_t *last = lizard_make_bool(heap, false);
           for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
-            lizard_ast_node_t *v = lizard_force(
-                ((lizard_ast_list_node_t *)cur)->ast, heap);
+            lizard_ast_node_t *v =
+                lizard_force(((lizard_ast_list_node_t *)cur)->ast, heap);
             if (v && v->type == AST_ERROR) {
               return cont(v, env, heap);
             }
@@ -405,8 +405,8 @@ lizard_ast_node_t *lizard_eval(
         {
           lz_list_node_t *cur;
           for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
-            lizard_ast_node_t *forced = lizard_force(
-                ((lizard_ast_list_node_t *)cur)->ast, heap);
+            lizard_ast_node_t *forced =
+                lizard_force(((lizard_ast_list_node_t *)cur)->ast, heap);
             /* If any argument errored, propagate immediately rather
                than letting display/print/etc. quietly accept it. Two
                primitives are exempt because they exist precisely to
@@ -435,8 +435,9 @@ lizard_ast_node_t *lizard_eval(
           if (param_list->type == AST_NIL) {
             /* zero-parameter lambda: nothing to bind */
             if (arg_list->head != arg_list->nil) {
-              return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE),
-                          env, heap);
+              return cont(
+                  lizard_make_error(heap, LIZARD_ERROR_LAMBDA_ARITY_MORE), env,
+                  heap);
             }
             param_node = NULL;
             arg_iter = NULL;
@@ -461,8 +462,8 @@ lizard_ast_node_t *lizard_eval(
               buf = lizard_heap_alloc(count * sizeof(lizard_ast_node_t *) + 1);
               i = 0;
               for (it = arg_list->head; it != arg_list->nil; it = it->next) {
-                buf[i++] = lizard_force(
-                    ((lizard_ast_list_node_t *)it)->ast, heap);
+                buf[i++] =
+                    lizard_force(((lizard_ast_list_node_t *)it)->ast, heap);
               }
               for (i = count; i > 0; i--) {
                 pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -505,15 +506,17 @@ lizard_ast_node_t *lizard_eval(
               }
               rest_param = (lizard_ast_list_node_t *)param_node->next;
               if (rest_param->ast->type != AST_SYMBOL) {
-                return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER),
-                            env, heap);
+                return cont(
+                    lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER), env,
+                    heap);
               }
-              for (it = arg_iter; it != arg_list->nil; it = it->next) count++;
+              for (it = arg_iter; it != arg_list->nil; it = it->next)
+                count++;
               buf = lizard_heap_alloc(count * sizeof(lizard_ast_node_t *) + 1);
               i = 0;
               for (it = arg_iter; it != arg_list->nil; it = it->next) {
-                buf[i++] = lizard_force(
-                    ((lizard_ast_list_node_t *)it)->ast, heap);
+                buf[i++] =
+                    lizard_force(((lizard_ast_list_node_t *)it)->ast, heap);
               }
               for (i = count; i > 0; i--) {
                 lizard_ast_node_t *pair =
@@ -523,10 +526,10 @@ lizard_ast_node_t *lizard_eval(
                 pair->data.pair.cdr = xs;
                 xs = pair;
               }
-              lizard_env_define(heap, new_env,
-                                rest_param->ast->data.variable, xs);
-              param_node = formal_params->nil;  /* done */
-              arg_iter = arg_list->nil;         /* consumed all */
+              lizard_env_define(heap, new_env, rest_param->ast->data.variable,
+                                xs);
+              param_node = formal_params->nil; /* done */
+              arg_iter = arg_list->nil;        /* consumed all */
               break;
             }
             if (arg_iter == arg_list->nil) {
@@ -540,8 +543,8 @@ lizard_ast_node_t *lizard_eval(
                  in the original env where set! may have mutated things.
                  We deliberately do NOT propagate errors here — handlers
                  passed to `try` receive error values as arguments. */
-              lizard_ast_node_t *arg_val = lizard_force(
-                  ((lizard_ast_list_node_t *)arg_iter)->ast, heap);
+              lizard_ast_node_t *arg_val =
+                  lizard_force(((lizard_ast_list_node_t *)arg_iter)->ast, heap);
               lizard_env_define(heap, new_env, param->ast->data.variable,
                                 arg_val);
             }
@@ -619,9 +622,8 @@ lizard_ast_node_t *lizard_eval(
         macro_obj->type = AST_MACRO;
         macro_obj->data.macro_def.variable = node->data.macro_def.variable;
         macro_obj->data.macro_def.transformer = transformer;
-        lizard_env_define(heap, env,
-                          node->data.macro_def.variable->data.variable,
-                          macro_obj);
+        lizard_env_define(
+            heap, env, node->data.macro_def.variable->data.variable, macro_obj);
         return cont(lizard_make_nil(heap), env, heap);
       }
     }
@@ -705,7 +707,8 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
         size_t count = 0;
         lizard_ast_node_t **buf;
         size_t i;
-        for (it = args->head; it != args->nil; it = it->next) count++;
+        for (it = args->head; it != args->nil; it = it->next)
+          count++;
         buf = lizard_heap_alloc(count * sizeof(lizard_ast_node_t *) + 1);
         i = 0;
         for (it = args->head; it != args->nil; it = it->next) {
@@ -750,10 +753,12 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
           }
           rest_param = (lizard_ast_list_node_t *)param_node->next;
           if (rest_param->ast->type != AST_SYMBOL) {
-            return cont(lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER_2),
-                        env, heap);
+            return cont(
+                lizard_make_error(heap, LIZARD_ERROR_LAMBDA_PARAMETER_2), env,
+                heap);
           }
-          for (it = arg_node; it != args->nil; it = it->next) count++;
+          for (it = arg_node; it != args->nil; it = it->next)
+            count++;
           buf = lizard_heap_alloc(count * sizeof(lizard_ast_node_t *) + 1);
           i = 0;
           for (it = arg_node; it != args->nil; it = it->next) {
@@ -778,8 +783,8 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
         {
           /* Eager force; do not propagate errors at this boundary so
              try-handlers can receive errors as their arguments. */
-          lizard_ast_node_t *arg_val = lizard_force(
-              ((lizard_ast_list_node_t *)arg_node)->ast, heap);
+          lizard_ast_node_t *arg_val =
+              lizard_force(((lizard_ast_list_node_t *)arg_node)->ast, heap);
           lizard_env_define(heap, new_env, param->ast->data.variable, arg_val);
         }
         param_node = param_node->next;
@@ -854,7 +859,8 @@ static int lizard_is_literal_symbol(lz_list_t *literals, const char *name) {
 static lizard_ast_node_t *lizard_sr_lookup(lizard_sr_binding_t *bs,
                                            const char *name) {
   for (; bs; bs = bs->next) {
-    if (strcmp(bs->name, name) == 0) return bs->value;
+    if (strcmp(bs->name, name) == 0)
+      return bs->value;
   }
   return NULL;
 }
@@ -863,15 +869,20 @@ static lizard_ast_node_t *lizard_sr_lookup(lizard_sr_binding_t *bs,
 static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
                            lz_list_t *literals, lizard_sr_binding_t **out,
                            lizard_heap_t *heap) {
-  if (!pattern && !form) return 1;
-  if (!pattern || !form) return 0;
+  if (!pattern && !form)
+    return 1;
+  if (!pattern || !form)
+    return 0;
   /* literal-pair pattern */
   if (pattern->type == AST_PAIR) {
-    if (form->type != AST_PAIR) return 0;
-    if (!lizard_sr_match(pattern->data.pair.car, form->data.pair.car,
-                         literals, out, heap)) return 0;
-    if (!lizard_sr_match(pattern->data.pair.cdr, form->data.pair.cdr,
-                         literals, out, heap)) return 0;
+    if (form->type != AST_PAIR)
+      return 0;
+    if (!lizard_sr_match(pattern->data.pair.car, form->data.pair.car, literals,
+                         out, heap))
+      return 0;
+    if (!lizard_sr_match(pattern->data.pair.cdr, form->data.pair.cdr, literals,
+                         out, heap))
+      return 0;
     return 1;
   }
   if (pattern->type == AST_NIL) {
@@ -879,11 +890,11 @@ static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
   }
   if (pattern->type == AST_SYMBOL) {
     const char *name = pattern->data.variable;
-    if (strcmp(name, "_") == 0) return 1;  /* wildcard */
+    if (strcmp(name, "_") == 0)
+      return 1; /* wildcard */
     if (lizard_is_literal_symbol(literals, name)) {
       /* Literal: must match an identical symbol. */
-      return form->type == AST_SYMBOL &&
-             strcmp(form->data.variable, name) == 0;
+      return form->type == AST_SYMBOL && strcmp(form->data.variable, name) == 0;
     }
     /* Pattern variable: capture. */
     {
@@ -929,10 +940,10 @@ static const char *lizard_sr_fresh(const char *base, lizard_heap_t *heap) {
   return buf;
 }
 
-static const char *lizard_sr_renamed(lizard_sr_rename_t *r,
-                                     const char *name) {
+static const char *lizard_sr_renamed(lizard_sr_rename_t *r, const char *name) {
   for (; r; r = r->next) {
-    if (strcmp(r->original, name) == 0) return r->fresh;
+    if (strcmp(r->original, name) == 0)
+      return r->fresh;
   }
   return name;
 }
@@ -942,7 +953,8 @@ static lizard_ast_node_t *lizard_sr_expand(lizard_ast_node_t *tmpl,
                                            lizard_sr_binding_t *bs,
                                            lizard_sr_rename_t *renames,
                                            lizard_heap_t *heap) {
-  if (!tmpl) return NULL;
+  if (!tmpl)
+    return NULL;
   if (tmpl->type == AST_PAIR) {
     /* Detect binding-introducing forms — let, lambda, define — and
        generate fresh names for the introduced identifiers. This is
@@ -1051,13 +1063,13 @@ static lizard_ast_node_t *lizard_sr_expand(lizard_ast_node_t *tmpl,
   if (tmpl->type == AST_SYMBOL) {
     /* First try pattern variable. */
     lizard_ast_node_t *bound = lizard_sr_lookup(bs, tmpl->data.variable);
-    if (bound) return bound;
+    if (bound)
+      return bound;
     /* Then try hygienic rename. */
     {
       const char *rn = lizard_sr_renamed(renames, tmpl->data.variable);
       if (rn != tmpl->data.variable) {
-        lizard_ast_node_t *sym =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         sym->type = AST_SYMBOL;
         sym->data.variable = rn;
         return sym;
@@ -1093,7 +1105,8 @@ static lizard_ast_node_t *lizard_app_to_pair(lz_list_t *args,
  * pattern. Non-application leaves pass through. */
 static lizard_ast_node_t *lizard_datumize(lizard_ast_node_t *n,
                                           lizard_heap_t *heap) {
-  if (!n) return NULL;
+  if (!n)
+    return NULL;
   if (n->type == AST_APPLICATION) {
     lizard_ast_node_t *head = lizard_make_nil(heap);
     lizard_ast_node_t **tail = &head;
@@ -1149,19 +1162,20 @@ static lz_list_t *pair_to_app_args(lizard_ast_node_t *list_form,
 
 lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
                                         lizard_heap_t *heap) {
-  if (!n) return NULL;
-  if (n->type != AST_PAIR) return n;
+  if (!n)
+    return NULL;
+  if (n->type != AST_PAIR)
+    return n;
   {
     lizard_ast_node_t *head = n->data.pair.car;
     if (head && head->type == AST_SYMBOL) {
       const char *h = head->data.variable;
       /* (lambda (params) body...) */
-      if (strcmp(h, "lambda") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR) {
+      if (strcmp(h, "lambda") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR) {
         lizard_ast_node_t *params_form = n->data.pair.cdr->data.pair.car;
         lizard_ast_node_t *body_form = n->data.pair.cdr->data.pair.cdr;
-        lizard_ast_node_t *lam =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *lam = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         lz_list_t *plist;
         lizard_ast_list_node_t *pwrap;
         lizard_ast_node_t *params_app;
@@ -1188,7 +1202,7 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
                cur = cur->data.pair.cdr) {
             lizard_ast_list_node_t *w =
                 lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-            w->ast = cur->data.pair.car;  /* leave symbols as-is */
+            w->ast = cur->data.pair.car; /* leave symbols as-is */
             list_append(params_app->data.application_arguments, &w->node);
           }
           pwrap = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
@@ -1208,10 +1222,9 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
         return lam;
       }
       /* (if pred cons alt) */
-      if (strcmp(h, "if") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR) {
-        lizard_ast_node_t *iff =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      if (strcmp(h, "if") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR) {
+        lizard_ast_node_t *iff = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         lizard_ast_node_t *rest = n->data.pair.cdr;
         iff->type = AST_IF;
         iff->data.if_clause.pred =
@@ -1221,7 +1234,8 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
             (rest && rest->type == AST_PAIR)
                 ? lizard_reparse_datum(rest->data.pair.car, heap)
                 : lizard_make_nil(heap);
-        if (rest && rest->type == AST_PAIR) rest = rest->data.pair.cdr;
+        if (rest && rest->type == AST_PAIR)
+          rest = rest->data.pair.cdr;
         iff->data.if_clause.alt =
             (rest && rest->type == AST_PAIR)
                 ? lizard_reparse_datum(rest->data.pair.car, heap)
@@ -1230,8 +1244,7 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
       }
       /* (begin body...) */
       if (strcmp(h, "begin") == 0) {
-        lizard_ast_node_t *bn =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *bn = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         lizard_ast_node_t *cur;
         bn->type = AST_BEGIN;
         bn->data.begin_expressions =
@@ -1246,12 +1259,11 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
         return bn;
       }
       /* (set! var val) */
-      if (strcmp(h, "set!") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR &&
+      if (strcmp(h, "set!") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR &&
           n->data.pair.cdr->data.pair.cdr &&
           n->data.pair.cdr->data.pair.cdr->type == AST_PAIR) {
-        lizard_ast_node_t *as =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *as = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         as->type = AST_ASSIGNMENT;
         as->data.assignment.variable = n->data.pair.cdr->data.pair.car;
         as->data.assignment.value = lizard_reparse_datum(
@@ -1259,15 +1271,13 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
         return as;
       }
       /* (define name val) — only the simple form. */
-      if (strcmp(h, "define") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR &&
+      if (strcmp(h, "define") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR &&
           n->data.pair.cdr->data.pair.cdr &&
           n->data.pair.cdr->data.pair.cdr->type == AST_PAIR) {
-        lizard_ast_node_t *de =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *de = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         lizard_ast_node_t *name = n->data.pair.cdr->data.pair.car;
-        lizard_ast_node_t *val =
-            n->data.pair.cdr->data.pair.cdr->data.pair.car;
+        lizard_ast_node_t *val = n->data.pair.cdr->data.pair.cdr->data.pair.car;
         if (name->type == AST_SYMBOL) {
           de->type = AST_DEFINITION;
           de->data.definition.variable = name;
@@ -1277,8 +1287,8 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
       }
       /* (let ((n1 v1) ...) body...) — desugar to ((lambda (n1 ...)
          body...) v1 ...). */
-      if (strcmp(h, "let") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR) {
+      if (strcmp(h, "let") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR) {
         lizard_ast_node_t *bindings = n->data.pair.cdr->data.pair.car;
         lizard_ast_node_t *body_form = n->data.pair.cdr->data.pair.cdr;
         lizard_ast_node_t *lam;
@@ -1336,10 +1346,9 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
         return app;
       }
       /* (quote x) — re-wrap */
-      if (strcmp(h, "quote") == 0 &&
-          n->data.pair.cdr && n->data.pair.cdr->type == AST_PAIR) {
-        lizard_ast_node_t *q =
-            lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      if (strcmp(h, "quote") == 0 && n->data.pair.cdr &&
+          n->data.pair.cdr->type == AST_PAIR) {
+        lizard_ast_node_t *q = lizard_heap_alloc(sizeof(lizard_ast_node_t));
         q->type = AST_QUOTE;
         q->data.quoted = n->data.pair.cdr->data.pair.car;
         return q;
@@ -1347,8 +1356,7 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
     }
     /* Generic application. */
     {
-      lizard_ast_node_t *app =
-          lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      lizard_ast_node_t *app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       app->type = AST_APPLICATION;
       app->data.application_arguments = pair_to_app_args(n, heap);
       return app;
@@ -1389,8 +1397,8 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                    arg = arg->next) {
                 lizard_ast_list_node_t *w =
                     lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-                w->ast = lizard_datumize(
-                    ((lizard_ast_list_node_t *)arg)->ast, heap);
+                w->ast =
+                    lizard_datumize(((lizard_ast_list_node_t *)arg)->ast, heap);
                 list_append(call_args, &w->node);
               }
               call_pair = lizard_app_to_pair(call_args, heap);
@@ -1398,8 +1406,7 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
             for (cit = transformer->data.syntax_rules.clauses->head;
                  cit != transformer->data.syntax_rules.clauses->nil;
                  cit = cit->next) {
-              lizard_ast_node_t *clause =
-                  ((lizard_ast_list_node_t *)cit)->ast;
+              lizard_ast_node_t *clause = ((lizard_ast_list_node_t *)cit)->ast;
               lizard_ast_node_t *pattern;
               lizard_ast_node_t *template;
               lizard_ast_node_t *pat_args;
@@ -1413,11 +1420,12 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
               template = clause->data.pair.cdr->data.pair.car;
               /* The pattern's first element is the macro name slot —
                  skip it and match the rest against the call's args. */
-              if (!pattern || pattern->type != AST_PAIR) continue;
+              if (!pattern || pattern->type != AST_PAIR)
+                continue;
               pat_args = pattern->data.pair.cdr;
               if (lizard_sr_match(pat_args, call_pair,
-                                  transformer->data.syntax_rules.literals,
-                                  &bs, heap)) {
+                                  transformer->data.syntax_rules.literals, &bs,
+                                  heap)) {
                 lizard_ast_node_t *expanded_datum =
                     lizard_sr_expand(template, bs, NULL, heap);
                 lizard_ast_node_t *reparsed =
@@ -1428,8 +1436,7 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
             /* No clause matched — leave the form alone. */
           } else {
             /* Legacy lambda-transformer macro. */
-            macro_args =
-                list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+            macro_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
             for (arg = first->next;
                  arg != node->data.application_arguments->nil;
                  arg = arg->next) {
@@ -1597,8 +1604,8 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
   case AST_DEFINITION: {
     new_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     new_node->type = AST_DEFINITION;
-    new_node->data.definition.variable = lizard_expand_quasiquote(
-        node->data.definition.variable, env, heap);
+    new_node->data.definition.variable =
+        lizard_expand_quasiquote(node->data.definition.variable, env, heap);
     new_node->data.definition.value =
         lizard_expand_quasiquote(node->data.definition.value, env, heap);
     return new_node;
@@ -1606,8 +1613,8 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
   case AST_ASSIGNMENT: {
     new_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     new_node->type = AST_ASSIGNMENT;
-    new_node->data.assignment.variable = lizard_expand_quasiquote(
-        node->data.assignment.variable, env, heap);
+    new_node->data.assignment.variable =
+        lizard_expand_quasiquote(node->data.assignment.variable, env, heap);
     new_node->data.assignment.value =
         lizard_expand_quasiquote(node->data.assignment.value, env, heap);
     return new_node;

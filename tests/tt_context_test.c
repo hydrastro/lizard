@@ -30,9 +30,8 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_symbol(r, "variable"));
 
   /* Contexts sit at Uco -1. */
-  lizard_test_eval(&e,
-                   "(define Gamma (context (variable 'x (U 0))"
-                   "                       (variable 'y (U 0))))");
+  lizard_test_eval(&e, "(define Gamma (context (variable 'x (U 0))"
+                       "                       (variable 'y (U 0))))");
   r = lizard_test_eval(&e, "(context? Gamma)");
   TEST_ASSERT(lizard_test_is_true(r));
   r = lizard_test_eval(&e, "(uco-level Gamma)");
@@ -47,9 +46,8 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* context-extend is non-mutating: original Gamma still has 2. */
-  lizard_test_eval(&e,
-                   "(define Gamma2 (context-extend Gamma"
-                   "                  (variable 'z (U 1))))");
+  lizard_test_eval(&e, "(define Gamma2 (context-extend Gamma"
+                       "                  (variable 'z (U 1))))");
   r = lizard_test_eval(&e, "(context-length Gamma2)");
   TEST_ASSERT(lizard_test_is_int(r, 3));
   r = lizard_test_eval(&e, "(context-length Gamma)");
@@ -65,14 +63,12 @@ int main(void) {
 
   /* Shadowing: extending with a same-named variable returns the
    * innermost one. */
-  lizard_test_eval(&e,
-                   "(define G3 (context-extend"
-                   "             (context-extend (empty-context)"
-                   "                             (variable 'x (U 0)))"
-                   "             (variable 'x (U 5))))");
-  r = lizard_test_eval(&e,
-                       "(U-level (variable-type (context-lookup G3 'x)))");
-  TEST_ASSERT(lizard_test_is_int(r, 5));   /* innermost wins */
+  lizard_test_eval(&e, "(define G3 (context-extend"
+                       "             (context-extend (empty-context)"
+                       "                             (variable 'x (U 0)))"
+                       "             (variable 'x (U 5))))");
+  r = lizard_test_eval(&e, "(U-level (variable-type (context-lookup G3 'x)))");
+  TEST_ASSERT(lizard_test_is_int(r, 5)); /* innermost wins */
 
   /* Substitutions sit at Uco 0. */
   lizard_test_eval(&e,
@@ -100,35 +96,32 @@ int main(void) {
   r = lizard_test_eval(&e, "(uco-level 42)");
   TEST_ASSERT(lizard_test_is_false(r));
   r = lizard_test_eval(&e, "(uco-level (U 0))");
-  TEST_ASSERT(lizard_test_is_false(r));   /* (U 0) is a universe value,
-                                             not a couniverse-stratified
-                                             thing */
+  TEST_ASSERT(lizard_test_is_false(r)); /* (U 0) is a universe value,
+                                           not a couniverse-stratified
+                                           thing */
 
   /* Metaprogramming: walk a context, collect names. */
-  lizard_test_eval(&e,
-                   "(define G4"
-                   "  (context-extend"
-                   "    (context-extend"
-                   "      (context-extend (empty-context)"
-                   "                      (variable 'a (U 0)))"
-                   "      (variable 'b (U 0)))"
-                   "    (variable 'c (U 0))))");
-  lizard_test_eval(&e,
-                   "(define (map f xs) (if (null? xs) '()"
-                   "                       (cons (f (car xs)) (map f (cdr xs)))))");
-  r = lizard_test_eval(&e,
-                       "(map variable-name (context-bindings G4))");
+  lizard_test_eval(&e, "(define G4"
+                       "  (context-extend"
+                       "    (context-extend"
+                       "      (context-extend (empty-context)"
+                       "                      (variable 'a (U 0)))"
+                       "      (variable 'b (U 0)))"
+                       "    (variable 'c (U 0))))");
+  lizard_test_eval(
+      &e, "(define (map f xs) (if (null? xs) '()"
+          "                       (cons (f (car xs)) (map f (cdr xs)))))");
+  r = lizard_test_eval(&e, "(map variable-name (context-bindings G4))");
   TEST_ASSERT_STR(lizard_test_format(r), "(a b c)");
 
   /* Pattern-dispatching by uco-level — the kind of thing a future
    * type checker would do at every step. */
-  lizard_test_eval(&e,
-                   "(define (couniverse-layer x)"
-                   "  (cond ((variable? x)     'binding-site)"
-                   "        ((context? x)      'context)"
-                   "        ((substitution? x) 'morphism)"
-                   "        ((judgment? x)     'judgment)"
-                   "        (else              'not-applicable)))");
+  lizard_test_eval(&e, "(define (couniverse-layer x)"
+                       "  (cond ((variable? x)     'binding-site)"
+                       "        ((context? x)      'context)"
+                       "        ((substitution? x) 'morphism)"
+                       "        ((judgment? x)     'judgment)"
+                       "        (else              'not-applicable)))");
   r = lizard_test_eval(&e, "(couniverse-layer (variable 'x 'A))");
   TEST_ASSERT(lizard_test_is_symbol(r, "binding-site"));
   r = lizard_test_eval(&e, "(couniverse-layer (empty-context))");

@@ -35,9 +35,8 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_true(r));
   r = lizard_test_eval(&e, "(defined? 'no-such-binding)");
   TEST_ASSERT(lizard_test_is_false(r));
-  r = lizard_test_eval(&e,
-                       "(define my-special-thing 42)"
-                       "(defined? 'my-special-thing)");
+  r = lizard_test_eval(&e, "(define my-special-thing 42)"
+                           "(defined? 'my-special-thing)");
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* procedure-arity counts formal parameters. */
@@ -52,22 +51,21 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_symbol(r, "variadic"));
 
   /* env-keys returns a list including the symbols we defined. */
-  r = lizard_test_eval(&e,
-                       "(define needle-1 1)"
-                       "(define needle-2 2)"
-                       "(define (member? x xs)"
-                       "  (cond ((null? xs) #f)"
-                       "        ((= x (car xs)) #t)"
-                       "        (else (member? x (cdr xs)))))"
-                       "(and (member? 'needle-1 (env-keys))"
-                       "     (member? 'needle-2 (env-keys))"
-                       "     (member? '+ (env-keys)))");
+  r = lizard_test_eval(&e, "(define needle-1 1)"
+                           "(define needle-2 2)"
+                           "(define (member? x xs)"
+                           "  (cond ((null? xs) #f)"
+                           "        ((= x (car xs)) #t)"
+                           "        (else (member? x (cdr xs)))))"
+                           "(and (member? 'needle-1 (env-keys))"
+                           "     (member? 'needle-2 (env-keys))"
+                           "     (member? '+ (env-keys)))");
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* Errors. */
   r = lizard_test_eval(&e, "(type-of)");
   TEST_ASSERT(lizard_test_is_error(r));
-  r = lizard_test_eval(&e, "(defined? 42)");  /* non-symbol */
+  r = lizard_test_eval(&e, "(defined? 42)"); /* non-symbol */
   TEST_ASSERT(lizard_test_is_error(r));
   r = lizard_test_eval(&e, "(procedure-arity 42)");
   TEST_ASSERT(lizard_test_is_error(r));

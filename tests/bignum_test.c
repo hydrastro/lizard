@@ -27,25 +27,22 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 1));
 
   /* Mersenne prime test: 2^31 - 1 should pass Fermat for small bases. */
-  r = lizard_test_eval(&e,
-                       "(define mp (- (expt 2 31) 1))"
-                       "(modular-expt 2 (- mp 1) mp)");
+  r = lizard_test_eval(&e, "(define mp (- (expt 2 31) 1))"
+                           "(modular-expt 2 (- mp 1) mp)");
   TEST_ASSERT(lizard_test_is_int(r, 1));
 
   /* gcd * lcm = product. */
-  r = lizard_test_eval(&e,
-                       "(define a 12345678)"
-                       "(define b 87654321)"
-                       "(- (* (gcd a b) (lcm a b)) (* a b))");
+  r = lizard_test_eval(&e, "(define a 12345678)"
+                           "(define b 87654321)"
+                           "(- (* (gcd a b) (lcm a b)) (* a b))");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* Modular inverse via Fermat (only valid when modulus is prime).
    * a * a^(p-2) ≡ 1 (mod p) */
-  r = lizard_test_eval(&e,
-                       "(define p 7919)"
-                       "(define a 1234)"
-                       "(define inv (modular-expt a (- p 2) p))"
-                       "(remainder (* a inv) p)");
+  r = lizard_test_eval(&e, "(define p 7919)"
+                           "(define a 1234)"
+                           "(define inv (modular-expt a (- p 2) p))"
+                           "(remainder (* a inv) p)");
   TEST_ASSERT(lizard_test_is_int(r, 1));
 
   /* Binomial sum identity: sum(C(n,k), k=0..n) = 2^n.
@@ -77,16 +74,14 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* (expt a b) should match repeated multiplication for small b. */
-  r = lizard_test_eval(&e,
-                       "(define (rep-mul a b)"
-                       "  (if (= b 0) 1 (* a (rep-mul a (- b 1)))))"
-                       "(- (expt 13 20) (rep-mul 13 20))");
+  r = lizard_test_eval(&e, "(define (rep-mul a b)"
+                           "  (if (= b 0) 1 (* a (rep-mul a (- b 1)))))"
+                           "(- (expt 13 20) (rep-mul 13 20))");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* Square primitive matches (* x x). */
-  r = lizard_test_eval(&e,
-                       "(define x 9999999999)"
-                       "(- (square x) (* x x))");
+  r = lizard_test_eval(&e, "(define x 9999999999)"
+                           "(- (square x) (* x x))");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   /* abs is idempotent: (abs (abs x)) = (abs x). */
@@ -100,10 +95,9 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 2));
 
   /* Division identity: a = q*b + r, where q = quotient(a,b), r = remainder. */
-  r = lizard_test_eval(&e,
-                       "(define a 1000003)"
-                       "(define b 7919)"
-                       "(- a (+ (* (quotient a b) b) (remainder a b)))");
+  r = lizard_test_eval(&e, "(define a 1000003)"
+                           "(define b 7919)"
+                           "(- a (+ (* (quotient a b) b) (remainder a b)))");
   TEST_ASSERT(lizard_test_is_int(r, 0));
 
   lizard_test_env_destroy(&e);

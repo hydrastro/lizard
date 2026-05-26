@@ -30,12 +30,11 @@ int main(void) {
   TEST_ASSERT(r && r->type == AST_NIL);
 
   /* begin — must run every expr once, return last. */
-  r = lizard_test_eval(&e,
-                       "(define c 0)"
-                       "(begin (set! c (+ c 1))"
-                       "       (set! c (+ c 1))"
-                       "       (set! c (+ c 1)))"
-                       "c");
+  r = lizard_test_eval(&e, "(define c 0)"
+                           "(begin (set! c (+ c 1))"
+                           "       (set! c (+ c 1))"
+                           "       (set! c (+ c 1)))"
+                           "c");
   TEST_ASSERT(lizard_test_is_int(r, 3));
 
   /* and/or short-circuit, return the deciding value. */

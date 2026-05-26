@@ -200,7 +200,8 @@ lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
-lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args, lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args,
+                                               lizard_env_t *env,
                                                lizard_heap_t *heap);
 
 /* Install every built-in primitive into `env`. Used by both the REPL
@@ -216,89 +217,212 @@ lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
 #endif /* LIZARD_PRIMITIVES_H */
 
 /* ----- Type-theory notation primitives (no semantic checking) ----- */
-lizard_ast_node_t *lizard_primitive_tt_pi(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sigma(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_refl(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_inductive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_coinductive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_pip(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sigmap(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_appp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sump(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_universep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_couniversep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_idp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_reflp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_inductivep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_coinductivep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_annotp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_pi_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_pi_domain(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_pi_codomain(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sigma_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sigma_domain(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sigma_codomain(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_app_fun(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_app_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sum_left(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_sum_right(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_domain(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_a(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_b(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_refl_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_inductive_name(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_coinductive_name(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_annot_term(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_annot_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_universe_level(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_couniverse_level(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_inductive_ctors(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_coinductive_dtors(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_pi(lz_list_t *, lizard_env_t *,
+                                          lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sigma(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *,
+                                          lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *,
+                                           lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *, lizard_env_t *,
+                                          lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_refl(lz_list_t *, lizard_env_t *,
+                                            lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_inductive(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_coinductive(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_pip(lz_list_t *, lizard_env_t *,
+                                           lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sigmap(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_appp(lz_list_t *, lizard_env_t *,
+                                            lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sump(lz_list_t *, lizard_env_t *,
+                                            lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_universep(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniversep(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_idp(lz_list_t *, lizard_env_t *,
+                                           lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_reflp(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_inductivep(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_coinductivep(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_annotp(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_pi_binder(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_pi_domain(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_pi_codomain(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sigma_binder(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sigma_domain(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sigma_codomain(lz_list_t *,
+                                                      lizard_env_t *,
+                                                      lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_app_fun(lz_list_t *, lizard_env_t *,
+                                               lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_app_arg(lz_list_t *, lizard_env_t *,
+                                               lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sum_left(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_sum_right(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_domain(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_a(lz_list_t *, lizard_env_t *,
+                                            lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_b(lz_list_t *, lizard_env_t *,
+                                            lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_refl_value(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_inductive_name(lz_list_t *,
+                                                      lizard_env_t *,
+                                                      lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_coinductive_name(lz_list_t *,
+                                                        lizard_env_t *,
+                                                        lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_annot_term(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_annot_type(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_universe_level(lz_list_t *,
+                                                      lizard_env_t *,
+                                                      lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniverse_level(lz_list_t *,
+                                                        lizard_env_t *,
+                                                        lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_inductive_ctors(lz_list_t *,
+                                                       lizard_env_t *,
+                                                       lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_coinductive_dtors(lz_list_t *,
+                                                         lizard_env_t *,
+                                                         lizard_heap_t *);
 
 /* Context layer */
-lizard_ast_node_t *lizard_primitive_tt_variable(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_context(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_empty_ctx(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_ctx_extend(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_ctx_lookup(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_ctx_bindings(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_ctx_length(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_substitution(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_judgment(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_variablep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_contextp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_substitutionp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_judgmentp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_var_name(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_var_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_subst_source(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_subst_target(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_judg_context(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_judg_term(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_judg_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_variable(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_context(lz_list_t *, lizard_env_t *,
+                                               lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_empty_ctx(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_ctx_extend(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_ctx_lookup(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_ctx_bindings(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_ctx_length(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_substitution(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_judgment(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_variablep(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_contextp(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *
+lizard_primitive_tt_substitutionp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_judgmentp(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_var_name(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_var_type(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_subst_source(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_subst_target(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_judg_context(lz_list_t *, lizard_env_t *,
+                                                    lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_judg_term(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_judg_type(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
 
 /* Identity manipulation + equivalence (notation only). */
-lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_equivp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_transportp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_symp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_transp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_equiv_left(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_equiv_right(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_equiv_fwd(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_equiv_bwd(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_transport_path(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_transport_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_sym_path(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_trans_p(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_id_trans_q(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *, lizard_env_t *,
+                                                lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equivp(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transportp(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_symp(lz_list_t *, lizard_env_t *,
+                                               lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_transp(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_left(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_right(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_fwd(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_bwd(lz_list_t *, lizard_env_t *,
+                                                 lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport_path(lz_list_t *,
+                                                      lizard_env_t *,
+                                                      lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport_value(lz_list_t *,
+                                                       lizard_env_t *,
+                                                       lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_sym_path(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans_p(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans_q(lz_list_t *, lizard_env_t *,
+                                                  lizard_heap_t *);
+
+/* TT equality engine. */
+void lizard_tt_flags_init(void);
+int lizard_tt_flag_get(const char *name);
+void lizard_tt_flag_set(const char *name, int value);
+int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
+lizard_ast_node_t *lizard_tt_reduce(lizard_ast_node_t *t, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tt_reduce(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equal(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_flag_set(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_flag_get(lz_list_t *, lizard_env_t *,
+                                             lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_flag_list(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+
+/* Alpha-equivalence-aware comparison. */
+int lizard_tt_alpha_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
+
+/* TT-level lambda. */
+lizard_ast_node_t *lizard_primitive_tt_lambda(lz_list_t *, lizard_env_t *,
+                                              lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_lambdap(lz_list_t *, lizard_env_t *,
+                                               lizard_heap_t *);
+lizard_ast_node_t *
+lizard_primitive_tt_lambda_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_lambda_body(lz_list_t *, lizard_env_t *,
+                                                   lizard_heap_t *);
+lizard_ast_node_t *lizard_tt_subst(lizard_ast_node_t *, const char *,
+                                   lizard_ast_node_t *, lizard_heap_t *);

@@ -62,17 +62,17 @@ typedef enum {
    * They are surface syntax / opaque values, suitable for designing
    * the look of a foundational system but not for verifying anything
    * about it. */
-  AST_TT_PI,           /* (Pi (x A) B) — dependent function type */
-  AST_TT_SIGMA,        /* (Sigma (x A) B) — dependent pair type */
-  AST_TT_APP,          /* (@ f a) — explicit application form */
-  AST_TT_SUM,          /* (Sum A B) — coproduct type */
-  AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
-  AST_TT_COUNIVERSE,   /* (Uco n) — couniverse at integer level */
-  AST_TT_ID,           /* (Id A a b) — identity type */
-  AST_TT_REFL,         /* (refl a) — reflexivity witness */
-  AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
-  AST_TT_COINDUCTIVE,  /* (Coinductive name dtors...) — coinductive decl */
-  AST_TT_ANNOT,        /* (: term type) — type annotation, stored only */
+  AST_TT_PI,          /* (Pi (x A) B) — dependent function type */
+  AST_TT_SIGMA,       /* (Sigma (x A) B) — dependent pair type */
+  AST_TT_APP,         /* (@ f a) — explicit application form */
+  AST_TT_SUM,         /* (Sum A B) — coproduct type */
+  AST_TT_UNIVERSE,    /* (U n) — universe at integer level */
+  AST_TT_COUNIVERSE,  /* (Uco n) — couniverse at integer level */
+  AST_TT_ID,          /* (Id A a b) — identity type */
+  AST_TT_REFL,        /* (refl a) — reflexivity witness */
+  AST_TT_INDUCTIVE,   /* (Inductive name ctors...) — inductive decl */
+  AST_TT_COINDUCTIVE, /* (Coinductive name dtors...) — coinductive decl */
+  AST_TT_ANNOT,       /* (: term type) — type annotation, stored only */
   /* ----- Context layer (still no checking) -----
    * Stratified along the couniverse hierarchy from your proposal:
    *   Uco -2 : variables / binding sites
@@ -96,7 +96,13 @@ typedef enum {
   AST_TT_EQUIV,
   AST_TT_TRANSPORT,
   AST_TT_ID_SYM,
-  AST_TT_ID_TRANS
+  AST_TT_ID_TRANS,
+  /* TT-level lambda: (Lambda 'x body). Introduces a function-like
+   * term that the engine can pi-beta-reduce when applied with @.
+   * Distinct from Lisp's (lambda ...) — this lives in the TT layer
+   * as an opaque carrier with a binder name, and the reduce engine
+   * knows that (@ (Lambda 'x b) a) reduces to b[a/x]. */
+  AST_TT_LAMBDA
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -170,20 +176,20 @@ struct lizard_ast_node {
     struct {
       /* Open-addressed hash table with linear probing.
        * `keys[i] == NULL` marks an empty slot. */
-      size_t size;       /* number of live entries */
-      size_t cap;        /* allocated capacity (always a power of two) */
+      size_t size; /* number of live entries */
+      size_t cap;  /* allocated capacity (always a power of two) */
       lizard_ast_node_t **keys;
       lizard_ast_node_t **values;
     } hash;
     struct {
       /* (syntax-rules (literals...) (pattern1 template1) ...) */
-      lz_list_t *literals;   /* list of AST_SYMBOL nodes */
-      lz_list_t *clauses;    /* list of (pattern, template) pairs;
-                                each clause is itself a 2-element list */
+      lz_list_t *literals; /* list of AST_SYMBOL nodes */
+      lz_list_t *clauses;  /* list of (pattern, template) pairs;
+                              each clause is itself a 2-element list */
     } syntax_rules;
     /* ----- Type-theory carriers (no semantic checking) ----- */
     struct {
-      lizard_ast_node_t *binder;     /* AST_SYMBOL, or NULL for ->/non-dep */
+      lizard_ast_node_t *binder; /* AST_SYMBOL, or NULL for ->/non-dep */
       lizard_ast_node_t *domain;
       lizard_ast_node_t *codomain;
     } tt_pi;
@@ -228,17 +234,17 @@ struct lizard_ast_node {
     } tt_annot;
     /* Context layer. */
     struct {
-      lizard_ast_node_t *name;       /* AST_SYMBOL */
-      lizard_ast_node_t *type;       /* any type expression */
+      lizard_ast_node_t *name; /* AST_SYMBOL */
+      lizard_ast_node_t *type; /* any type expression */
     } tt_variable;
     struct {
-      lz_list_t *bindings;           /* list of tt_variable nodes,
-                                        order: leftmost = outermost */
+      lz_list_t *bindings; /* list of tt_variable nodes,
+                              order: leftmost = outermost */
     } tt_context;
     struct {
-      lizard_ast_node_t *source;     /* source context */
-      lizard_ast_node_t *target;     /* target context */
-      lz_list_t *mappings;           /* list of (name . term) pairs */
+      lizard_ast_node_t *source; /* source context */
+      lizard_ast_node_t *target; /* target context */
+      lz_list_t *mappings;       /* list of (name . term) pairs */
     } tt_substitution;
     struct {
       lizard_ast_node_t *context;
@@ -246,22 +252,26 @@ struct lizard_ast_node {
       lizard_ast_node_t *type;
     } tt_judgment;
     struct {
-      lizard_ast_node_t *left;        /* type A */
-      lizard_ast_node_t *right;       /* type B */
-      lizard_ast_node_t *fwd;         /* claimed forward map A -> B */
-      lizard_ast_node_t *bwd;         /* claimed inverse B -> A */
+      lizard_ast_node_t *left;  /* type A */
+      lizard_ast_node_t *right; /* type B */
+      lizard_ast_node_t *fwd;   /* claimed forward map A -> B */
+      lizard_ast_node_t *bwd;   /* claimed inverse B -> A */
     } tt_equiv;
     struct {
-      lizard_ast_node_t *path;        /* an Id proof */
-      lizard_ast_node_t *value;       /* the thing being transported */
+      lizard_ast_node_t *path;  /* an Id proof */
+      lizard_ast_node_t *value; /* the thing being transported */
     } tt_transport;
     struct {
-      lizard_ast_node_t *path;        /* (sym p) reverses an Id proof */
+      lizard_ast_node_t *path; /* (sym p) reverses an Id proof */
     } tt_id_sym;
     struct {
-      lizard_ast_node_t *p;           /* (trans p q) composes two Id proofs */
+      lizard_ast_node_t *p; /* (trans p q) composes two Id proofs */
       lizard_ast_node_t *q;
     } tt_id_trans;
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *body;
+    } tt_lambda;
   } data;
 };
 

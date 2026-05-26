@@ -44,9 +44,11 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "(equivalence A B f g)");
   r = lizard_test_eval(&e, "(equivalence? (equivalence 'A 'B 'f 'g))");
   TEST_ASSERT(lizard_test_is_true(r));
-  r = lizard_test_eval(&e, "(equivalence-fwd (equivalence 'A 'B 'forward 'backward))");
+  r = lizard_test_eval(
+      &e, "(equivalence-fwd (equivalence 'A 'B 'forward 'backward))");
   TEST_ASSERT(lizard_test_is_symbol(r, "forward"));
-  r = lizard_test_eval(&e, "(equivalence-bwd (equivalence 'A 'B 'forward 'backward))");
+  r = lizard_test_eval(
+      &e, "(equivalence-bwd (equivalence 'A 'B 'forward 'backward))");
   TEST_ASSERT(lizard_test_is_symbol(r, "backward"));
 
   /* Composition is just structural — (Id-sym (Id-sym p)) is NOT p,
@@ -55,33 +57,31 @@ int main(void) {
   r = lizard_test_eval(&e, "(Id-sym (Id-sym (refl 'a)))");
   TEST_ASSERT_STR(lizard_test_format(r), "(Id-sym (Id-sym (refl a)))");
   /* Symmetry reaches in twice — that's the depth, opaque. */
-  r = lizard_test_eval(&e, "(Id-sym? (Id-sym-path (Id-sym (Id-sym (refl 'a)))))");
+  r = lizard_test_eval(&e,
+                       "(Id-sym? (Id-sym-path (Id-sym (Id-sym (refl 'a)))))");
   TEST_ASSERT(lizard_test_is_true(r));
 
   /* Sketching the J-rule eliminator pattern as a dispatcher. The
      real J rule says: to define something for all (p : Id A a b),
      it suffices to define it for refl. We're not implementing it,
      just showing the dispatch shape. */
-  lizard_test_eval(&e,
-                   "(define (J-shape p on-refl on-sym on-trans on-other)"
-                   "  (cond ((refl? p)     (on-refl p))"
-                   "        ((Id-sym? p)   (on-sym p))"
-                   "        ((Id-trans? p) (on-trans p))"
-                   "        (else          (on-other p))))");
-  r = lizard_test_eval(&e,
-                       "(J-shape (refl 'x)"
-                       "  (lambda (p) 'is-refl)"
-                       "  (lambda (p) 'is-sym)"
-                       "  (lambda (p) 'is-trans)"
-                       "  (lambda (p) 'other))");
+  lizard_test_eval(&e, "(define (J-shape p on-refl on-sym on-trans on-other)"
+                       "  (cond ((refl? p)     (on-refl p))"
+                       "        ((Id-sym? p)   (on-sym p))"
+                       "        ((Id-trans? p) (on-trans p))"
+                       "        (else          (on-other p))))");
+  r = lizard_test_eval(&e, "(J-shape (refl 'x)"
+                           "  (lambda (p) 'is-refl)"
+                           "  (lambda (p) 'is-sym)"
+                           "  (lambda (p) 'is-trans)"
+                           "  (lambda (p) 'other))");
   TEST_ASSERT(lizard_test_is_symbol(r, "is-refl"));
 
-  r = lizard_test_eval(&e,
-                       "(J-shape (Id-sym (refl 'x))"
-                       "  (lambda (p) 'is-refl)"
-                       "  (lambda (p) 'is-sym)"
-                       "  (lambda (p) 'is-trans)"
-                       "  (lambda (p) 'other))");
+  r = lizard_test_eval(&e, "(J-shape (Id-sym (refl 'x))"
+                           "  (lambda (p) 'is-refl)"
+                           "  (lambda (p) 'is-sym)"
+                           "  (lambda (p) 'is-trans)"
+                           "  (lambda (p) 'other))");
   TEST_ASSERT(lizard_test_is_symbol(r, "is-sym"));
 
   lizard_test_env_destroy(&e);

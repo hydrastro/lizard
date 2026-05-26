@@ -16,8 +16,8 @@ int main(void) {
 
   /* Universes. */
   r = lizard_test_eval(&e, "(U 0)");
-  TEST_ASSERT(lizard_test_is_symbol(lizard_test_eval(&e, "(type-of (U 0))"),
-                                    "U"));
+  TEST_ASSERT(
+      lizard_test_is_symbol(lizard_test_eval(&e, "(type-of (U 0))"), "U"));
   TEST_ASSERT_STR(lizard_test_format(r), "(U 0)");
   r = lizard_test_eval(&e, "(U-level (U 7))");
   TEST_ASSERT(lizard_test_is_int(r, 7));
@@ -33,7 +33,7 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, -2));
   r = lizard_test_eval(&e, "(Uco? (Uco -1))");
   TEST_ASSERT(lizard_test_is_true(r));
-  r = lizard_test_eval(&e, "(U? (Uco 0))");   /* a couniverse is not a universe */
+  r = lizard_test_eval(&e, "(U? (Uco 0))"); /* a couniverse is not a universe */
   TEST_ASSERT(lizard_test_is_false(r));
 
   /* Pi — dependent function type. */
@@ -105,13 +105,13 @@ int main(void) {
   r = lizard_test_eval(&e, "(Inductive-name (Inductive 'Bool 'true 'false))");
   TEST_ASSERT(lizard_test_is_symbol(r, "Bool"));
   /* Constructor list. */
-  r = lizard_test_eval(&e,
-                       "(Inductive-constructors (Inductive 'Bool 'true 'false))");
+  r = lizard_test_eval(
+      &e, "(Inductive-constructors (Inductive 'Bool 'true 'false))");
   TEST_ASSERT_STR(lizard_test_format(r), "(true false)");
 
   /* Coinductive. */
-  r = lizard_test_eval(&e,
-                       "(Coinductive 'Stream (list 'head 'A) (list 'tail 'StreamA))");
+  r = lizard_test_eval(
+      &e, "(Coinductive 'Stream (list 'head 'A) (list 'tail 'StreamA))");
   TEST_ASSERT(lizard_test_is_symbol(
       lizard_test_eval(&e, "(Coinductive-name (Coinductive 'Stream))"),
       "Stream"));
@@ -144,19 +144,19 @@ int main(void) {
 
   /* The forms are first-class values: you can store them in lists,
      pass them to procedures, pattern-match on them. */
-  r = lizard_test_eval(&e,
-                       "(define ts (list (U 0) (Pi 'x 'A 'B) (Sum 'X 'Y)))"
-                       "(define (length xs) (if (null? xs) 0 (+ 1 (length (cdr xs)))))"
-                       "(length ts)");
+  r = lizard_test_eval(
+      &e, "(define ts (list (U 0) (Pi 'x 'A 'B) (Sum 'X 'Y)))"
+          "(define (length xs) (if (null? xs) 0 (+ 1 (length (cdr xs)))))"
+          "(length ts)");
   TEST_ASSERT(lizard_test_is_int(r, 3));
 
   /* A small piece of metaprogramming: rename every Pi to Sigma in a list. */
-  r = lizard_test_eval(&e,
-                       "(define (pi->sigma t)"
-                       "  (if (Pi? t)"
-                       "      (Sigma (Pi-binder t) (Pi-domain t) (Pi-codomain t))"
-                       "      t))"
-                       "(Sigma? (pi->sigma (Pi 'x 'A 'B)))");
+  r = lizard_test_eval(
+      &e, "(define (pi->sigma t)"
+          "  (if (Pi? t)"
+          "      (Sigma (Pi-binder t) (Pi-domain t) (Pi-codomain t))"
+          "      t))"
+          "(Sigma? (pi->sigma (Pi 'x 'A 'B)))");
   TEST_ASSERT(lizard_test_is_true(r));
 
   lizard_test_env_destroy(&e);

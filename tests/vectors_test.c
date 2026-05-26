@@ -46,10 +46,9 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 30));
 
   /* Mutation. */
-  r = lizard_test_eval(&e,
-                       "(define v (vector 1 2 3 4 5))"
-                       "(vector-set! v 2 999)"
-                       "(vector-ref v 2)");
+  r = lizard_test_eval(&e, "(define v (vector 1 2 3 4 5))"
+                           "(vector-set! v 2 999)"
+                           "(vector-ref v 2)");
   TEST_ASSERT(lizard_test_is_int(r, 999));
 
   r = lizard_test_eval(&e, "v");
@@ -64,18 +63,16 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "#()");
 
   /* Round-trip through both directions. */
-  r = lizard_test_eval(&e,
-                       "(vector-length (list->vector"
-                       "  (vector->list (vector 1 2 3 4 5 6 7 8 9 10))))");
+  r = lizard_test_eval(&e, "(vector-length (list->vector"
+                           "  (vector->list (vector 1 2 3 4 5 6 7 8 9 10))))");
   TEST_ASSERT(lizard_test_is_int(r, 10));
 
   /* Vectors as a backing store for accumulator. */
-  r = lizard_test_eval(&e,
-                       "(define acc (make-vector 1 0))"
-                       "(define (bump!)"
-                       "  (vector-set! acc 0 (+ (vector-ref acc 0) 1)))"
-                       "(bump!) (bump!) (bump!) (bump!) (bump!)"
-                       "(vector-ref acc 0)");
+  r = lizard_test_eval(&e, "(define acc (make-vector 1 0))"
+                           "(define (bump!)"
+                           "  (vector-set! acc 0 (+ (vector-ref acc 0) 1)))"
+                           "(bump!) (bump!) (bump!) (bump!) (bump!)"
+                           "(vector-ref acc 0)");
   TEST_ASSERT(lizard_test_is_int(r, 5));
 
   /* Vectors can hold mixed types. */

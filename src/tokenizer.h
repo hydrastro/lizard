@@ -26,7 +26,8 @@ typedef struct lizard_token_list_node {
 } lizard_token_list_node_t;
 
 bool lizard_is_digit(const char *input, int i);
-void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type, char *data);
+void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
+                      char *data);
 lz_list_t *lizard_tokenize(const char *input);
 void lizard_free_tokens(lz_list_t *token_list);
 

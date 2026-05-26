@@ -56,9 +56,8 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "(a 1 2 3 b)");
 
   /* Two splices in one quasiquote. */
-  r = lizard_test_eval(&e,
-                       "(define ys '(1 2)) (define zs '(8 9))"
-                       "`(,@ys mid ,@zs)");
+  r = lizard_test_eval(&e, "(define ys '(1 2)) (define zs '(8 9))"
+                           "`(,@ys mid ,@zs)");
   TEST_ASSERT_STR(lizard_test_format(r), "(1 2 mid 8 9)");
 
   /* Unquote of an expression, not just a variable. */
@@ -74,21 +73,18 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "(a p q r b)");
 
   /* Quasiquote with no unquotes inside a macro body. */
-  r = lizard_test_eval(&e,
-                       "(define-syntax greet (lambda () '(hello world)))"
-                       "(greet)");
+  r = lizard_test_eval(&e, "(define-syntax greet (lambda () '(hello world)))"
+                           "(greet)");
   TEST_ASSERT_STR(lizard_test_format(r), "(hello world)");
 
   /* Macro using quasiquote that substitutes its argument. */
-  r = lizard_test_eval(&e,
-                       "(define-syntax twice (lambda (x) `(* 2 ,x)))"
-                       "(twice 21)");
+  r = lizard_test_eval(&e, "(define-syntax twice (lambda (x) `(* 2 ,x)))"
+                           "(twice 21)");
   TEST_ASSERT(lizard_test_is_int(r, 42));
 
   /* Macro that builds a function call from a list-shaped argument. */
-  r = lizard_test_eval(&e,
-                       "(define-syntax pair (lambda (a b) `(cons ,a ,b)))"
-                       "(pair 1 2)");
+  r = lizard_test_eval(&e, "(define-syntax pair (lambda (a b) `(cons ,a ,b)))"
+                           "(pair 1 2)");
   TEST_ASSERT_STR(lizard_test_format(r), "(1 . 2)");
 
   /* Macro expanding to an if. */
@@ -98,18 +94,16 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_symbol(r, "fire"));
 
   /* Macro expanding to a lambda. */
-  r = lizard_test_eval(&e,
-                       "(define-syntax make-doubler"
-                       "  (lambda () `(lambda (x) (* x 2))))"
-                       "((make-doubler) 21)");
+  r = lizard_test_eval(&e, "(define-syntax make-doubler"
+                           "  (lambda () `(lambda (x) (* x 2))))"
+                           "((make-doubler) 21)");
   TEST_ASSERT(lizard_test_is_int(r, 42));
 
   /* The classic let-via-macro pattern. */
-  r = lizard_test_eval(&e,
-                       "(define-syntax bind"
-                       "  (lambda (name value body)"
-                       "    `(let ((,name ,value)) ,body)))"
-                       "(bind n 10 (* n n))");
+  r = lizard_test_eval(&e, "(define-syntax bind"
+                           "  (lambda (name value body)"
+                           "    `(let ((,name ,value)) ,body)))"
+                           "(bind n 10 (* n n))");
   TEST_ASSERT(lizard_test_is_int(r, 100));
 
   lizard_test_env_destroy(&e);

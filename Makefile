@@ -42,7 +42,7 @@ CPPFLAGS += -I$(INC_DIR) -I$(SRC_DIR)
 LDLIBS   ?= -lds -lgmp
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := lizard env mem parser primitives tokenizer printer
+LIB_SRCS := lizard env mem parser primitives tokenizer printer tt_equality
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------

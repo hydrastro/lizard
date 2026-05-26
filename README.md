@@ -35,6 +35,16 @@ sketched, walked, and pattern-matched on. They are notation, not
 verification. Building a real type checker for any of this is a
 separate project; this codebase does not contain one.
 
+**One exception: the computational identity engine.** Lizard does
+implement a real judgmental equality decision procedure for the
+identity-type fragment (`refl`, `Id-sym`, `Id-trans`, `transport`,
+their interactions). For *this fragment*, `(equal? a b)` decides
+whether two terms are judgmentally equal by running rewrite rules to
+normal form. Each rule is gated by a flag, so the rule set is
+pluggable. This is the smallest piece of a HoTT-style type theory
+that contains real computational content. See the "Computational
+identity" section below.
+
 ## Layout
 
 ```
@@ -56,7 +66,7 @@ separate project; this codebase does not contain one.
 ├── tests/
 │   ├── test_harness.h        TEST_ASSERT / TEST_ASSERT_EQ / TEST_ASSERT_STR.
 │   ├── test_helpers.{h,c}    Façade for C unit tests.
-│   ├── *_test.c              22 C-level tests linked against liblizard.a.
+│   ├── *_test.c              23 C-level tests linked against liblizard.a.
 │   └── *.lisp + *.expected   4 golden-output end-to-end tests.
 ├── examples/
 │   ├── 01-basics.lisp … 19-type-theory.lisp
@@ -381,6 +391,166 @@ The constructor and destructor specs are stored opaquely. Accessors:
 A way to write down a type claim about a term as a value. Not
 checked. Accessors: `annot-term`, `annot-type`.
 
+# Computational identity — a real engine
+
+This is the part of lizard that does genuine work beyond notation.
+It is a **judgmental equality engine** for the identity-type fragment.
+
+```scheme
+(reduce t)        ; Normalize t under the identity rewrite rules.
+(equal? a b)      ; Decide judgmental equality: reduce both, compare.
+```
+
+The built-in rewrite rules:
+
+```
+sym(refl_a)              -->  refl_a
+sym(sym(p))              -->  p
+trans(refl_a, p)         -->  p
+trans(p, refl_a)         -->  p
+trans(refl_a, sym(refl_a)) -->  refl_a    (* via trans-refl-l + sym-refl *)
+trans(trans(p,q), r)     -->  trans(p, trans(q,r))
+transport(refl_a, x)     -->  x
+(@ (Lambda 'x b) a)      -->  b[a/x]      (* pi-beta, capture-avoiding *)
+```
+
+Plus structural recursion — rules apply inside subterms (including
+inside `Pi`, `Sigma`, `Id`, `App`, `Sum`, `Lambda` containers) before
+being applied at the head. The system is terminating (a lexicographic
+measure on (node-count, left-weight) strictly decreases on every
+step) and confluent on this fragment (critical pairs close).
+
+### Computational lambda calculus
+
+The TT layer has its own lambda calculus, separate from Lisp's. The
+constructor is `(Lambda 'x body)`. The reducer fires pi-beta with
+capture-avoiding substitution:
+
+```scheme
+(reduce (@ (Lambda 'x 'x) 'a))         ; => a
+(reduce (@ (Lambda 'x (refl 'x)) 'q))  ; => (refl q)
+
+;; Two-stage beta
+(reduce (@ (@ (Lambda 'f (Lambda 'x (@ 'f 'x)))
+              (Lambda 'y 'y))
+           'q))                        ; => q
+
+;; Capture avoidance — the inner binder gets alpha-renamed when
+;; substitution would otherwise capture
+(reduce (@ (Lambda 'y (Lambda 'x 'y)) 'x))
+;; => (Lambda x_N x), where x_N is fresh
+```
+
+### Alpha-equivalence
+
+`equal?` compares terms modulo renaming of bound variables. Free
+variables stay distinguished:
+
+```scheme
+(equal? (Pi 'x 'A 'x) (Pi 'y 'A 'y))   ; => #t  — both bind codomain
+(equal? (Pi 'x 'A 'x) (Pi 'x 'A 'y))   ; => #f  — y is free
+(equal? (Lambda 'x 'x) (Lambda 'y 'y)) ; => #t
+(equal? (Pi 'x 'A (Pi 'y 'B 'x))
+        (Pi 'a 'A (Pi 'b 'B 'a)))      ; => #t  — nested binders
+
+### Engine architecture
+
+The reducer uses **bottom-up normalization with memoization**:
+
+1. Recursively normalize all subterms exactly once.
+2. Apply head rewrites until none fire. Each rewrite may produce
+   new subterms; recursively normalize those.
+3. Cache `t → normal_form(t)` in a per-call hash table so that
+   structurally-equal subterms sharing a pointer reduce once.
+
+This is O(node-count × rule-depth) — effectively linear for typical
+workloads. A workload that previously OOMed (10,000 nested syms,
+100 equal? calls) now runs in 220ms. A 5,000-sym chain plus 500
+left-associated trans plus 10,000 equal? calls plus a 100,000-step
+tail loop runs the whole `examples/22-benchmarks.lisp` in 220ms.
+
+### Limitations
+
+The engine is **stack-bound**: `normalize_rec` is recursive in
+subterm depth, so chains deeper than ~30,000 nodes overflow the C
+stack. An iterative work-stack version would lift this; not done
+yet. For practical use the limit is well above anything you'd
+construct by hand.
+
+**Now implemented:** alpha-equivalence (de-Bruijn-style binder
+comparison) and pi-beta reduction (capture-avoiding substitution
+with fresh-name generation when needed).
+
+**Not yet implemented:** Sigma projections (`pi_1`, `pi_2` don't
+reduce on pairs), J-rule reduction on refl, universe-level
+arithmetic, congruence under arbitrary App.
+
+## Pluggable rules — the flag system
+
+Every reduction rule is gated by a flag. Flags are global, named by
+symbol, boolean-valued:
+
+```scheme
+(flag-get 'reduce-sym-involutive)     ; #t (default)
+(flag-set! 'reduce-sym-involutive #f) ; turn the rule off
+(flag-list)                           ; list all registered flags
+```
+
+The flags currently defined:
+
+| Flag | Effect |
+|---|---|
+| `reduce-sym-refl` | `sym(refl) -> refl` |
+| `reduce-sym-involutive` | `sym(sym(p)) -> p` |
+| `reduce-trans-refl-l` | `trans(refl, p) -> p` |
+| `reduce-trans-refl-r` | `trans(p, refl) -> p` |
+| `reduce-trans-inverse` | `trans(refl_a, sym(refl_a)) -> refl_a` (subsumed by trans-refl-l + sym-refl) |
+| `reduce-trans-assoc` | `trans(trans(p,q),r) -> trans(p, trans(q,r))` |
+| `reduce-transport-refl` | `transport(refl, x) -> x` |
+| `reduce-pi-beta` | `(@ (Lambda 'x b) a) -> b[a/x]` |
+| `reduce-structural` | apply rules inside subterms |
+
+With a flag off, the corresponding rule does not fire, and `equal?`
+will not equate terms that differ along that rule. This makes
+different rule subsets behave like different theories — the
+beginnings of a lambda-cube-style modularity.
+
+## What this engine is NOT
+
+I want to be explicit because the surface looks more impressive than
+the contents are.
+
+- **It is not a type checker.** Nothing verifies that the `p` in
+  `(Id-sym p)` is actually an identity proof. The engine is conversion
+  only — given two terms (well-typed or not), it decides whether they
+  reduce to the same normal form.
+- **It covers only the identity-type fragment.** Pi and Sigma do not
+  reduce. Applications do not beta-reduce. Universes are compared
+  structurally only. The fragment is the part that matters for HoTT's
+  identity-type story, but the rest of HoTT isn't here.
+- **It is not alpha-equivalent.** Terms with bound variables under
+  different names compare unequal. A proper implementation would use
+  de Bruijn levels; this one doesn't yet.
+- **It does not check well-formedness, well-typing, or anything else
+  about the input.** Garbage in, structurally-reduced garbage out.
+
+## Extending the engine
+
+Adding a new rewrite rule is a small, scoped task. The location is
+`src/tt_equality.c`. The steps:
+
+1. Add a flag in `lizard_tt_flags_init`.
+2. Add a case in `lizard_tt_step` that checks the flag and applies
+   the rule, returning the rewritten term and setting `*changed = 1`.
+3. Verify termination — the lexicographic measure must still
+   decrease.
+4. Verify confluence — check critical pairs against existing rules.
+5. Write a test in `tests/tt_equality_test.c`.
+
+This is the **extension point** for adding more computational
+content. The architecture is intentionally small so you can read all
+of it.
+
 # Context layer — couniverse-stratified
 
 This is the part of the playground designed to make the
@@ -482,10 +652,11 @@ project and is not what lizard is.
 
 ```
 $ make test
-22/22 C tests passing
+23/23 C tests passing
   arith bignum closures control deep_recursion errors exceptions
   fastprims hashes higher_order lambda lists macros quasiquote
-  reflection strings syntax_rules tco tt tt_context varargs vectors
+  reflection strings syntax_rules tco tt tt_context tt_equality
+  tt_identity varargs vectors
 4/4 Lisp golden tests passing
   bignum_smoke error_propagation qsort scripting
 All tests passed.
@@ -493,7 +664,7 @@ All tests passed.
 
 # Examples
 
-19 self-contained example files in `examples/`, all of which run
+23 self-contained example files in `examples/`, all of which run
 under lizard:
 
 - **01–06** basics, recursion, lists, macros, control flow, scripting
@@ -509,6 +680,12 @@ under lizard:
 - **18** the "extreme" example combining varargs, vectors, hash
   tables, exceptions, and gensym
 - **19** the type-theory notation playground
+- **20** identity manipulation notation (no engine)
+- **21** computational identity — the engine actually deciding
+  judgmental equality on the identity fragment
+- **22** performance benchmarks — exercises both evaluator and engine
+- **23** pi-beta reduction, alpha-equivalence, capture-avoidance,
+  Church booleans — lambda calculus in the engine
 
 # Contributing
 

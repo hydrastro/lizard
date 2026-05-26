@@ -37,30 +37,26 @@ int main(void) {
   TEST_ASSERT(lizard_test_is_int(r, 1024));
 
   /* HEADLINE BUG: (* x 2) must not rewrite x. */
-  r = lizard_test_eval(&e,
-                       "(define x 5)"
-                       "(* x 2)"
-                       "x");
+  r = lizard_test_eval(&e, "(define x 5)"
+                           "(* x 2)"
+                           "x");
   TEST_ASSERT(lizard_test_is_int(r, 5));
 
-  r = lizard_test_eval(&e,
-                       "(define y 10)"
-                       "(- y 3)"
-                       "y");
+  r = lizard_test_eval(&e, "(define y 10)"
+                           "(- y 3)"
+                           "y");
   TEST_ASSERT(lizard_test_is_int(r, 10));
 
-  r = lizard_test_eval(&e,
-                       "(define z 100)"
-                       "(/ z 4)"
-                       "z");
+  r = lizard_test_eval(&e, "(define z 100)"
+                           "(/ z 4)"
+                           "z");
   TEST_ASSERT(lizard_test_is_int(r, 100));
 
   /* set! still mutates. */
-  r = lizard_test_eval(&e,
-                       "(define n 1)"
-                       "(set! n (+ n 1))"
-                       "(set! n (* n 5))"
-                       "n");
+  r = lizard_test_eval(&e, "(define n 1)"
+                           "(set! n (+ n 1))"
+                           "(set! n (* n 5))"
+                           "n");
   TEST_ASSERT(lizard_test_is_int(r, 10));
 
   /* Division by zero surfaces as an error. */

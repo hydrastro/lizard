@@ -45,12 +45,11 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "(a (b c) d)");
 
   /* User-defined map. */
-  r = lizard_test_eval(&e,
-                       "(define (my-map f xs)"
-                       "  (if (null? xs)"
-                       "      '()"
-                       "      (cons (f (car xs)) (my-map f (cdr xs)))))"
-                       "(my-map (lambda (x) (* x x)) '(1 2 3 4 5))");
+  r = lizard_test_eval(&e, "(define (my-map f xs)"
+                           "  (if (null? xs)"
+                           "      '()"
+                           "      (cons (f (car xs)) (my-map f (cdr xs)))))"
+                           "(my-map (lambda (x) (* x x)) '(1 2 3 4 5))");
   TEST_ASSERT_STR(lizard_test_format(r), "(1 4 9 16 25)");
 
   lizard_test_env_destroy(&e);
