@@ -67,15 +67,43 @@ lz_list_t *lizard_tokenize(const char *input) {
       j = i;
       i++;
       while (input[i] != '"' && input[i] != '\0') {
-        i++;
+        /* Skip over an escaped character so \" doesn't close the
+           string. The actual escape decoding happens during copy. */
+        if (input[i] == '\\' && input[i + 1] != '\0') {
+          i += 2;
+        } else {
+          i++;
+        }
       }
       if (input[i] == '\0') {
         fprintf(stderr, "Error: unterminated string.\n");
         exit(1);
       }
+      /* Decoded length is at most (i - j - 1); we'll \0-terminate. */
       buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j));
-      for (k = 0, j++; j < i; j++, k++) {
-        buffer[k] = input[j];
+      k = 0;
+      j++; /* step over the opening " */
+      while (j < i) {
+        char c = input[j];
+        if (c == '\\' && j + 1 < i) {
+          char esc = input[j + 1];
+          switch (esc) {
+          case 'n':  buffer[k++] = '\n'; break;
+          case 't':  buffer[k++] = '\t'; break;
+          case 'r':  buffer[k++] = '\r'; break;
+          case '\\': buffer[k++] = '\\'; break;
+          case '"':  buffer[k++] = '"';  break;
+          case '0':  buffer[k++] = '\0'; break;
+          default:
+            /* unknown escape — keep the literal character */
+            buffer[k++] = esc;
+            break;
+          }
+          j += 2;
+        } else {
+          buffer[k++] = c;
+          j++;
+        }
       }
       buffer[k] = '\0';
       lizard_add_token(list, TOKEN_STRING, buffer);

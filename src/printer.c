@@ -256,6 +256,34 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
   case AST_PRIMITIVE:
     fprintf(fp, "<primitive>");
     return;
+  case AST_VECTOR: {
+    size_t i;
+    fprintf(fp, "#(");
+    for (i = 0; i < node->data.vector.size; i++) {
+      if (i > 0) fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.vector.elements[i]);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_HASH: {
+    size_t i;
+    int first = 1;
+    fprintf(fp, "#hash(");
+    for (i = 0; i < node->data.hash.cap; i++) {
+      if (node->data.hash.keys[i] != NULL) {
+        if (!first) fprintf(fp, " ");
+        first = 0;
+        fprintf(fp, "(");
+        lizard_fprint_value(fp, node->data.hash.keys[i]);
+        fprintf(fp, " . ");
+        lizard_fprint_value(fp, node->data.hash.values[i]);
+        fprintf(fp, ")");
+      }
+    }
+    fprintf(fp, ")");
+    return;
+  }
   case AST_MACRO:
     fprintf(fp, "<macro>");
     return;

@@ -102,6 +102,100 @@ lizard_ast_node_t *lizard_primitive_square(lz_list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_modexpt(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 
+/* Reflection / introspection. */
+lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_env_keys(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_definedp(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_proc_arity(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+
+/* String operations. */
+lizard_ast_node_t *lizard_primitive_str_length(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_str_append(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_substring(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_str_eq(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_num_to_str(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_str_to_num(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_sym_to_str(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_str_to_sym(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+
+/* Exception handling. */
+lizard_ast_node_t *lizard_primitive_raise(lz_list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_try(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_error_objp(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_error_value(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap);
+
+/* Vectors. */
+lizard_ast_node_t *lizard_primitive_make_vector(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vector(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vectorp(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vec_length(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vec_ref(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vec_set(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_vec_to_list(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_list_to_vec(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+
+/* Hash tables. */
+lizard_ast_node_t *lizard_primitive_make_hash(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hashp(lz_list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_set(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_ref(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_has(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_size(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_keys(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap);
+
 lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,

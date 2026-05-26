@@ -55,8 +55,12 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         ast_node->type = AST_QUOTE;
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
-        ast_node->data.quoted = lizard_parse_expression(
-            token_list, current_node_pointer, depth, heap);
+        /* Quoted payload is data, not code — use the datum reader so
+           (let ...), (if ...) etc. inside a quote stay as plain
+           pair-chains rather than being pre-specialized into
+           AST_LAMBDA / AST_IF. */
+        ast_node->data.quoted = lizard_parse_datum(token_list,
+                                                  current_node_pointer, heap);
         current_node = *current_node_pointer;
 
         *current_node_pointer = current_node->next;
@@ -477,6 +481,59 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
 
         return app_node;
 
+      } else if (strcmp(current_token->data.symbol, "syntax-rules") == 0) {
+        /* (syntax-rules (literal...) (pattern template) ...)
+         *
+         * Parse the literals list and the clauses as DATA (so let,
+         * if, etc. inside templates aren't pre-specialized into
+         * AST_LAMBDA / AST_IF), then store them in an
+         * AST_SYNTAX_RULES node. The macro expander will run
+         * pattern matching directly on the resulting pair-chains. */
+        lz_list_t *literals;
+        lz_list_t *clauses;
+        lizard_ast_node_t *literals_datum;
+        lizard_ast_node_t *cur_lit;
+        *current_node_pointer = current_node->next;
+        current_node = *current_node_pointer;
+        /* literals list */
+        literals_datum = lizard_parse_datum(token_list, current_node_pointer,
+                                            heap);
+        literals = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+        for (cur_lit = literals_datum; cur_lit && cur_lit->type == AST_PAIR;
+             cur_lit = cur_lit->data.pair.cdr) {
+          lizard_ast_list_node_t *wrap =
+              lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+          wrap->ast = cur_lit->data.pair.car;
+          list_append(literals, &wrap->node);
+        }
+        /* clauses */
+        clauses = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+        current_node = *current_node_pointer;
+        while (current_node != token_list->nil &&
+               CAST(current_node, lizard_token_list_node_t)->token.type !=
+                   TOKEN_RIGHT_PAREN) {
+          lizard_ast_node_t *clause_datum;
+          lizard_ast_list_node_t *wrap;
+          clause_datum = lizard_parse_datum(token_list, current_node_pointer,
+                                            heap);
+          wrap = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+          wrap->ast = clause_datum;
+          list_append(clauses, &wrap->node);
+          current_node = *current_node_pointer;
+        }
+        if (current_node == token_list->nil ||
+            CAST(current_node, lizard_token_list_node_t)->token.type !=
+                TOKEN_RIGHT_PAREN) {
+          fprintf(stderr, "Error: missing closing paren in syntax-rules.\n");
+          exit(1);
+        }
+        *current_node_pointer = current_node->next;
+        *depth -= 1;
+        ast_node->type = AST_SYNTAX_RULES;
+        ast_node->data.syntax_rules.literals = literals;
+        ast_node->data.syntax_rules.clauses = clauses;
+        return ast_node;
+
       } else if (strcmp(current_token->data.symbol, "define-syntax") == 0) {
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -622,8 +679,10 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
       ast_node->type = AST_QUOTE;
-      ast_node->data.quoted = lizard_parse_expression(
-          token_list, current_node_pointer, depth, heap);
+      /* Preserve structure of quoted forms; see the (quote …) path
+         in lizard_parse_expression for the same reasoning. */
+      ast_node->data.quoted = lizard_parse_datum(token_list,
+                                                 current_node_pointer, heap);
     } else if (strcmp(current_token->data.symbol, "`") == 0) {
       *current_node_pointer = current_node->next;
       current_node = current_node->next;
@@ -688,6 +747,126 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
   }
 
   return ast_node;
+}
+
+/* Non-specializing parser for s-expression "datum" context.
+ *
+ * Unlike lizard_parse_expression, this reads (a b c) as a proper
+ * pair-chain of AST_PAIR / AST_NIL — never AST_LAMBDA, AST_IF, AST_LET
+ * etc., regardless of head symbol. Used for quoted and syntax-rules
+ * payloads so the underlying structure is preserved for pattern
+ * matching and substitution.
+ *
+ * Side effect: advances *cur past the datum it consumed.
+ */
+lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
+                                      lz_list_node_t **cur,
+                                      lizard_heap_t *heap) {
+  lizard_token_t *tok;
+  lizard_ast_node_t *node;
+  if (*cur == token_list->nil) {
+    fprintf(stderr, "Error: unexpected EOF in datum.\n");
+    exit(1);
+  }
+  tok = &CAST(*cur, lizard_token_list_node_t)->token;
+  if (tok->type == TOKEN_LEFT_PAREN) {
+    /* Build a pair chain. */
+    lizard_ast_node_t *head;
+    lizard_ast_node_t **tail_slot;
+    *cur = (*cur)->next;
+    head = lizard_make_nil(heap);
+    tail_slot = &head;
+    while (*cur != token_list->nil) {
+      tok = &CAST(*cur, lizard_token_list_node_t)->token;
+      if (tok->type == TOKEN_RIGHT_PAREN) {
+        *cur = (*cur)->next;
+        return head;
+      }
+      {
+        lizard_ast_node_t *elem;
+        lizard_ast_node_t *pair;
+        elem = lizard_parse_datum(token_list, cur, heap);
+        pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        pair->type = AST_PAIR;
+        pair->data.pair.car = elem;
+        pair->data.pair.cdr = lizard_make_nil(heap);
+        *tail_slot = pair;
+        tail_slot = &pair->data.pair.cdr;
+      }
+    }
+    fprintf(stderr, "Error: missing closing paren in datum.\n");
+    exit(1);
+  }
+  /* atom */
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  switch (tok->type) {
+  case TOKEN_NUMBER:
+    node->type = AST_NUMBER;
+    mpz_init(node->data.number);
+    mpz_set(node->data.number, tok->data.number);
+    *cur = (*cur)->next;
+    return node;
+  case TOKEN_STRING:
+    node->type = AST_STRING;
+    node->data.string = tok->data.string;
+    *cur = (*cur)->next;
+    return node;
+  case TOKEN_SYMBOL:
+    /* Handle prefix readers — 'x, `x, ,x, ,@x — so they expand into
+       proper (quote x) / (quasiquote x) / (unquote x) /
+       (unquote-splicing x) datums. */
+    if (strcmp(tok->data.symbol, "'") == 0 ||
+        strcmp(tok->data.symbol, "`") == 0 ||
+        strcmp(tok->data.symbol, ",") == 0 ||
+        strcmp(tok->data.symbol, ",@") == 0) {
+      const char *prefix = tok->data.symbol;
+      lizard_ast_node_t *tag;
+      lizard_ast_node_t *body;
+      lizard_ast_node_t *p1, *p2;
+      *cur = (*cur)->next;
+      body = lizard_parse_datum(token_list, cur, heap);
+      tag = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      tag->type = AST_SYMBOL;
+      if (strcmp(prefix, "'")  == 0) tag->data.variable = "quote";
+      if (strcmp(prefix, "`")  == 0) tag->data.variable = "quasiquote";
+      if (strcmp(prefix, ",")  == 0) tag->data.variable = "unquote";
+      if (strcmp(prefix, ",@") == 0) tag->data.variable = "unquote-splicing";
+      p2 = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      p2->type = AST_PAIR;
+      p2->data.pair.car = body;
+      p2->data.pair.cdr = lizard_make_nil(heap);
+      p1 = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      p1->type = AST_PAIR;
+      p1->data.pair.car = tag;
+      p1->data.pair.cdr = p2;
+      return p1;
+    }
+    if (strcmp(tok->data.symbol, "#") == 0) {
+      /* #t / #f */
+      lizard_token_t *next;
+      *cur = (*cur)->next;
+      if (*cur == token_list->nil) {
+        fprintf(stderr, "Error: dangling # in datum.\n");
+        exit(1);
+      }
+      next = &CAST(*cur, lizard_token_list_node_t)->token;
+      node->type = AST_BOOL;
+      if (next->type == TOKEN_SYMBOL && strcmp(next->data.symbol, "t") == 0) {
+        node->data.boolean = true;
+      } else {
+        node->data.boolean = false;
+      }
+      *cur = (*cur)->next;
+      return node;
+    }
+    node->type = AST_SYMBOL;
+    node->data.variable = tok->data.symbol;
+    *cur = (*cur)->next;
+    return node;
+  default:
+    fprintf(stderr, "Error: unexpected token in datum.\n");
+    exit(1);
+  }
 }
 
 lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {

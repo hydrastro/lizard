@@ -184,3 +184,319 @@ without the fast primitives still piles up garbage. A real GC
 is the right next investment — generational, with the arena
 becoming the nursery. That's a larger surgery and was deliberately
 kept out of this round so the TCO + fast-prims wins land cleanly.
+
+# Lizard v5 — reflection, types, strings
+
+## Type reflection
+
+```scheme
+(type-of 42)           ; 'number
+(type-of "hi")         ; 'string
+(type-of 'foo)         ; 'symbol
+(type-of '(1 2))       ; 'pair
+(type-of (lambda(x)x)) ; 'procedure
+(type-of +)            ; 'primitive
+(type-of #t)           ; 'boolean
+```
+
+Returns a symbol naming the runtime type. Covers every AST node
+type lizard can produce: number, string, symbol, boolean, nil,
+pair, list, procedure, primitive, macro, quote, quasiquote,
+promise, error, continuation.
+
+## Environment + procedure introspection
+
+```scheme
+(defined? 'my-binding)       ; #t / #f without throwing
+(env-keys)                   ; list of every bound symbol in scope
+(procedure-arity f)          ; number of formal params, or 'variadic
+```
+
+`env-keys` walks every frame from innermost outward; primitives,
+user-defined functions, and macros all appear. `procedure-arity`
+returns a number for lambdas (counting positional params, including
+0 for `(lambda () …)`) and the symbol `'variadic` for C primitives.
+
+## Strings — proper operations, not just opaque blobs
+
+```scheme
+(string-length s)
+(string-append a b ...)          ; n-ary
+(substring s start [end])        ; end defaults to length
+(string=? a b)
+(number->string n)
+(string->number s)               ; -> number, or #f if unparseable
+(symbol->string s)
+(string->symbol s)
+```
+
+The tokenizer also now handles backslash escapes inside string
+literals: `\n` `\t` `\r` `\\` `\"` `\0`. Before this change `"say
+\"hi\""` lex-failed; now it parses to the obvious 9-char string.
+
+## Records, the lisp-y way
+
+No new C — records are tagged conses with a small Lisp protocol:
+
+```scheme
+(define (make-point x y) (make-record 'point (list x y)))
+(define (point-x p) (field-nth p 0))
+(define (point-y p) (field-nth p 1))
+(record? (make-point 3 4))     ; #t
+(record-type (make-point 3 4)) ; 'point
+```
+
+See `examples/15-types.lisp` for the full pattern. Build on
+`record?`, `record-type`, and positional `field-nth` to define any
+record shape you want.
+
+## Pattern dispatch
+
+Lizard doesn't have varargs in lambdas, so there's no `syntax-rules`
+shaped `match` macro yet. `examples/16-match.lisp` shows a runtime
+dispatcher that takes a list of `(tag thunk)` clauses and threads
+into the matching one. The example builds a tiny arithmetic
+AST, an evaluator, and full symbolic differentiation on top of it:
+
+```
+d/dx (3 + 4*x) = (plus (lit 0) (plus (times (lit 0) (var x))
+                                     (times (lit 4) (lit 1))))
+d/dx -(x + 7) evaluates to -1
+```
+
+## New tests
+
+- `tests/reflection_test.c` — every type-of case, defined? for
+  bound/unbound/non-symbol args, env-keys completeness via
+  member-search, procedure-arity for 0/1/N parameters and
+  primitives.
+- `tests/strings_test.c` — length/append/substring/equality,
+  number↔string round-trip, symbol↔string round-trip, bignum→string,
+  out-of-range substring errors.
+
+## New examples
+
+- `examples/15-types.lisp` — reflection, records, an `inspect`
+  function that dispatches on `type-of` and prints type-aware
+  summaries.
+- `examples/16-match.lisp` — pattern dispatcher + symbolic
+  differentiation of `(3 + 4x)`, `x*x`, `-(x+7)`.
+- `examples/17-strings.lisp` — string manipulation, conversions,
+  string-reverse via recursive substring, formatted output helper.
+
+## Scoreboard
+
+```
+$ make test
+15/15 C tests passing  (arith, bignum, closures, control,
+                        deep_recursion, errors, fastprims,
+                        higher_order, lambda, lists, macros,
+                        quasiquote, reflection, strings, tco)
+4/4  Lisp golden tests passing
+All tests passed.
+```
+
+# Lizard v6 — varargs, exceptions, vectors, hashes (extreme edition)
+
+This release adds four major language features and tightens error
+semantics so they all compose cleanly.
+
+## Varargs lambdas
+
+```scheme
+(define sum (lambda xs
+  (define (loop ys acc)
+    (if (null? ys) acc (loop (cdr ys) (+ acc (car ys)))))
+  (loop xs 0)))
+
+(sum)                  ; 0
+(sum 1 2 3 4 5)        ; 15
+(sum 1 2 3 4 5 6 7 8 9 10)  ; 55
+```
+
+When a `lambda`'s parameter spec is a single symbol instead of a list,
+the symbol is bound to a list of *all* the call arguments. This is the
+R5RS "rest" form and unlocks `(define (count . xs) ...)`-style
+patterns. Implemented at both eval-time and `lizard_apply` call sites.
+
+Dotted-pair varargs `(lambda (a b . rest) ...)` is not yet supported —
+that would need new tokenizer support for `.`.
+
+## Exceptions: try / raise / error-object? / error-value
+
+```scheme
+(define (safe-div a b)
+  (try (lambda () (/ a b))
+       (lambda (err)
+         (display "caught: ") (display (error-value err)) (newline)
+         0)))
+
+(safe-div 10 2)   ; 5
+(safe-div  7 0)   ; prints diagnostic, returns 0
+```
+
+User code can raise structured payloads:
+
+```scheme
+(raise (list 'invalid-input value "must be positive"))
+```
+
+The handler receives an error object and uses `(error-value err)` to
+unwrap the payload. `error-object?` tests whether a value is an error.
+
+Two C primitives are exempt from auto-propagation (see below) so that
+they can *receive* errors as values: `error-object?` and `error-value`.
+
+## Vectors
+
+```scheme
+(define v (vector 10 20 30 40 50))
+(vector-length v)         ; 5
+(vector-ref v 2)          ; 30
+(vector-set! v 2 999)
+v                         ; #(10 20 999 40 50)
+(vector->list v)          ; (10 20 999 40 50)
+(list->vector '(a b c))   ; #(a b c)
+```
+
+O(1) indexed access + mutation. Fixed-size; create with
+`(make-vector n [fill])` or `(vector v1 v2 ...)`. Printer renders as
+`#(...)`. `vector?` predicate.
+
+## Hash tables
+
+```scheme
+(define h (make-hash-table))
+(hash-set! h 'name "lizard")
+(hash-set! h 'age 5)
+(hash-ref h 'name)              ; "lizard"
+(hash-ref h 'missing 'default)  ; default
+(hash-has-key? h 'name)         ; #t
+(hash-size h)                   ; 2
+(hash-keys h)                   ; (age name)
+(hash-remove! h 'age)
+```
+
+Open-addressed with linear probing. Doubles capacity when load > 0.75.
+Hash function: FNV-1a for strings/symbols, mpz_get_ui for numbers.
+Key equality is value-based for numbers, strings, symbols, booleans,
+and nil. Printer renders as `#hash((k . v) ...)`.
+
+## Auto-propagation of errors
+
+Before this release, `(display (raise 'oops))` would silently print
+`oops` because display didn't know its arg was an error. Now errors
+short-circuit at every eval boundary:
+
+- **Primitive calls**: if any argument forces to AST_ERROR, the call is
+  skipped and the error propagates (except for `error-object?` and
+  `error-value`, which receive errors as data).
+- **`if`, `cond`**: an erroring predicate propagates without firing
+  any branch.
+- **`begin`, lambda body**: an intermediate expression that errors
+  short-circuits the sequence.
+
+This makes `(try ...)` actually work the way users expect — without
+this, a `(raise ...)` inside a `display` call would be silently
+absorbed.
+
+## gensym
+
+```scheme
+(gensym)              ; g1
+(gensym)              ; g2
+(gensym "tmp-")       ; tmp-3
+```
+
+Produces a fresh symbol on each call. Useful for hand-written
+hygienic-ish macros until proper `syntax-rules` lands.
+
+## type-of extended
+
+Now covers vectors and hashes:
+
+```scheme
+(type-of (vector 1 2 3))     ; vector
+(type-of (make-hash-table))  ; hash
+```
+
+## String escape sequences (bonus)
+
+The tokenizer now decodes `\n`, `\t`, `\r`, `\\`, `\"`, `\0` inside
+string literals. Before, `"say \"hi\""` lex-failed.
+
+## New tests
+
+- `tests/exceptions_test.c` — raise + try + nested try + error-value
+  with various payload types + system errors (div by zero)
+- `tests/vectors_test.c` — every op + mutation persistence + accumulator
+  via vector + mixed-type contents + out-of-range errors
+- `tests/hashes_test.c` — 200-entry growth stress + key types
+  (symbols, strings, bignums) + remove + missing-key + default
+- `tests/varargs_test.c` — zero/one/many args + mixed types + variadic
+  sum, max, count
+
+## New example
+
+`examples/18-extreme.lisp` exercises all four new features in one
+program:
+- variadic `puts` formatter dispatching on `type-of`
+- in-place insertion-sort on a vector
+- word-frequency counter on a hash table
+- `safe-div` with try/raise/error-value
+- structured `(invalid-age N reason)` payloads with cond-based handler
+- fresh gensyms
+
+```
+$ ./build/lizard < examples/18-extreme.lisp
+hello world, 2025
+type-of 42 is: number
+
+before sort: #(5 2 8 1 9 3 7 4 6)
+after sort:  #(1 2 3 4 5 6 7 8 9)
+
+word frequencies: #hash((brown . 1) (lazy . 2) (dog . 1) ...)
+  'the' appeared 4 times
+  'fox' appeared 2 times
+  'lazy' appeared 2 times
+
+safe-div 10 2 = 5
+  caught error, falling back to 0
+safe-div  7 0 = 0
+safe-div 99 3 = 33
+
+valid age: 25
+valid age: rejected age -5: must be non-negative
+valid age: rejected age 200: too old to be plausible
+valid age: 99
+
+fresh gensym: swap-tmp-1
+another:      swap-tmp-2
+distinct?     #t
+```
+
+## Scoreboard
+
+```
+$ make test
+19/19 C tests passing  (arith, bignum, closures, control,
+                        deep_recursion, errors, exceptions,
+                        fastprims, hashes, higher_order, lambda,
+                        lists, macros, quasiquote, reflection,
+                        strings, tco, varargs, vectors)
+4/4  Lisp golden tests passing
+All tests passed.
+```
+
+## Known deferred work
+
+- **Hygienic macros (`syntax-rules`)** — would need proper
+  alpha-renaming. Significant.
+- **Dotted-pair varargs `(lambda (a b . rest) body)`** — tokenizer
+  needs `.` handling.
+- **Real GC** — currently grow-only arena. A generational collector
+  with the arena as the nursery is the obvious next step.
+- **call/cc** — exists but uses module globals (`callcc_buf`,
+  `callcc_active`), so nested call/cc would collide.
+- **`write` vs `display` on strings** — currently identical; R5RS
+  says write should escape.

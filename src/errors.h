@@ -84,7 +84,8 @@
   X(LIZARD_ERROR_LOAD_ARGC)                                                    \
   X(LIZARD_ERROR_LOAD_ARGT)                                                    \
   X(LIZARD_ERROR_LOAD_OPEN)                                                    \
-  X(LIZARD_ERROR_LOAD_READ)
+  X(LIZARD_ERROR_LOAD_READ)                                                    \
+  X(LIZARD_ERROR_USER)
 
 typedef enum lizard_error_code {
 #define X(err) err,

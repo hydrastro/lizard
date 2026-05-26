@@ -54,7 +54,10 @@ typedef enum {
   AST_PROMISE,
   AST_CONTINUATION,
   AST_CALLCC,
-  AST_ERROR
+  AST_ERROR,
+  AST_VECTOR,
+  AST_HASH,
+  AST_SYNTAX_RULES
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -121,6 +124,24 @@ struct lizard_ast_node {
       int code;
       lz_list_t *data;
     } error;
+    struct {
+      size_t size;
+      lizard_ast_node_t **elements;
+    } vector;
+    struct {
+      /* Open-addressed hash table with linear probing.
+       * `keys[i] == NULL` marks an empty slot. */
+      size_t size;       /* number of live entries */
+      size_t cap;        /* allocated capacity (always a power of two) */
+      lizard_ast_node_t **keys;
+      lizard_ast_node_t **values;
+    } hash;
+    struct {
+      /* (syntax-rules (literals...) (pattern1 template1) ...) */
+      lz_list_t *literals;   /* list of AST_SYMBOL nodes */
+      lz_list_t *clauses;    /* list of (pattern, template) pairs;
+                                each clause is itself a 2-element list */
+    } syntax_rules;
   } data;
 };
 
