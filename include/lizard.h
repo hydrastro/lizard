@@ -95,6 +95,31 @@ typedef enum {
    * makes (U-set 0 1) and (U-set 0 2) genuinely incomparable.
    * The set is stored as a sorted array of distinct longs. */
   AST_TT_UNIVERSE_SET,
+  /* (Co-set d1 d2 ...) — multi-dimensional COUNIVERSE — Phase L.4.
+   *
+   * The dual of UNIVERSE_SET. Universes and couniverses live in
+   * SEPARATE lattices: there is no automatic conversion between
+   * (U-set ...) and (Co-set ...), and operations like U-max only
+   * combine values within one lattice or the other.
+   *
+   * The rationale: in the thesis framework, universes track *where
+   * types live* (the syntactic side) and couniverses track *where
+   * contexts/observations live* (the semantic-ish side). The two
+   * have parallel lattice structure but are not interchangeable —
+   * mixing them would erase the distinction the framework rests on.
+   *
+   * Representation is identical to UNIVERSE_SET: sorted-array of
+   * distinct nats. The kinds are distinguished only by the AST tag.
+   *
+   * Lattice operations:
+   *   Co-max — join (set union, dual to U-max)
+   *   Co-min — meet (set intersection, dual to U-min)
+   *   couniverse-leq? — subset within the couniverse lattice
+   */
+  AST_TT_COUNIVERSE_SET,
+  /* (Co-max c1 c2) and (Co-min c1 c2) — couniverse lattice ops. */
+  AST_TT_CO_MAX,
+  AST_TT_CO_MIN,
   AST_TT_ID,           /* (Id A a b) — identity type */
   AST_TT_REFL,         /* (refl a) — reflexivity witness */
   AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
@@ -452,6 +477,22 @@ struct lizard_ast_node {
       long *dims;
       long count;
     } tt_universe_set;
+    /* Phase L.4: COUNIVERSE_SET parallels UNIVERSE_SET in representation
+     * but is a *distinct* lattice. */
+    struct {
+      long *dims;
+      long count;
+    } tt_couniverse_set;
+    /* Co-max and Co-min: lattice operations within the couniverse
+     * lattice. Same shape as tt_u_max / tt_u_min. */
+    struct {
+      lizard_ast_node_t *left;
+      lizard_ast_node_t *right;
+    } tt_co_max;
+    struct {
+      lizard_ast_node_t *left;
+      lizard_ast_node_t *right;
+    } tt_co_min;
     struct {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *a;

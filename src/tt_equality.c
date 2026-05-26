@@ -181,6 +181,11 @@ void lizard_tt_flags_init(void) {
   flag_find_or_create("reduce-u-lattice-absorb")->value = 1;
   /* Phase L.2: set-based universe operations. */
   flag_find_or_create("reduce-u-set-concrete")->value = 1;
+  /* Phase L.4: couniverse-lattice operations. */
+  flag_find_or_create("reduce-co-set-concrete")->value = 1;
+  flag_find_or_create("reduce-co-max-idem")->value = 1;
+  flag_find_or_create("reduce-co-min-idem")->value = 1;
+  flag_find_or_create("reduce-co-lattice-absorb")->value = 1;
   /* Cubical layer simplification. */
   flag_find_or_create("reduce-i-and")->value = 1;
   flag_find_or_create("reduce-i-or")->value = 1;
@@ -269,6 +274,15 @@ static lizard_ast_node_t *make_u_max(lizard_heap_t *heap,
 static lizard_ast_node_t *make_u_min(lizard_heap_t *heap,
                                      lizard_ast_node_t *u,
                                      lizard_ast_node_t *v);
+/* Phase L.4 — couniverse helpers. */
+static lizard_ast_node_t *make_co_max(lizard_heap_t *heap,
+                                      lizard_ast_node_t *u,
+                                      lizard_ast_node_t *v);
+static lizard_ast_node_t *make_co_min(lizard_heap_t *heap,
+                                      lizard_ast_node_t *u,
+                                      lizard_ast_node_t *v);
+static lizard_ast_node_t *make_couniverse_set(lizard_heap_t *heap,
+                                              long *dims, long count);
 /* Cubical-layer helpers. */
 static lizard_ast_node_t *make_i0(lizard_heap_t *heap);
 static lizard_ast_node_t *make_i1(lizard_heap_t *heap);
@@ -1057,6 +1071,7 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
   case AST_STRING:
   case AST_TT_UNIVERSE:
   case AST_TT_UNIVERSE_SET:
+  case AST_TT_COUNIVERSE_SET:
   case AST_TT_U_VAR:
   case AST_TT_UNIT:
   case AST_TT_TT:
@@ -1426,6 +1441,26 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     }
     return 1;
   }
+  case AST_TT_COUNIVERSE_SET: {
+    long i;
+    if (a->data.tt_couniverse_set.count != b->data.tt_couniverse_set.count)
+      return 0;
+    for (i = 0; i < a->data.tt_couniverse_set.count; i++) {
+      if (a->data.tt_couniverse_set.dims[i] != b->data.tt_couniverse_set.dims[i])
+        return 0;
+    }
+    return 1;
+  }
+  case AST_TT_CO_MAX:
+    return alpha_equal_rec(a->data.tt_co_max.left,
+                           b->data.tt_co_max.left, ea, eb) &&
+           alpha_equal_rec(a->data.tt_co_max.right,
+                           b->data.tt_co_max.right, ea, eb);
+  case AST_TT_CO_MIN:
+    return alpha_equal_rec(a->data.tt_co_min.left,
+                           b->data.tt_co_min.left, ea, eb) &&
+           alpha_equal_rec(a->data.tt_co_min.right,
+                           b->data.tt_co_min.right, ea, eb);
   case AST_TT_ID:
     return alpha_equal_rec(a->data.tt_id.domain, b->data.tt_id.domain, ea, eb) &&
            alpha_equal_rec(a->data.tt_id.a, b->data.tt_id.a, ea, eb) &&
@@ -1686,6 +1721,26 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     }
     return 1;
   }
+  case AST_TT_COUNIVERSE_SET: {
+    long i;
+    if (a->data.tt_couniverse_set.count != b->data.tt_couniverse_set.count)
+      return 0;
+    for (i = 0; i < a->data.tt_couniverse_set.count; i++) {
+      if (a->data.tt_couniverse_set.dims[i] != b->data.tt_couniverse_set.dims[i])
+        return 0;
+    }
+    return 1;
+  }
+  case AST_TT_CO_MAX:
+    return lizard_tt_structurally_equal(a->data.tt_co_max.left,
+                                        b->data.tt_co_max.left) &&
+           lizard_tt_structurally_equal(a->data.tt_co_max.right,
+                                        b->data.tt_co_max.right);
+  case AST_TT_CO_MIN:
+    return lizard_tt_structurally_equal(a->data.tt_co_min.left,
+                                        b->data.tt_co_min.left) &&
+           lizard_tt_structurally_equal(a->data.tt_co_min.right,
+                                        b->data.tt_co_min.right);
   case AST_TT_ID:
     return lizard_tt_structurally_equal(a->data.tt_id.domain, b->data.tt_id.domain) &&
            lizard_tt_structurally_equal(a->data.tt_id.a, b->data.tt_id.a) &&
@@ -2142,7 +2197,97 @@ static int universe_set_subset(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     long bv = b->data.tt_universe_set.dims[bi];
     if (av == bv) { ai++; bi++; }
     else if (av > bv) { bi++; }
-    else return 0;  /* A has an element not in B */
+    else return 0;
+  }
+  return ai == na;
+}
+
+/* ===== Phase L.4: couniverse-set helpers =====
+ *
+ * Structurally identical to the universe-set helpers, but operating
+ * on the tt_couniverse_set field. The couniverse lattice is its own
+ * lattice — no automatic conversion to/from universe-set.
+ */
+static lizard_ast_node_t *make_couniverse_set(lizard_heap_t *heap,
+                                              long *dims, long count) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_COUNIVERSE_SET;
+  n->data.tt_couniverse_set.dims = dims;
+  n->data.tt_couniverse_set.count = count;
+  return n;
+}
+static lizard_ast_node_t *make_co_max(lizard_heap_t *heap,
+                                      lizard_ast_node_t *u,
+                                      lizard_ast_node_t *v) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_MAX;
+  n->data.tt_co_max.left = u;
+  n->data.tt_co_max.right = v;
+  return n;
+}
+static lizard_ast_node_t *make_co_min(lizard_heap_t *heap,
+                                      lizard_ast_node_t *u,
+                                      lizard_ast_node_t *v) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_MIN;
+  n->data.tt_co_min.left = u;
+  n->data.tt_co_min.right = v;
+  return n;
+}
+static lizard_ast_node_t *couniverse_set_union(lizard_heap_t *heap,
+                                               lizard_ast_node_t *a,
+                                               lizard_ast_node_t *b) {
+  long ai, bi, oi, na, nb;
+  long *out;
+  na = a->data.tt_couniverse_set.count;
+  nb = b->data.tt_couniverse_set.count;
+  if (na + nb == 0) return make_couniverse_set(heap, NULL, 0);
+  out = lizard_heap_alloc(sizeof(long) * (size_t)(na + nb));
+  ai = 0; bi = 0; oi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_couniverse_set.dims[ai];
+    long bv = b->data.tt_couniverse_set.dims[bi];
+    if (av < bv) { out[oi++] = av; ai++; }
+    else if (av > bv) { out[oi++] = bv; bi++; }
+    else { out[oi++] = av; ai++; bi++; }
+  }
+  while (ai < na) out[oi++] = a->data.tt_couniverse_set.dims[ai++];
+  while (bi < nb) out[oi++] = b->data.tt_couniverse_set.dims[bi++];
+  return make_couniverse_set(heap, out, oi);
+}
+static lizard_ast_node_t *couniverse_set_intersect(lizard_heap_t *heap,
+                                                   lizard_ast_node_t *a,
+                                                   lizard_ast_node_t *b) {
+  long ai, bi, oi, na, nb, smaller;
+  long *out;
+  na = a->data.tt_couniverse_set.count;
+  nb = b->data.tt_couniverse_set.count;
+  smaller = (na < nb) ? na : nb;
+  if (smaller == 0) return make_couniverse_set(heap, NULL, 0);
+  out = lizard_heap_alloc(sizeof(long) * (size_t)smaller);
+  ai = 0; bi = 0; oi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_couniverse_set.dims[ai];
+    long bv = b->data.tt_couniverse_set.dims[bi];
+    if (av < bv) ai++;
+    else if (av > bv) bi++;
+    else { out[oi++] = av; ai++; bi++; }
+  }
+  if (oi == 0) return make_couniverse_set(heap, NULL, 0);
+  return make_couniverse_set(heap, out, oi);
+}
+static int couniverse_set_subset(lizard_ast_node_t *a, lizard_ast_node_t *b) {
+  long ai, bi, na, nb;
+  na = a->data.tt_couniverse_set.count;
+  nb = b->data.tt_couniverse_set.count;
+  if (na > nb) return 0;
+  ai = 0; bi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_couniverse_set.dims[ai];
+    long bv = b->data.tt_couniverse_set.dims[bi];
+    if (av == bv) { ai++; bi++; }
+    else if (av > bv) { bi++; }
+    else return 0;
   }
   return ai == na;
 }
@@ -2732,6 +2877,20 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *r = normalize_rec(t->data.tt_u_min.right, heap, memo);
     if (l == t->data.tt_u_min.left && r == t->data.tt_u_min.right) result = t;
     else result = make_u_min(heap, l, r);
+    break;
+  }
+  case AST_TT_CO_MAX: {
+    lizard_ast_node_t *l = normalize_rec(t->data.tt_co_max.left, heap, memo);
+    lizard_ast_node_t *r = normalize_rec(t->data.tt_co_max.right, heap, memo);
+    if (l == t->data.tt_co_max.left && r == t->data.tt_co_max.right) result = t;
+    else result = make_co_max(heap, l, r);
+    break;
+  }
+  case AST_TT_CO_MIN: {
+    lizard_ast_node_t *l = normalize_rec(t->data.tt_co_min.left, heap, memo);
+    lizard_ast_node_t *r = normalize_rec(t->data.tt_co_min.right, heap, memo);
+    if (l == t->data.tt_co_min.left && r == t->data.tt_co_min.right) result = t;
+    else result = make_co_min(heap, l, r);
     break;
   }
   case AST_TT_INTERVAL:
@@ -3477,6 +3636,74 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
         lizard_tt_flag_get("reduce-u-lattice-absorb") &&
         (lizard_tt_alpha_equal(r, l->data.tt_u_max.left) ||
          lizard_tt_alpha_equal(r, l->data.tt_u_max.right))) {
+      *changed = 1;
+      return r;
+    }
+    break;
+  }
+  case AST_TT_CO_MAX: {
+    /* Phase L.4: join in the couniverse lattice. Mirrors U-max but on
+     * COUNIVERSE_SET only. We REFUSE to operate on UNIVERSE_SET values
+     * here: the two lattices are kept separate. Mixed-kind Co-max
+     * stays unreduced as a structural marker; the typing rule will
+     * reject it at check time. */
+    lizard_ast_node_t *l = t->data.tt_co_max.left;
+    lizard_ast_node_t *r = t->data.tt_co_max.right;
+    if (l == NULL || r == NULL) break;
+    if (l->type == AST_TT_COUNIVERSE_SET && r->type == AST_TT_COUNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-co-set-concrete")) {
+      *changed = 1;
+      return couniverse_set_union(heap, l, r);
+    }
+    if (lizard_tt_alpha_equal(l, r) &&
+        lizard_tt_flag_get("reduce-co-max-idem")) {
+      *changed = 1;
+      return l;
+    }
+    /* Absorption: (Co-max u (Co-min u v)) → u */
+    if (r->type == AST_TT_CO_MIN &&
+        lizard_tt_flag_get("reduce-co-lattice-absorb") &&
+        (lizard_tt_alpha_equal(l, r->data.tt_co_min.left) ||
+         lizard_tt_alpha_equal(l, r->data.tt_co_min.right))) {
+      *changed = 1;
+      return l;
+    }
+    if (l->type == AST_TT_CO_MIN &&
+        lizard_tt_flag_get("reduce-co-lattice-absorb") &&
+        (lizard_tt_alpha_equal(r, l->data.tt_co_min.left) ||
+         lizard_tt_alpha_equal(r, l->data.tt_co_min.right))) {
+      *changed = 1;
+      return r;
+    }
+    break;
+  }
+  case AST_TT_CO_MIN: {
+    /* Phase L.4: meet in the couniverse lattice. */
+    lizard_ast_node_t *l = t->data.tt_co_min.left;
+    lizard_ast_node_t *r = t->data.tt_co_min.right;
+    if (l == NULL || r == NULL) break;
+    if (l->type == AST_TT_COUNIVERSE_SET && r->type == AST_TT_COUNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-co-set-concrete")) {
+      *changed = 1;
+      return couniverse_set_intersect(heap, l, r);
+    }
+    if (lizard_tt_alpha_equal(l, r) &&
+        lizard_tt_flag_get("reduce-co-min-idem")) {
+      *changed = 1;
+      return l;
+    }
+    /* Absorption with Co-max */
+    if (r->type == AST_TT_CO_MAX &&
+        lizard_tt_flag_get("reduce-co-lattice-absorb") &&
+        (lizard_tt_alpha_equal(l, r->data.tt_co_max.left) ||
+         lizard_tt_alpha_equal(l, r->data.tt_co_max.right))) {
+      *changed = 1;
+      return l;
+    }
+    if (l->type == AST_TT_CO_MAX &&
+        lizard_tt_flag_get("reduce-co-lattice-absorb") &&
+        (lizard_tt_alpha_equal(r, l->data.tt_co_max.left) ||
+         lizard_tt_alpha_equal(r, l->data.tt_co_max.right))) {
       *changed = 1;
       return r;
     }
@@ -4431,6 +4658,30 @@ int lizard_tt_universe_convertible(lizard_ast_node_t *inferred,
   return lizard_tt_universe_leq(inferred, expected) == 1;
 }
 
+/* Phase L.4: couniverse-leq decision procedure.
+ *
+ * Subset inclusion within the COUNIVERSE lattice. NEVER returns 1 when
+ * one side is a universe (U-set) and the other a couniverse (Co-set) —
+ * the lattices are kept separate. Returns -1 for that case (incomparable
+ * sorts), 1 for subset, 0 for strict non-subset, -1 for undecidable.
+ */
+int lizard_tt_couniverse_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {
+  if (u == NULL || v == NULL) return -1;
+  if (u->type == AST_TT_COUNIVERSE_SET && v->type == AST_TT_COUNIVERSE_SET) {
+    return couniverse_set_subset(u, v) ? 1 : 0;
+  }
+  /* Mixing universe and couniverse is a sort error, not subset-false. */
+  if ((u->type == AST_TT_COUNIVERSE_SET && v->type == AST_TT_UNIVERSE_SET) ||
+      (u->type == AST_TT_UNIVERSE_SET && v->type == AST_TT_COUNIVERSE_SET)) {
+    return -1;
+  }
+  /* Old single-nat couniverses (legacy). */
+  if (u->type == AST_TT_COUNIVERSE && v->type == AST_TT_COUNIVERSE) {
+    return u->data.tt_couniverse.level <= v->data.tt_couniverse.level ? 1 : 0;
+  }
+  return -1;
+}
+
 static int single_arg_local(lz_list_t *args) {
   return args->head != args->nil && args->head->next == args->nil;
 }
@@ -4589,6 +4840,33 @@ lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *args,
   u = lizard_tt_reduce(u, heap);
   v = lizard_tt_reduce(v, heap);
   r = lizard_tt_universe_leq(u, v);
+  if (r == 1)  return lizard_make_bool(heap, 1);
+  if (r == 0)  return lizard_make_bool(heap, 0);
+  {
+    char *buf = lizard_heap_alloc(8);
+    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    strcpy(buf, "unknown");
+    n->type = AST_SYMBOL;
+    n->data.variable = buf;
+    return n;
+  }
+}
+
+/* Phase L.4: couniverse-leq? primitive. */
+lizard_ast_node_t *lizard_primitive_tt_couniverse_leq(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *u, *v;
+  int r;
+  (void)env;
+  if (!two_args_local(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  u = nth_local(args, 0);
+  v = nth_local(args, 1);
+  u = lizard_tt_reduce(u, heap);
+  v = lizard_tt_reduce(v, heap);
+  r = lizard_tt_couniverse_leq(u, v);
   if (r == 1)  return lizard_make_bool(heap, 1);
   if (r == 0)  return lizard_make_bool(heap, 0);
   {

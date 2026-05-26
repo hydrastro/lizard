@@ -228,6 +228,12 @@ lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, liz
 lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_setp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniverse_set(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniverse_setp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_co_max(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_co_maxp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_co_min(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_co_minp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_refl(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_inductive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -400,6 +406,8 @@ int lizard_tt_universe_leq(lizard_ast_node_t *, lizard_ast_node_t *);
 long lizard_tt_next_fresh_dim(void);
 int lizard_tt_universe_convertible(lizard_ast_node_t *, lizard_ast_node_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_couniverse_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+int lizard_tt_couniverse_leq(lizard_ast_node_t *, lizard_ast_node_t *);
 
 /* Type checker. */
 lizard_ast_node_t *lizard_tt_make_universe(lizard_heap_t *heap, long level);

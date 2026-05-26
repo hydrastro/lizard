@@ -102,7 +102,14 @@ $(BUILD_DIR):
 	@mkdir -p $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+
+# Include auto-generated dependency files so header changes trigger
+# rebuilds. -MMD writes a .d file alongside each .o describing which
+# headers the .c file depends on; -MP adds phony targets for each
+# header so removing a header doesn't break the build.
+-include $(LIB_OBJS:.o=.d)
+-include $(REPL_OBJ:.o=.d)
 
 $(LIB_STATIC): $(LIB_OBJS)
 	$(AR) rcs $@ $^

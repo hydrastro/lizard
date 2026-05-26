@@ -357,6 +357,29 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, ")");
     return;
   }
+  case AST_TT_COUNIVERSE_SET: {
+    long i;
+    fprintf(fp, "(Co-set");
+    for (i = 0; i < node->data.tt_couniverse_set.count; i++) {
+      fprintf(fp, " %ld", node->data.tt_couniverse_set.dims[i]);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_CO_MAX:
+    fprintf(fp, "(Co-max ");
+    lizard_fprint_value(fp, node->data.tt_co_max.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_co_max.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_CO_MIN:
+    fprintf(fp, "(Co-min ");
+    lizard_fprint_value(fp, node->data.tt_co_min.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_co_min.right);
+    fprintf(fp, ")");
+    return;
   case AST_TT_ID:
     fprintf(fp, "(Id ");
     lizard_fprint_value(fp, node->data.tt_id.domain);

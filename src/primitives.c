@@ -1377,6 +1377,9 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_UNIVERSE:    name = "U";           break;
   case AST_TT_COUNIVERSE:  name = "Uco";         break;
   case AST_TT_UNIVERSE_SET: name = "U-set";       break;
+  case AST_TT_COUNIVERSE_SET: name = "Co-set";    break;
+  case AST_TT_CO_MAX:       name = "Co-max";      break;
+  case AST_TT_CO_MIN:       name = "Co-min";      break;
   case AST_TT_ID:          name = "Id";          break;
   case AST_TT_REFL:        name = "refl";        break;
   case AST_TT_INDUCTIVE:   name = "Inductive";   break;
@@ -2494,66 +2497,126 @@ lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *args,
   return n;
 }
 
-/* (U-set d1 d2 ...) — multi-dimensional universe at the given set of
- * dimensions. Phase L.2. Variadic. Sorts and dedups the inputs at
- * construction so equality testing on the dims array is just memcmp.
- * (U-set) with no args is the empty set, the lattice bottom. */
-lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *args,
-                                                    lizard_env_t *env,
-                                                    lizard_heap_t *heap) {
-  lizard_ast_node_t *n, *arg;
+/* Helper for the *-set variadic constructors: parse the args as a
+ * list of naturals, sort, dedup. Returns a pair (raw, count) by
+ * out-parameter. Returns NULL on type error (negative or non-numeric). */
+static long *parse_dim_args(lz_list_t *args, lizard_heap_t *heap,
+                            long *count_out) {
   long *raw, *deduped;
   long count, i, j, unique;
   lz_list_node_t *cur;
-  (void)env;
-  /* Count args. */
+  lizard_ast_node_t *arg;
   count = 0;
   cur = args->head;
   while (cur != args->nil) { count++; cur = cur->next; }
-  /* Allocate raw array. */
-  raw = NULL;
-  if (count > 0) {
-    raw = lizard_heap_alloc(sizeof(long) * (size_t)count);
-    for (i = 0; i < count; i++) {
-      arg = nth_arg(args, (int)i);
-      if (arg == NULL || arg->type != AST_NUMBER) {
-        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-      }
-      raw[i] = mpz_get_si(arg->data.number);
-      if (raw[i] < 0) {
-        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-      }
+  if (count == 0) { *count_out = 0; return NULL; }
+  raw = lizard_heap_alloc(sizeof(long) * (size_t)count);
+  for (i = 0; i < count; i++) {
+    arg = nth_arg(args, (int)i);
+    if (arg == NULL || arg->type != AST_NUMBER) {
+      *count_out = -1; return NULL;  /* sentinel for error */
     }
-    /* Insertion sort (typical size is tiny). */
-    for (i = 1; i < count; i++) {
-      long key = raw[i];
-      j = i - 1;
-      while (j >= 0 && raw[j] > key) {
-        raw[j+1] = raw[j];
-        j--;
-      }
-      raw[j+1] = key;
+    raw[i] = mpz_get_si(arg->data.number);
+    if (raw[i] < 0) {
+      *count_out = -1; return NULL;
     }
-    /* Dedup in place, then copy into a tighter array. */
-    unique = (count > 0) ? 1 : 0;
-    for (i = 1; i < count; i++) {
-      if (raw[i] != raw[unique-1]) {
-        raw[unique++] = raw[i];
-      }
+  }
+  /* Insertion sort. */
+  for (i = 1; i < count; i++) {
+    long key = raw[i];
+    j = i - 1;
+    while (j >= 0 && raw[j] > key) {
+      raw[j+1] = raw[j];
+      j--;
     }
-    if (unique > 0) {
-      deduped = lizard_heap_alloc(sizeof(long) * (size_t)unique);
-      for (i = 0; i < unique; i++) deduped[i] = raw[i];
-    } else {
-      deduped = NULL;
+    raw[j+1] = key;
+  }
+  /* Dedup in place. */
+  unique = 1;
+  for (i = 1; i < count; i++) {
+    if (raw[i] != raw[unique-1]) {
+      raw[unique++] = raw[i];
     }
-    count = unique;
-    raw = deduped;
+  }
+  if (unique == 0) { *count_out = 0; return NULL; }
+  deduped = lizard_heap_alloc(sizeof(long) * (size_t)unique);
+  for (i = 0; i < unique; i++) deduped[i] = raw[i];
+  *count_out = unique;
+  return deduped;
+}
+
+/* (U-set d1 d2 ...) — multi-dimensional universe. Phase L.2. */
+lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  long *dims, count;
+  (void)env;
+  dims = parse_dim_args(args, heap, &count);
+  if (count < 0) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
   n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_UNIVERSE_SET;
-  n->data.tt_universe_set.dims = raw;
+  n->data.tt_universe_set.dims = dims;
   n->data.tt_universe_set.count = count;
+  return n;
+}
+
+/* (Co-set d1 d2 ...) — multi-dimensional COUNIVERSE. Phase L.4.
+ *
+ * Same shape as U-set but a separate AST type. Lives in its own
+ * lattice — no auto-conversion to/from U-set. The dim space is
+ * shared with U-set (both index by natural numbers) but the *kind*
+ * is distinguished by the AST tag.
+ */
+lizard_ast_node_t *lizard_primitive_tt_couniverse_set(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  long *dims, count;
+  (void)env;
+  dims = parse_dim_args(args, heap, &count);
+  if (count < 0) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_COUNIVERSE_SET;
+  n->data.tt_couniverse_set.dims = dims;
+  n->data.tt_couniverse_set.count = count;
+  return n;
+}
+
+/* (Co-max c1 c2) — join in the couniverse lattice. Set union, dual
+ * to U-max. Phase L.4. */
+lizard_ast_node_t *lizard_primitive_tt_co_max(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_MAX;
+  n->data.tt_co_max.left = nth_arg(args, 0);
+  n->data.tt_co_max.right = nth_arg(args, 1);
+  return n;
+}
+
+/* (Co-min c1 c2) — meet in the couniverse lattice. Set intersection. */
+lizard_ast_node_t *lizard_primitive_tt_co_min(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_MIN;
+  n->data.tt_co_min.left = nth_arg(args, 0);
+  n->data.tt_co_min.right = nth_arg(args, 1);
   return n;
 }
 lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *args, lizard_env_t *env,
@@ -2667,6 +2730,9 @@ TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
 TT_PREDICATE(tt_couniversep,  AST_TT_COUNIVERSE)
 TT_PREDICATE(tt_universe_setp, AST_TT_UNIVERSE_SET)
+TT_PREDICATE(tt_couniverse_setp, AST_TT_COUNIVERSE_SET)
+TT_PREDICATE(tt_co_maxp,       AST_TT_CO_MAX)
+TT_PREDICATE(tt_co_minp,       AST_TT_CO_MIN)
 TT_PREDICATE(tt_idp,          AST_TT_ID)
 TT_PREDICATE(tt_reflp,        AST_TT_REFL)
 TT_PREDICATE(tt_inductivep,   AST_TT_INDUCTIVE)
@@ -4127,6 +4193,12 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "Uco",           lizard_primitive_tt_couniverse);
   install_one(heap, env, "U-set",         lizard_primitive_tt_universe_set);
   install_one(heap, env, "U-set?",        lizard_primitive_tt_universe_setp);
+  install_one(heap, env, "Co-set",        lizard_primitive_tt_couniverse_set);
+  install_one(heap, env, "Co-set?",       lizard_primitive_tt_couniverse_setp);
+  install_one(heap, env, "Co-max",        lizard_primitive_tt_co_max);
+  install_one(heap, env, "Co-max?",       lizard_primitive_tt_co_maxp);
+  install_one(heap, env, "Co-min",        lizard_primitive_tt_co_min);
+  install_one(heap, env, "Co-min?",       lizard_primitive_tt_co_minp);
   install_one(heap, env, "Id",            lizard_primitive_tt_id);
   install_one(heap, env, "refl",          lizard_primitive_tt_refl);
   install_one(heap, env, "Inductive",     lizard_primitive_tt_inductive);
@@ -4376,6 +4448,7 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "system-next",   lizard_primitive_tt_system_next);
   install_one(heap, env, "system-lookup", lizard_primitive_tt_system_lookup);
   install_one(heap, env, "universe-leq?", lizard_primitive_tt_universe_leq);
+  install_one(heap, env, "couniverse-leq?", lizard_primitive_tt_couniverse_leq);
   install_one(heap, env, "face-entails?", lizard_primitive_tt_face_entails);
   /* Bidirectional type checker for the λΠ fragment.
    *   (infer Γ t)    returns the inferred type of t in context Γ.
