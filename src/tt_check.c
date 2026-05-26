@@ -158,6 +158,96 @@ static lizard_ast_node_t *make_path_app_local(lizard_heap_t *heap,
   return n;
 }
 
+/* ===== Phase M.2 — lambda cube axis classification =====
+ *
+ * Extract a representative universe-level from a universe expression.
+ * Returns -1 if the expression isn't a recognized universe form or its
+ * level isn't statically known. The level is the level OF THE EXPRESSION
+ * AS A UNIVERSE — e.g., (U 0) returns 0, (U 1) returns 1.
+ *
+ * For a universe-set, we use the MAX dim as a representative — that's
+ * a conservative choice: a multi-dim universe is "at least as big as"
+ * its largest dim. For U-max, we recurse and take the max.
+ */
+static long extract_universe_level(lizard_ast_node_t *u) {
+  if (u == NULL) return -1;
+  switch (u->type) {
+  case AST_TT_UNIVERSE:
+    return u->data.tt_universe.level;
+  case AST_TT_UNIVERSE_SET: {
+    long i, max_dim;
+    if (u->data.tt_universe_set.count == 0) return 0;
+    max_dim = u->data.tt_universe_set.dims[0];
+    for (i = 1; i < u->data.tt_universe_set.count; i++) {
+      if (u->data.tt_universe_set.dims[i] > max_dim)
+        max_dim = u->data.tt_universe_set.dims[i];
+    }
+    return max_dim;
+  }
+  case AST_TT_U_MAX: {
+    long l = extract_universe_level(u->data.tt_u_max.left);
+    long r = extract_universe_level(u->data.tt_u_max.right);
+    if (l < 0 || r < 0) return -1;
+    return l > r ? l : r;
+  }
+  case AST_TT_U_MIN: {
+    long l = extract_universe_level(u->data.tt_u_min.left);
+    long r = extract_universe_level(u->data.tt_u_min.right);
+    if (l < 0 || r < 0) return -1;
+    return l < r ? l : r;
+  }
+  default:
+    return -1;
+  }
+}
+
+/* Classify a Pi by the lambda cube axes.
+ *
+ * Given dom_univ and cod_univ (the universes of the Pi's domain and
+ * codomain types as inferred), and a flag for whether the binder
+ * appears free in the codomain, return the required axis as a string,
+ * or NULL if the Pi is allowed unconditionally (the STLC simple arrow).
+ *
+ * The level convention: dom_univ is the universe of A; if dom_univ is
+ * (U 1), then A lives at universe level 0, i.e., A is a "type whose
+ * inhabitants are values". If dom_univ is (U 2), A lives at level 1,
+ * i.e., A is a "kind". So we treat:
+ *   dom_univ_level == 1 → A is a type
+ *   dom_univ_level >= 2 → A is a kind (or higher)
+ *
+ * This is the universe-level encoding of the lambda cube; the strict
+ * formulation would use explicit sorts (* and ☐). A refactor to that
+ * formulation belongs to a later phase if desired.
+ *
+ * Returns: NULL if Pi is unconditionally allowed (simple arrow), or
+ * the name of the required axis as a string literal.
+ */
+static const char *lambda_cube_required_axis(long dom_level, long cod_level,
+                                             int binder_free_in_cod) {
+  if (dom_level < 0 || cod_level < 0) {
+    /* Unknown universe shape — can't classify; allow. */
+    return NULL;
+  }
+  /* dom is at level 1 (A is a type) */
+  if (dom_level == 1) {
+    if (cod_level == 1) {
+      /* type → type. STLC arrow if non-dependent, else type-dep-on-term. */
+      if (binder_free_in_cod) return "type-depends-on-term";
+      return NULL;  /* simple arrow, always allowed */
+    }
+    /* type → kind. Unusual. Require type-depends-on-type as the closest
+     * standard axis (covers Fω-style polymorphism over kinds). */
+    return "type-depends-on-type";
+  }
+  /* dom is at level >= 2 (A is a kind) */
+  if (cod_level == 1) {
+    /* kind → type: System F-style polymorphism */
+    return "term-depends-on-type";
+  }
+  /* kind → kind: Fω-style type-level abstraction */
+  return "type-depends-on-type";
+}
+
 /* ----- The checker --------------------------------------------------- */
 
 lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
@@ -200,12 +290,21 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     /* (Pi x A B) : (U-max univ(A) univ(B[x:=fresh])) — but we don't
      * have unification of universes. For now: check A is a type
      * (lives in some universe), check B is a type in extended ctx,
-     * return the max of their universes. */
+     * return the max of their universes.
+     *
+     * Phase M.2: classify the dependency by the lambda cube axes and
+     * REJECT the Pi if the required axis is currently disabled in the
+     * logic-rule registry. The default (no rules registered, or all
+     * registered as enabled) preserves backward-compatible CoC-style
+     * behavior. */
     lizard_ast_node_t *binder = t->data.tt_pi.binder;
     lizard_ast_node_t *dom = t->data.tt_pi.domain;
     lizard_ast_node_t *cod = t->data.tt_pi.codomain;
     lizard_ast_node_t *dom_univ, *cod_univ;
     lizard_ast_node_t *new_ctx;
+    const char *required_axis;
+    long dom_level, cod_level;
+    int binder_free;
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "Pi binder not a symbol");
     }
@@ -232,6 +331,19 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         cod_univ->type != AST_TT_U_MIN &&
         cod_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Pi codomain not a type");
+    }
+    /* Phase M.2: classify and check the relevant cube axis. */
+    dom_level = extract_universe_level(dom_univ);
+    cod_level = extract_universe_level(cod_univ);
+    binder_free = contains_free_var_public(cod, binder->data.variable);
+    required_axis = lambda_cube_required_axis(dom_level, cod_level, binder_free);
+    if (required_axis != NULL) {
+      /* Check the rule. If unregistered (-1) or enabled (1), allow.
+       * If explicitly disabled (0), reject. The default is "allow"
+       * which preserves backward compatibility. */
+      if (lizard_logic_rule_enabled(required_axis) == 0) {
+        return type_error(heap, "Pi rejected: required cube axis disabled");
+      }
     }
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));

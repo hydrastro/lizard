@@ -5331,6 +5331,12 @@ void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
   }
 }
 
+/* Public wrapper around the static contains_free_var used by the
+ * Phase M.2 lambda-cube classifier. */
+int contains_free_var_public(lizard_ast_node_t *t, const char *name) {
+  return contains_free_var(t, name);
+}
+
 int lizard_tt_universe_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {
   if (u == NULL || v == NULL) return -1;
   /* Both concrete integers */

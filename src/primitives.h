@@ -445,6 +445,10 @@ void lizard_logic_restore(void *snapshot);
 void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
                                          void *userdata),
                               void *userdata);
+/* Public wrapper for the static contains_free_var helper — used by
+ * the Phase M.2 lambda-cube classifier and similar code that needs
+ * to query whether a binder appears in a body. */
+int contains_free_var_public(lizard_ast_node_t *t, const char *name);
 /* Lisp-facing primitive prototypes. */
 lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *, lizard_env_t *, lizard_heap_t *);
