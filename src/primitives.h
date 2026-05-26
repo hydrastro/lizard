@@ -449,6 +449,12 @@ void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
  * the Phase M.2 lambda-cube classifier and similar code that needs
  * to query whether a binder appears in a body. */
 int contains_free_var_public(lizard_ast_node_t *t, const char *name);
+
+/* Phase M.3 — named logic bundles. Sugar over M.2 cube toggles. */
+int lizard_logic_set_bundle(const char *name);
+const char *lizard_logic_current_bundle(void);
+void lizard_logic_bundles_walk(int (*cb)(const char *name, void *userdata),
+                                void *userdata);
 /* Lisp-facing primitive prototypes. */
 lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -457,6 +463,9 @@ lizard_ast_node_t *lizard_primitive_logic_rule_enabledp(lz_list_t *, lizard_env_
 lizard_ast_node_t *lizard_primitive_logic_config(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_logic_config_size(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_set_logic(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_current_logic(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_list_logics(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 int lizard_tt_universe_convertible(lizard_ast_node_t *, lizard_ast_node_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_couniverse_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);

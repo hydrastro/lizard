@@ -5331,6 +5331,93 @@ void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
   }
 }
 
+/* ===== Phase M.3 — named logic bundles =====
+ *
+ * Sugar on top of the M.2 cube toggles. Each named logic corresponds
+ * to a specific combination of the three cube axes:
+ *
+ *                   term-on-type  type-on-term  type-on-type
+ *   STLC            off           off           off
+ *   F               on            off           off
+ *   LF (= lambda-P) off           on            off
+ *   F-omega         off           off           on
+ *   lambda-P2       on            on            off
+ *   lambda-P-omega  off           on            on
+ *   lambda-omega    on            off           on
+ *   CoC             on            on            on
+ *
+ * M.3 is sugar — it doesn't add new behavior. `(set-logic 'STLC)`
+ * is equivalent to disabling all three cube axes. The reverse,
+ * `(current-logic)`, looks at the active config and returns the
+ * matching bundle name (or 'custom if no match).
+ */
+typedef struct logic_bundle {
+  const char *name;
+  int term_on_type;
+  int type_on_term;
+  int type_on_type;
+} logic_bundle_t;
+
+static logic_bundle_t logic_bundles[] = {
+  {"STLC",            0, 0, 0},
+  {"F",               1, 0, 0},
+  {"LF",              0, 1, 0},
+  {"lambda-P",        0, 1, 0},   /* alias for LF */
+  {"F-omega",         0, 0, 1},
+  {"lambda-P2",       1, 1, 0},
+  {"lambda-P-omega",  0, 1, 1},
+  {"lambda-omega",    1, 0, 1},
+  {"CoC",             1, 1, 1},
+  {NULL, 0, 0, 0}
+};
+
+int lizard_logic_set_bundle(const char *name) {
+  logic_bundle_t *b;
+  if (name == NULL) return 0;
+  for (b = logic_bundles; b->name != NULL; b++) {
+    if (strcmp(b->name, name) == 0) {
+      if (b->term_on_type)  lizard_logic_rule_enable("term-depends-on-type");
+      else                  lizard_logic_rule_disable("term-depends-on-type");
+      if (b->type_on_term)  lizard_logic_rule_enable("type-depends-on-term");
+      else                  lizard_logic_rule_disable("type-depends-on-term");
+      if (b->type_on_type)  lizard_logic_rule_enable("type-depends-on-type");
+      else                  lizard_logic_rule_disable("type-depends-on-type");
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* Returns the name of the current logic, or "custom" if no bundle
+ * matches. Unregistered axes are treated as enabled, matching M.2's
+ * default-allow convention. Returns a static string; do not free. */
+const char *lizard_logic_current_bundle(void) {
+  int term_on, type_on_term, type_on_type;
+  logic_bundle_t *b;
+  term_on      = lizard_logic_rule_enabled("term-depends-on-type");
+  type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
+  type_on_type = lizard_logic_rule_enabled("type-depends-on-type");
+  if (term_on == -1)      term_on = 1;
+  if (type_on_term == -1) type_on_term = 1;
+  if (type_on_type == -1) type_on_type = 1;
+  for (b = logic_bundles; b->name != NULL; b++) {
+    if (b->term_on_type == term_on &&
+        b->type_on_term == type_on_term &&
+        b->type_on_type == type_on_type) {
+      return b->name;
+    }
+  }
+  return "custom";
+}
+
+void lizard_logic_bundles_walk(int (*cb)(const char *name, void *userdata),
+                                void *userdata) {
+  logic_bundle_t *b;
+  for (b = logic_bundles; b->name != NULL; b++) {
+    if (cb(b->name, userdata)) return;
+  }
+}
+
 /* Public wrapper around the static contains_free_var used by the
  * Phase M.2 lambda-cube classifier. */
 int contains_free_var_public(lizard_ast_node_t *t, const char *name) {
