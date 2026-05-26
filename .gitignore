@@ -1,0 +1,52 @@
+# Build outputs
+/build/
+/lizard
+/liblizard.a
+/liblizard.so
+*.o
+*.a
+*.so
+*.d
+*.dll
+*.dylib
+*.exe
+
+# Local archives and release bundles
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Nix outputs and local env
+/result
+/result-*
+/.direnv/
+.envrc.local
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*~
+#*#
+.#*
+*.swp
+*.swo
+.DS_Store
+
+# Profiling/debugging/coverage
+/gmon.out
+/perf.data
+/perf.data.old
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+vgcore.*
+core
+core.*
+*.gcda
+*.gcno
+*.gcov
+
+# Local GUI/runtime state
+/imgui.ini
