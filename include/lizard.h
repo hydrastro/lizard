@@ -57,7 +57,35 @@ typedef enum {
   AST_ERROR,
   AST_VECTOR,
   AST_HASH,
-  AST_SYNTAX_RULES
+  AST_SYNTAX_RULES,
+  /* ----- Type-theory notation. NONE of these forms are checked. -----
+   * They are surface syntax / opaque values, suitable for designing
+   * the look of a foundational system but not for verifying anything
+   * about it. */
+  AST_TT_PI,           /* (Pi (x A) B) — dependent function type */
+  AST_TT_SIGMA,        /* (Sigma (x A) B) — dependent pair type */
+  AST_TT_APP,          /* (@ f a) — explicit application form */
+  AST_TT_SUM,          /* (Sum A B) — coproduct type */
+  AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
+  AST_TT_COUNIVERSE,   /* (Uco n) — couniverse at integer level */
+  AST_TT_ID,           /* (Id A a b) — identity type */
+  AST_TT_REFL,         /* (refl a) — reflexivity witness */
+  AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
+  AST_TT_COINDUCTIVE,  /* (Coinductive name dtors...) — coinductive decl */
+  AST_TT_ANNOT,        /* (: term type) — type annotation, stored only */
+  /* ----- Context layer (still no checking) -----
+   * Stratified along the couniverse hierarchy from your proposal:
+   *   Uco -2 : variables / binding sites
+   *   Uco -1 : contexts (lists of variables)
+   *   Uco  0 : substitutions / context morphisms
+   *   Uco  n : higher contexts (not represented separately yet)
+   * A `judgment` packages a context, a term, and a claimed type — no
+   * verification happens; it's a data structure that LOOKS like an
+   * inference-rule conclusion. */
+  AST_TT_VARIABLE,
+  AST_TT_CONTEXT,
+  AST_TT_SUBSTITUTION,
+  AST_TT_JUDGMENT
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -142,6 +170,70 @@ struct lizard_ast_node {
       lz_list_t *clauses;    /* list of (pattern, template) pairs;
                                 each clause is itself a 2-element list */
     } syntax_rules;
+    /* ----- Type-theory carriers (no semantic checking) ----- */
+    struct {
+      lizard_ast_node_t *binder;     /* AST_SYMBOL, or NULL for ->/non-dep */
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_pi;
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_sigma;
+    struct {
+      lizard_ast_node_t *fun;
+      lizard_ast_node_t *arg;
+    } tt_app;
+    struct {
+      lizard_ast_node_t *left;
+      lizard_ast_node_t *right;
+    } tt_sum;
+    struct {
+      long level;
+    } tt_universe;
+    struct {
+      long level;
+    } tt_couniverse;
+    struct {
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *a;
+      lizard_ast_node_t *b;
+    } tt_id;
+    struct {
+      lizard_ast_node_t *value;
+    } tt_refl;
+    struct {
+      lizard_ast_node_t *name;
+      lz_list_t *constructors;
+    } tt_inductive;
+    struct {
+      lizard_ast_node_t *name;
+      lz_list_t *destructors;
+    } tt_coinductive;
+    struct {
+      lizard_ast_node_t *term;
+      lizard_ast_node_t *type;
+    } tt_annot;
+    /* Context layer. */
+    struct {
+      lizard_ast_node_t *name;       /* AST_SYMBOL */
+      lizard_ast_node_t *type;       /* any type expression */
+    } tt_variable;
+    struct {
+      lz_list_t *bindings;           /* list of tt_variable nodes,
+                                        order: leftmost = outermost */
+    } tt_context;
+    struct {
+      lizard_ast_node_t *source;     /* source context */
+      lizard_ast_node_t *target;     /* target context */
+      lz_list_t *mappings;           /* list of (name . term) pairs */
+    } tt_substitution;
+    struct {
+      lizard_ast_node_t *context;
+      lizard_ast_node_t *term;
+      lizard_ast_node_t *type;
+    } tt_judgment;
   } data;
 };
 

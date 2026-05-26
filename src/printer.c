@@ -284,6 +284,137 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, ")");
     return;
   }
+  case AST_TT_PI:
+    fprintf(fp, "(Pi (");
+    if (node->data.tt_pi.binder) {
+      lizard_fprint_value(fp, node->data.tt_pi.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_pi.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_pi.codomain);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_SIGMA:
+    fprintf(fp, "(Sigma (");
+    if (node->data.tt_sigma.binder) {
+      lizard_fprint_value(fp, node->data.tt_sigma.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_sigma.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_sigma.codomain);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_APP:
+    fprintf(fp, "(@ ");
+    lizard_fprint_value(fp, node->data.tt_app.fun);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_app.arg);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_SUM:
+    fprintf(fp, "(Sum ");
+    lizard_fprint_value(fp, node->data.tt_sum.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_sum.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_UNIVERSE:
+    fprintf(fp, "(U %ld)", node->data.tt_universe.level);
+    return;
+  case AST_TT_COUNIVERSE:
+    fprintf(fp, "(Uco %ld)", node->data.tt_couniverse.level);
+    return;
+  case AST_TT_ID:
+    fprintf(fp, "(Id ");
+    lizard_fprint_value(fp, node->data.tt_id.domain);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_id.a);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_id.b);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_REFL:
+    fprintf(fp, "(refl ");
+    lizard_fprint_value(fp, node->data.tt_refl.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_INDUCTIVE: {
+    lz_list_node_t *it;
+    fprintf(fp, "(Inductive ");
+    lizard_fprint_value(fp, node->data.tt_inductive.name);
+    for (it = node->data.tt_inductive.constructors->head;
+         it != node->data.tt_inductive.constructors->nil; it = it->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_COINDUCTIVE: {
+    lz_list_node_t *it;
+    fprintf(fp, "(Coinductive ");
+    lizard_fprint_value(fp, node->data.tt_coinductive.name);
+    for (it = node->data.tt_coinductive.destructors->head;
+         it != node->data.tt_coinductive.destructors->nil; it = it->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_ANNOT:
+    fprintf(fp, "(: ");
+    lizard_fprint_value(fp, node->data.tt_annot.term);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_annot.type);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_VARIABLE:
+    fprintf(fp, "(variable ");
+    lizard_fprint_value(fp, node->data.tt_variable.name);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_variable.type);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_CONTEXT: {
+    lz_list_node_t *it;
+    int first = 1;
+    fprintf(fp, "(context");
+    for (it = node->data.tt_context.bindings->head;
+         it != node->data.tt_context.bindings->nil; it = it->next) {
+      (void)first;
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_SUBSTITUTION: {
+    lz_list_node_t *it;
+    fprintf(fp, "(substitution ");
+    lizard_fprint_value(fp, node->data.tt_substitution.source);
+    fprintf(fp, " => ");
+    lizard_fprint_value(fp, node->data.tt_substitution.target);
+    fprintf(fp, " [");
+    for (it = node->data.tt_substitution.mappings->head;
+         it != node->data.tt_substitution.mappings->nil; it = it->next) {
+      if (it != node->data.tt_substitution.mappings->head) fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+    }
+    fprintf(fp, "])");
+    return;
+  }
+  case AST_TT_JUDGMENT:
+    fprintf(fp, "(");
+    lizard_fprint_value(fp, node->data.tt_judgment.context);
+    fprintf(fp, " |- ");
+    lizard_fprint_value(fp, node->data.tt_judgment.term);
+    fprintf(fp, " : ");
+    lizard_fprint_value(fp, node->data.tt_judgment.type);
+    fprintf(fp, ")");
+    return;
   case AST_MACRO:
     fprintf(fp, "<macro>");
     return;

@@ -33,11 +33,15 @@ static char *lizard_repl_strdup(const char *s) {
 }
 
 static void add_to_history(const char *line) {
+  int last_idx;
   if (line[0] == '\0') {
     return;
   }
-  if (history_count > 0 && strcmp(history[history_count - 1], line) == 0) {
-    return;
+  if (history_count > 0) {
+    last_idx = (history_count - 1) % HISTORY_SIZE;
+    if (history[last_idx] != NULL && strcmp(history[last_idx], line) == 0) {
+      return;
+    }
   }
   free(history[history_count % HISTORY_SIZE]);
   history[history_count % HISTORY_SIZE] = lizard_repl_strdup(line);
