@@ -283,3 +283,22 @@ lizard_ast_node_t *lizard_primitive_tt_subst_target(lz_list_t *, lizard_env_t *,
 lizard_ast_node_t *lizard_primitive_tt_judg_context(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_judg_term(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_judg_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+
+/* Identity manipulation + equivalence (notation only). */
+lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equivp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transportp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_symp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_transp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_left(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_right(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_fwd(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_equiv_bwd(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport_path(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_transport_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_sym_path(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans_p(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_id_trans_q(lz_list_t *, lizard_env_t *, lizard_heap_t *);

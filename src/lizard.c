@@ -363,6 +363,45 @@ lizard_ast_node_t *lizard_eval(
       }
 
       if (func->type == AST_PRIMITIVE) {
+        /* Short-circuit `and` and `or`. They are registered as
+           primitives, but primitive dispatch pre-forces every
+           argument — which both defeats the short-circuit and lets
+           an error in a later argument (e.g. an accessor on a
+           wrong-typed value that earlier arguments would have ruled
+           out) propagate spuriously. Handle these two by iterating
+           and forcing one argument at a time. */
+        if (func->data.primitive == lizard_primitive_and) {
+          lz_list_node_t *cur;
+          lizard_ast_node_t *last = lizard_make_bool(heap, true);
+          for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
+            lizard_ast_node_t *v = lizard_force(
+                ((lizard_ast_list_node_t *)cur)->ast, heap);
+            if (v && v->type == AST_ERROR) {
+              return cont(v, env, heap);
+            }
+            if (lizard_is_false(v)) {
+              return cont(v, env, heap);
+            }
+            last = v;
+          }
+          return cont(last, env, heap);
+        }
+        if (func->data.primitive == lizard_primitive_or) {
+          lz_list_node_t *cur;
+          lizard_ast_node_t *last = lizard_make_bool(heap, false);
+          for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {
+            lizard_ast_node_t *v = lizard_force(
+                ((lizard_ast_list_node_t *)cur)->ast, heap);
+            if (v && v->type == AST_ERROR) {
+              return cont(v, env, heap);
+            }
+            if (!lizard_is_false(v)) {
+              return cont(v, env, heap);
+            }
+            last = v;
+          }
+          return cont(last, env, heap);
+        }
         {
           lz_list_node_t *cur;
           for (cur = arg_list->head; cur != arg_list->nil; cur = cur->next) {

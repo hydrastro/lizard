@@ -1383,6 +1383,10 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_CONTEXT:      name = "context";      break;
   case AST_TT_SUBSTITUTION: name = "substitution"; break;
   case AST_TT_JUDGMENT:     name = "judgment";     break;
+  case AST_TT_EQUIV:        name = "equivalence";  break;
+  case AST_TT_TRANSPORT:    name = "transport";    break;
+  case AST_TT_ID_SYM:       name = "Id-sym";       break;
+  case AST_TT_ID_TRANS:     name = "Id-trans";     break;
   default:               name = "unknown";      break;
   }
   return make_symbol(heap, name);
@@ -2966,6 +2970,108 @@ TT_ACCESSOR(tt_judg_context,  AST_TT_JUDGMENT,     x->data.tt_judgment.context)
 TT_ACCESSOR(tt_judg_term,     AST_TT_JUDGMENT,     x->data.tt_judgment.term)
 TT_ACCESSOR(tt_judg_type,     AST_TT_JUDGMENT,     x->data.tt_judgment.type)
 
+/* ---------------------------------------------------------------------
+ * Identity manipulation + equivalence (NOTATION ONLY).
+ *
+ * These primitives let you sketch the basic HOTT-style identity
+ * lemmas — symmetry, transitivity, transport, equivalence — as
+ * structured values. Nothing about the validity of the constructed
+ * forms is checked. (equivalence A B fwd bwd) does not verify that
+ * fwd and bwd are actually inverse; (transport p x) does not verify
+ * that p is an Id-proof relating two types; (Id-trans p q) does not
+ * verify that p's endpoint matches q's startpoint.
+ *
+ * Why bother having these? They give a vocabulary for writing the
+ * lemmas one would prove in a real proof assistant. With them you
+ * can pattern-match on identity manipulations, define functions that
+ * walk an identity term and dispatch on its head, and sketch the
+ * normalisation rules a future checker might use.
+ * ------------------------------------------------------------------- */
+
+/* (equivalence A B fwd bwd) — claims A ≃ B via fwd : A -> B and
+ * bwd : B -> A. */
+lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (args->head == args->nil || args->head->next == args->nil ||
+      args->head->next->next == args->nil ||
+      args->head->next->next->next == args->nil ||
+      args->head->next->next->next->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_EQUIV;
+  n->data.tt_equiv.left  = nth_arg(args, 0);
+  n->data.tt_equiv.right = nth_arg(args, 1);
+  n->data.tt_equiv.fwd   = nth_arg(args, 2);
+  n->data.tt_equiv.bwd   = nth_arg(args, 3);
+  return n;
+}
+
+/* (transport path value) — claims to transport `value` along `path`. */
+lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRANSPORT;
+  n->data.tt_transport.path = nth_arg(args, 0);
+  n->data.tt_transport.value = nth_arg(args, 1);
+  return n;
+}
+
+/* (Id-sym p) — claimed symmetry of an Id-proof. */
+lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_ID_SYM;
+  n->data.tt_id_sym.path = nth_arg(args, 0);
+  return n;
+}
+
+/* (Id-trans p q) — claimed transitivity / composition. */
+lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_ID_TRANS;
+  n->data.tt_id_trans.p = nth_arg(args, 0);
+  n->data.tt_id_trans.q = nth_arg(args, 1);
+  return n;
+}
+
+TT_PREDICATE(tt_equivp,     AST_TT_EQUIV)
+TT_PREDICATE(tt_transportp, AST_TT_TRANSPORT)
+TT_PREDICATE(tt_id_symp,    AST_TT_ID_SYM)
+TT_PREDICATE(tt_id_transp,  AST_TT_ID_TRANS)
+
+TT_ACCESSOR(tt_equiv_left,    AST_TT_EQUIV,     x->data.tt_equiv.left)
+TT_ACCESSOR(tt_equiv_right,   AST_TT_EQUIV,     x->data.tt_equiv.right)
+TT_ACCESSOR(tt_equiv_fwd,     AST_TT_EQUIV,     x->data.tt_equiv.fwd)
+TT_ACCESSOR(tt_equiv_bwd,     AST_TT_EQUIV,     x->data.tt_equiv.bwd)
+TT_ACCESSOR(tt_transport_path,  AST_TT_TRANSPORT, x->data.tt_transport.path)
+TT_ACCESSOR(tt_transport_value, AST_TT_TRANSPORT, x->data.tt_transport.value)
+TT_ACCESSOR(tt_id_sym_path,   AST_TT_ID_SYM,    x->data.tt_id_sym.path)
+TT_ACCESSOR(tt_id_trans_p,    AST_TT_ID_TRANS,  x->data.tt_id_trans.p)
+TT_ACCESSOR(tt_id_trans_q,    AST_TT_ID_TRANS,  x->data.tt_id_trans.q)
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
@@ -3132,4 +3238,22 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "judgment-context", lizard_primitive_tt_judg_context);
   install_one(heap, env, "judgment-term", lizard_primitive_tt_judg_term);
   install_one(heap, env, "judgment-type", lizard_primitive_tt_judg_type);
+  /* Identity manipulation + equivalence (notation only). */
+  install_one(heap, env, "equivalence",   lizard_primitive_tt_equiv);
+  install_one(heap, env, "transport",     lizard_primitive_tt_transport);
+  install_one(heap, env, "Id-sym",        lizard_primitive_tt_id_sym);
+  install_one(heap, env, "Id-trans",      lizard_primitive_tt_id_trans);
+  install_one(heap, env, "equivalence?",  lizard_primitive_tt_equivp);
+  install_one(heap, env, "transport?",    lizard_primitive_tt_transportp);
+  install_one(heap, env, "Id-sym?",       lizard_primitive_tt_id_symp);
+  install_one(heap, env, "Id-trans?",     lizard_primitive_tt_id_transp);
+  install_one(heap, env, "equivalence-left",  lizard_primitive_tt_equiv_left);
+  install_one(heap, env, "equivalence-right", lizard_primitive_tt_equiv_right);
+  install_one(heap, env, "equivalence-fwd",   lizard_primitive_tt_equiv_fwd);
+  install_one(heap, env, "equivalence-bwd",   lizard_primitive_tt_equiv_bwd);
+  install_one(heap, env, "transport-path",    lizard_primitive_tt_transport_path);
+  install_one(heap, env, "transport-value",   lizard_primitive_tt_transport_value);
+  install_one(heap, env, "Id-sym-path",       lizard_primitive_tt_id_sym_path);
+  install_one(heap, env, "Id-trans-p",        lizard_primitive_tt_id_trans_p);
+  install_one(heap, env, "Id-trans-q",        lizard_primitive_tt_id_trans_q);
 }

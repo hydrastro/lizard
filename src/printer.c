@@ -415,6 +415,36 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_judgment.type);
     fprintf(fp, ")");
     return;
+  case AST_TT_EQUIV:
+    fprintf(fp, "(equivalence ");
+    lizard_fprint_value(fp, node->data.tt_equiv.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_equiv.right);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_equiv.fwd);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_equiv.bwd);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_TRANSPORT:
+    fprintf(fp, "(transport ");
+    lizard_fprint_value(fp, node->data.tt_transport.path);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_transport.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_ID_SYM:
+    fprintf(fp, "(Id-sym ");
+    lizard_fprint_value(fp, node->data.tt_id_sym.path);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_ID_TRANS:
+    fprintf(fp, "(Id-trans ");
+    lizard_fprint_value(fp, node->data.tt_id_trans.p);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_id_trans.q);
+    fprintf(fp, ")");
+    return;
   case AST_MACRO:
     fprintf(fp, "<macro>");
     return;

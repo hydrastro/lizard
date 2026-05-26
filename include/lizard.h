@@ -85,7 +85,18 @@ typedef enum {
   AST_TT_VARIABLE,
   AST_TT_CONTEXT,
   AST_TT_SUBSTITUTION,
-  AST_TT_JUDGMENT
+  AST_TT_JUDGMENT,
+  /* ----- Identity manipulation & equivalence (notation only) -----
+   * For writing the surface of HOTT-style identity reasoning.
+   * `equivalence` packages two maps claimed to be inverse.
+   * `transport` is the action of an identity proof on a term.
+   * `Id-sym` and `Id-trans` are the basic identity manipulations
+   * (symmetry, transitivity). No verification happens; these are
+   * tags with structure. */
+  AST_TT_EQUIV,
+  AST_TT_TRANSPORT,
+  AST_TT_ID_SYM,
+  AST_TT_ID_TRANS
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -234,6 +245,23 @@ struct lizard_ast_node {
       lizard_ast_node_t *term;
       lizard_ast_node_t *type;
     } tt_judgment;
+    struct {
+      lizard_ast_node_t *left;        /* type A */
+      lizard_ast_node_t *right;       /* type B */
+      lizard_ast_node_t *fwd;         /* claimed forward map A -> B */
+      lizard_ast_node_t *bwd;         /* claimed inverse B -> A */
+    } tt_equiv;
+    struct {
+      lizard_ast_node_t *path;        /* an Id proof */
+      lizard_ast_node_t *value;       /* the thing being transported */
+    } tt_transport;
+    struct {
+      lizard_ast_node_t *path;        /* (sym p) reverses an Id proof */
+    } tt_id_sym;
+    struct {
+      lizard_ast_node_t *p;           /* (trans p q) composes two Id proofs */
+      lizard_ast_node_t *q;
+    } tt_id_trans;
   } data;
 };
 
