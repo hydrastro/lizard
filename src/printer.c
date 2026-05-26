@@ -703,6 +703,25 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_ua.equiv);
     fprintf(fp, ")");
     return;
+  case AST_TT_SYSTEM_NIL:
+    fprintf(fp, "[]");
+    return;
+  case AST_TT_SYSTEM_CONS:
+    fprintf(fp, "[");
+    {
+      lizard_ast_node_t *cur = node;
+      int first = 1;
+      while (cur && cur->type == AST_TT_SYSTEM_CONS) {
+        if (!first) fprintf(fp, ", ");
+        first = 0;
+        lizard_fprint_value(fp, cur->data.tt_system_cons.face);
+        fprintf(fp, " ↦ ");
+        lizard_fprint_value(fp, cur->data.tt_system_cons.value);
+        cur = cur->data.tt_system_cons.next;
+      }
+    }
+    fprintf(fp, "]");
+    return;
   case AST_MACRO:
     fprintf(fp, "<macro>");
     return;

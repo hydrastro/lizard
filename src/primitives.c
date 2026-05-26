@@ -1431,6 +1431,8 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_GLUE_INTRO:   name = "glue-intro";   break;
   case AST_TT_UNGLUE:       name = "unglue";       break;
   case AST_TT_UA:           name = "ua";           break;
+  case AST_TT_SYSTEM_NIL:   name = "system-nil";   break;
+  case AST_TT_SYSTEM_CONS:  name = "system-cons";  break;
   default:               name = "unknown";      break;
   }
   return make_symbol(heap, name);
@@ -3865,6 +3867,41 @@ lizard_ast_node_t *lizard_primitive_tt_ua(lz_list_t *args,
 }
 TT_PREDICATE(tt_uap, AST_TT_UA)
 
+/* ===== System: multi-clause partial element (Turn 11) ===== */
+
+/* (system-nil) — the empty system, defined nowhere. */
+lizard_ast_node_t *lizard_primitive_tt_system_nil(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SYSTEM_NIL;
+  return n;
+}
+TT_PREDICATE(tt_system_nilp, AST_TT_SYSTEM_NIL)
+
+/* (system-cons face value next-system) */
+lizard_ast_node_t *lizard_primitive_tt_system_cons(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SYSTEM_CONS;
+  n->data.tt_system_cons.face  = nth_arg(args, 0);
+  n->data.tt_system_cons.value = nth_arg(args, 1);
+  n->data.tt_system_cons.next  = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_system_consp, AST_TT_SYSTEM_CONS)
+TT_ACCESSOR(tt_system_face,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.face)
+TT_ACCESSOR(tt_system_value, AST_TT_SYSTEM_CONS, x->data.tt_system_cons.value)
+TT_ACCESSOR(tt_system_next,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.next)
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
@@ -4194,6 +4231,15 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "unglue?",       lizard_primitive_tt_unglue_p);
   install_one(heap, env, "ua",            lizard_primitive_tt_ua);
   install_one(heap, env, "ua?",           lizard_primitive_tt_uap);
+  /* Systems (Turn 11). */
+  install_one(heap, env, "system-nil",    lizard_primitive_tt_system_nil);
+  install_one(heap, env, "system-nil?",   lizard_primitive_tt_system_nilp);
+  install_one(heap, env, "system-cons",   lizard_primitive_tt_system_cons);
+  install_one(heap, env, "system-cons?",  lizard_primitive_tt_system_consp);
+  install_one(heap, env, "system-face",   lizard_primitive_tt_system_face);
+  install_one(heap, env, "system-value",  lizard_primitive_tt_system_value);
+  install_one(heap, env, "system-next",   lizard_primitive_tt_system_next);
+  install_one(heap, env, "system-lookup", lizard_primitive_tt_system_lookup);
   install_one(heap, env, "universe-leq?", lizard_primitive_tt_universe_leq);
   install_one(heap, env, "face-entails?", lizard_primitive_tt_face_entails);
   /* Bidirectional type checker for the λΠ fragment.

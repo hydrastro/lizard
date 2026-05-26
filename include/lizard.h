@@ -249,7 +249,26 @@ typedef enum {
   AST_TT_GLUE,
   AST_TT_GLUE_INTRO,
   AST_TT_UNGLUE,
-  AST_TT_UA
+  AST_TT_UA,
+  /* ----- Systems and comp Glue (Turn 11) -----
+   *
+   * A "system" is a finite map from faces to values, used as the
+   * partial-element argument to comp/hcomp when the partial is
+   * defined on a disjunction of multiple atomic faces.
+   *
+   *   [φ_1 ↦ u_1, φ_2 ↦ u_2, ..., φ_n ↦ u_n]
+   *
+   * Side condition: u_i ≡ u_j on φ_i ∧ φ_j.
+   *
+   * Representation: a linked list of clauses. SYSTEM_NIL is the
+   * empty system (acts like the empty partial element, defined
+   * nowhere). SYSTEM_CONS wraps (face, value, rest).
+   *
+   * The single-face Partial of Turn 7 is the n=1 case; we keep
+   * both representations and treat them interchangeably.
+   */
+  AST_TT_SYSTEM_NIL,
+  AST_TT_SYSTEM_CONS
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -551,6 +570,12 @@ struct lizard_ast_node {
     struct {
       lizard_ast_node_t *equiv;
     } tt_ua;
+    /* System cons cell: (face, value, next-system). */
+    struct {
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *value;
+      lizard_ast_node_t *next;
+    } tt_system_cons;
   } data;
 };
 

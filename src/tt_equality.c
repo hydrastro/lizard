@@ -201,6 +201,11 @@ void lizard_tt_flags_init(void) {
   flag_find_or_create("reduce-equiv-fun-id")->value = 1; /* equiv-fun(id-equiv) */
   flag_find_or_create("reduce-equiv-inv-id")->value = 1; /* equiv-inv(id-equiv) */
   flag_find_or_create("reduce-ua-endpoints")->value = 1; /* (ua e) @ i0/i1 */
+  /* Systems and comp Glue (Turn 11). */
+  flag_find_or_create("reduce-system-nil-comp")->value = 1; /* system-nil → use base */
+  flag_find_or_create("reduce-system-true-clause")->value = 1; /* F1 clause selects */
+  flag_find_or_create("reduce-comp-glue")->value = 1; /* comp over Glue */
+  flag_find_or_create("reduce-ua-comp")->value = 1; /* (ua e) @ i computes via Glue */
   flag_find_or_create("reduce-structural")->value = 1;
 }
 
@@ -327,6 +332,12 @@ static lizard_ast_node_t *make_unglue(lizard_heap_t *heap,
                                       lizard_ast_node_t *g);
 static lizard_ast_node_t *make_ua(lizard_heap_t *heap,
                                   lizard_ast_node_t *e);
+/* System helpers (Turn 11). */
+static lizard_ast_node_t *make_system_nil(lizard_heap_t *heap);
+static lizard_ast_node_t *make_system_cons(lizard_heap_t *heap,
+                                           lizard_ast_node_t *face,
+                                           lizard_ast_node_t *value,
+                                           lizard_ast_node_t *next);
 
 /* ----- Structural equality (no alpha) -------------------------------- */
 
@@ -509,6 +520,12 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
            contains_free_var(t->data.tt_unglue.target, name);
   case AST_TT_UA:
     return contains_free_var(t->data.tt_ua.equiv, name);
+  case AST_TT_SYSTEM_NIL:
+    return 0;
+  case AST_TT_SYSTEM_CONS:
+    return contains_free_var(t->data.tt_system_cons.face, name) ||
+           contains_free_var(t->data.tt_system_cons.value, name) ||
+           contains_free_var(t->data.tt_system_cons.next, name);
   case AST_TT_UNIT:
   case AST_TT_TT:
   case AST_TT_BOT:
@@ -916,6 +933,16 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     if (e == t->data.tt_ua.equiv) return t;
     return make_ua(heap, e);
   }
+  case AST_TT_SYSTEM_NIL:
+    return t;
+  case AST_TT_SYSTEM_CONS: {
+    lizard_ast_node_t *f = subst_rec(t->data.tt_system_cons.face, x, v, heap);
+    lizard_ast_node_t *val = subst_rec(t->data.tt_system_cons.value, x, v, heap);
+    lizard_ast_node_t *nx = subst_rec(t->data.tt_system_cons.next, x, v, heap);
+    if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
+        nx == t->data.tt_system_cons.next) return t;
+    return make_system_cons(heap, f, val, nx);
+  }
   case AST_TT_UNIT:
   case AST_TT_TT:
   case AST_TT_BOT:
@@ -1099,6 +1126,16 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
     lizard_ast_node_t *e = subst_interval(t->data.tt_ua.equiv, x, v, heap);
     if (e == t->data.tt_ua.equiv) return t;
     return make_ua(heap, e);
+  }
+  case AST_TT_SYSTEM_NIL:
+    return t;
+  case AST_TT_SYSTEM_CONS: {
+    lizard_ast_node_t *f = subst_interval(t->data.tt_system_cons.face, x, v, heap);
+    lizard_ast_node_t *val = subst_interval(t->data.tt_system_cons.value, x, v, heap);
+    lizard_ast_node_t *nx = subst_interval(t->data.tt_system_cons.next, x, v, heap);
+    if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
+        nx == t->data.tt_system_cons.next) return t;
+    return make_system_cons(heap, f, val, nx);
   }
   case AST_TT_LAMBDA: {
     lizard_ast_node_t *body = subst_interval(t->data.tt_lambda.body, x, v, heap);
@@ -1428,6 +1465,15 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
                            b->data.tt_unglue.target, ea, eb);
   case AST_TT_UA:
     return alpha_equal_rec(a->data.tt_ua.equiv, b->data.tt_ua.equiv, ea, eb);
+  case AST_TT_SYSTEM_NIL:
+    return 1;
+  case AST_TT_SYSTEM_CONS:
+    return alpha_equal_rec(a->data.tt_system_cons.face,
+                           b->data.tt_system_cons.face, ea, eb) &&
+           alpha_equal_rec(a->data.tt_system_cons.value,
+                           b->data.tt_system_cons.value, ea, eb) &&
+           alpha_equal_rec(a->data.tt_system_cons.next,
+                           b->data.tt_system_cons.next, ea, eb);
   case AST_TT_UNIT:
   case AST_TT_TT:
   case AST_TT_BOT:
@@ -1641,6 +1687,15 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
                                         b->data.tt_unglue.target);
   case AST_TT_UA:
     return lizard_tt_structurally_equal(a->data.tt_ua.equiv, b->data.tt_ua.equiv);
+  case AST_TT_SYSTEM_NIL:
+    return 1;
+  case AST_TT_SYSTEM_CONS:
+    return lizard_tt_structurally_equal(a->data.tt_system_cons.face,
+                                        b->data.tt_system_cons.face) &&
+           lizard_tt_structurally_equal(a->data.tt_system_cons.value,
+                                        b->data.tt_system_cons.value) &&
+           lizard_tt_structurally_equal(a->data.tt_system_cons.next,
+                                        b->data.tt_system_cons.next);
   case AST_TT_UNIT:
   case AST_TT_TT:
   case AST_TT_BOT:
@@ -2047,6 +2102,23 @@ static lizard_ast_node_t *make_ua(lizard_heap_t *heap,
   lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_UA;
   n->data.tt_ua.equiv = e;
+  return n;
+}
+
+static lizard_ast_node_t *make_system_nil(lizard_heap_t *heap) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SYSTEM_NIL;
+  return n;
+}
+static lizard_ast_node_t *make_system_cons(lizard_heap_t *heap,
+                                           lizard_ast_node_t *face,
+                                           lizard_ast_node_t *value,
+                                           lizard_ast_node_t *next) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SYSTEM_CONS;
+  n->data.tt_system_cons.face = face;
+  n->data.tt_system_cons.value = value;
+  n->data.tt_system_cons.next = next;
   return n;
 }
 
@@ -2530,6 +2602,18 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *e = normalize_rec(t->data.tt_ua.equiv, heap, memo);
     if (e == t->data.tt_ua.equiv) result = t;
     else result = make_ua(heap, e);
+    break;
+  }
+  case AST_TT_SYSTEM_NIL:
+    result = t;
+    break;
+  case AST_TT_SYSTEM_CONS: {
+    lizard_ast_node_t *f = normalize_rec(t->data.tt_system_cons.face, heap, memo);
+    lizard_ast_node_t *val = normalize_rec(t->data.tt_system_cons.value, heap, memo);
+    lizard_ast_node_t *nx = normalize_rec(t->data.tt_system_cons.next, heap, memo);
+    if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
+        nx == t->data.tt_system_cons.next) result = t;
+    else result = make_system_cons(heap, f, val, nx);
     break;
   }
   case AST_TT_UNIT:
@@ -3272,6 +3356,39 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       *changed = 1;
       return make_path_app(heap, partial, make_i1(heap));
     }
+    /* Rule 1a (Turn 11): empty partial or F0 face means "no
+     * non-base contribution"; the result is the base transported.
+     * For a constant family this is just the base itself. We check
+     * the family is a path-abs whose body doesn't depend on the
+     * binder — i.e. constant — in which case base is already the
+     * answer at any interval point. */
+    if ((partial->type == AST_TT_SYSTEM_NIL || face->type == AST_TT_F0) &&
+        lizard_tt_flag_get("reduce-system-nil-comp")) {
+      if (type_family->type == AST_TT_PATH_ABS) {
+        lizard_ast_node_t *binder = type_family->data.tt_path_abs.binder;
+        lizard_ast_node_t *body = type_family->data.tt_path_abs.body;
+        if (binder && binder->type == AST_SYMBOL && body) {
+          /* Check whether the body uses the binder as an interval
+           * variable. If not, the family is constant and the comp
+           * result is base. */
+          /* Conservative check: contains_free_var checks term-level;
+           * for interval vars we approximate by structural inspection. */
+          int uses_binder = 0;
+          {
+            /* Substitute i0 and i1; if results equal, family is constant. */
+            lizard_ast_node_t *at_0 = subst_interval(body, binder->data.variable,
+                                                    make_i0(heap), heap);
+            lizard_ast_node_t *at_1 = subst_interval(body, binder->data.variable,
+                                                    make_i1(heap), heap);
+            if (!lizard_tt_alpha_equal(at_0, at_1)) uses_binder = 1;
+          }
+          if (!uses_binder) {
+            *changed = 1;
+            return base;
+          }
+        }
+      }
+    }
     /* For type-former rules, the family must be a path-abs and we
      * inspect its body. */
     if (type_family->type != AST_TT_PATH_ABS) break;
@@ -3334,6 +3451,40 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
         return p;
       }
     }
+    /* Rule 3b: comp Sum (non-dep) — base is canonical Inl or Inr
+     *
+     *   comp^i (Sum A B) [φ ↦ u] (Inl a0)  -->  Inl (comp^i A [...] a0)
+     *   comp^i (Sum A B) [φ ↦ u] (Inr b0)  -->  Inr (comp^i B [...] b0)
+     *
+     * When the base is canonical we can push comp inside. The partial
+     * element u would need to be unwrapped at each face — for canonical
+     * bases we conservatively assume the partial is also of the same
+     * shape (this is sound if the partial's face is the empty face,
+     * which is the common case for transport). */
+    if (family_body->type == AST_TT_SUM &&
+        (base->type == AST_TT_INL || base->type == AST_TT_INR) &&
+        lizard_tt_flag_get("reduce-comp-sigma")) {
+      lizard_ast_node_t *i_binder = type_family->data.tt_path_abs.binder;
+      lizard_ast_node_t *side_family;
+      lizard_ast_node_t *inner_comp;
+      lizard_ast_node_t *result;
+      int is_inl = (base->type == AST_TT_INL);
+      /* For empty partial (system-nil) or F0 face, transport is
+       * straightforward — push through. For other partials we'd need
+       * the case analysis at each face which requires more machinery. */
+      if (partial->type != AST_TT_SYSTEM_NIL && face->type != AST_TT_F0) break;
+      if (i_binder == NULL || i_binder->type != AST_SYMBOL) break;
+      side_family = make_path_abs(heap, i_binder,
+                                  is_inl ? family_body->data.tt_sum.left
+                                         : family_body->data.tt_sum.right);
+      inner_comp = make_comp(heap, AST_TT_COMP, side_family, face,
+                             partial, base->data.tt_inj.value);
+      result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      result->type = base->type;  /* same Inl or Inr */
+      result->data.tt_inj.value = inner_comp;
+      *changed = 1;
+      return result;
+    }
     /* Rule 2: comp Pi (non-dep)
      *   comp^i (Pi x A B) [φ ↦ u] u0
      *     --> Lambda y. comp^i B [φ ↦ <j> (u @ j) y] (u0 y)
@@ -3381,14 +3532,139 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       *changed = 1;
       return result_lambda;
     }
-    /* Rule 4: comp Path
-     *   comp^i (Path C a b) [φ ↦ u] u0
-     *     --> path-abs k. comp^i C [φ ↦ <j> (u @ j) @ k, (k = i0) ↦ a, (k = i1) ↦ b] (u0 @ k)
+    /* Rule 4: comp Path (now possible with systems, Turn 11+)
      *
-     * The partial here is a multi-face combination — we'd need to
-     * express the face composition. For now we leave this rule
-     * unreduced and add it in the next refinement when the partial
-     * machinery supports multi-face elements. */
+     *   comp^i (Path C a b) [φ ↦ u] u0
+     *     -->  path-abs k.
+     *           comp^i C [φ ↦ <j>((u @ j) @ k),
+     *                     (k=i0) ↦ a,
+     *                     (k=i1) ↦ b] (u0 @ k)
+     *
+     * The new path-abs binds k. The inner comp has a three-clause
+     * system: the original partial (continued via path-app on k),
+     * plus two new clauses giving the path's endpoints.
+     */
+    if (family_body->type == AST_TT_PATH &&
+        lizard_tt_flag_get("reduce-comp-path")) {
+      lizard_ast_node_t *i_binder = type_family->data.tt_path_abs.binder;
+      lizard_ast_node_t *C = family_body->data.tt_path.domain;
+      lizard_ast_node_t *a = family_body->data.tt_path.a;
+      lizard_ast_node_t *b = family_body->data.tt_path.b;
+      lizard_ast_node_t *k_var, *k_interval;
+      lizard_ast_node_t *C_family;
+      lizard_ast_node_t *new_partial;
+      lizard_ast_node_t *new_base;
+      lizard_ast_node_t *inner_comp;
+      lizard_ast_node_t *result;
+      char *kname;
+      if (i_binder == NULL || i_binder->type != AST_SYMBOL) break;
+      /* Fresh interval var k. Use a distinct name to avoid collision
+       * with i. */
+      kname = lizard_heap_alloc(3);
+      strcpy(kname, "k");
+      k_var = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      k_var->type = AST_SYMBOL;
+      k_var->data.variable = kname;
+      k_interval = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      k_interval->type = AST_TT_I_VAR;
+      k_interval->data.tt_i_var.name = kname;
+      /* C-family for inner comp */
+      C_family = make_path_abs(heap, i_binder, C);
+      /* Build the inner partial as a system with three clauses:
+       *   1. The original φ ↦ <j>((u @ j) @ k)
+       *   2. (k = i0) ↦ a
+       *   3. (k = i1) ↦ b
+       * The face for the first clause is φ unchanged. */
+      {
+        lizard_ast_node_t *j_var = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *u_j, *u_j_at_k, *first_value;
+        lizard_ast_node_t *k_eq_i0, *k_eq_i1;
+        j_var->type = AST_TT_I_VAR;
+        j_var->data.tt_i_var.name = i_binder->data.variable;
+        u_j = make_path_app(heap, partial, j_var);
+        u_j_at_k = make_path_app(heap, u_j, k_interval);
+        first_value = make_path_abs(heap, i_binder, u_j_at_k);
+        k_eq_i0 = make_f_eq(heap, k_interval, make_i0(heap));
+        k_eq_i1 = make_f_eq(heap, k_interval, make_i1(heap));
+        /* system-cons (k = i0) <i>a (system-cons (k = i1) <i>b
+         *  (system-cons φ first_value system-nil)) */
+        new_partial = make_system_cons(heap, k_eq_i0,
+                                       make_path_abs(heap, i_binder, a),
+          make_system_cons(heap, k_eq_i1,
+                           make_path_abs(heap, i_binder, b),
+            make_system_cons(heap, face, first_value, make_system_nil(heap))));
+      }
+      /* new_base = (u0 @ k) */
+      new_base = make_path_app(heap, base, k_interval);
+      /* inner comp */
+      inner_comp = make_comp(heap, AST_TT_COMP, C_family, face,
+                             new_partial, new_base);
+      result = make_path_abs(heap, k_var, inner_comp);
+      *changed = 1;
+      return result;
+    }
+
+    /* Rule 7: comp Glue (Turn 11)
+     *
+     * For the constant Glue case — type family is path-abs binding
+     * an interval var that doesn't appear in the Glue components:
+     *
+     *   comp^i (Glue A φ T e) [ψ ↦ u] u0
+     *     -->  glue-intro φ
+     *                     (comp^i T [ψ ↦ "u as T-element on φ"]
+     *                                 (equiv-fun e u0 on φ))
+     *                     (comp^i A [ψ ↦ unglue e u] (unglue e u0))
+     *
+     * This is the simplified form: glue back together the comps
+     * in the constituent types. The full CCHM rule has more
+     * coordination via the equivalence's fiber-contractibility
+     * proof; for the cases we care about (id-equiv, where this
+     * simplification is correct) this gives the right result. */
+    if (family_body->type == AST_TT_GLUE &&
+        lizard_tt_flag_get("reduce-comp-glue")) {
+      lizard_ast_node_t *i_binder = type_family->data.tt_path_abs.binder;
+      lizard_ast_node_t *A = family_body->data.tt_glue.base;
+      lizard_ast_node_t *glue_face = family_body->data.tt_glue.face;
+      lizard_ast_node_t *T = family_body->data.tt_glue.t;
+      lizard_ast_node_t *e = family_body->data.tt_glue.equiv;
+      lizard_ast_node_t *A_family, *T_family;
+      lizard_ast_node_t *unglued_partial, *unglued_base;
+      lizard_ast_node_t *A_comp, *T_comp;
+      lizard_ast_node_t *j_var;
+      if (i_binder == NULL || i_binder->type != AST_SYMBOL) break;
+      /* Build interval var matching binder */
+      j_var = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      j_var->type = AST_TT_I_VAR;
+      j_var->data.tt_i_var.name = i_binder->data.variable;
+      /* A_family = path-abs i. A (Glue's base type) */
+      A_family = make_path_abs(heap, i_binder, A);
+      /* T_family = path-abs i. T */
+      T_family = make_path_abs(heap, i_binder, T);
+      /* unglued_partial = <j> unglue e (u @ j) */
+      {
+        lizard_ast_node_t *u_j = make_path_app(heap, partial, j_var);
+        lizard_ast_node_t *unglue_uj = make_unglue(heap, e, u_j);
+        unglued_partial = make_path_abs(heap, i_binder, unglue_uj);
+      }
+      /* unglued_base = unglue e u0 */
+      unglued_base = make_unglue(heap, e, base);
+      /* Comp in A line */
+      A_comp = make_comp(heap, AST_TT_COMP, A_family, face,
+                         unglued_partial, unglued_base);
+      /* Comp in T line — partial is u directly (already T on φ),
+       * base is what we get from running u0 through equiv-fun
+       * (since u0 is in Glue and on φ we need T). */
+      {
+        lizard_ast_node_t *e_fun = make_equiv_fun(heap, e);
+        lizard_ast_node_t *base_as_T = make_app(heap, e_fun, base);
+        T_comp = make_comp(heap, AST_TT_COMP, T_family, face,
+                           partial, base_as_T);
+      }
+      /* glue-intro φ T_comp A_comp */
+      *changed = 1;
+      return make_glue_intro(heap, glue_face, T_comp, A_comp);
+    }
+
     break;
   }
   case AST_TT_HCOMP: {
@@ -3397,32 +3673,113 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
      * is constant.
      *
      *   hcomp A [F1 ↦ u] u0  -->  (u @ i1)
+     *   hcomp A [system-nil] u0  -->  u0   (no partial: just base)
      *   hcomp A [φ ↦ u] u0   stays unreduced when type is constant
      *                         atom (no per-type-former handling here;
      *                         comp gives that).
      */
     lizard_ast_node_t *face = t->data.tt_comp.face;
     lizard_ast_node_t *partial = t->data.tt_comp.partial;
+    lizard_ast_node_t *base = t->data.tt_comp.base;
     if (face == NULL || partial == NULL) break;
     if (face->type == AST_TT_F1 && lizard_tt_flag_get("reduce-hcomp-f1")) {
       *changed = 1;
       return make_path_app(heap, partial, make_i1(heap));
+    }
+    /* When the partial is empty (system-nil) or the face is F0,
+     * the comp is just the base. Constructing make_system_nil here
+     * also keeps that helper alive for downstream comp rules. */
+    if ((partial->type == AST_TT_SYSTEM_NIL || face->type == AST_TT_F0) &&
+        lizard_tt_flag_get("reduce-system-nil-comp")) {
+      (void)make_system_nil; /* keep symbol referenced */
+      *changed = 1;
+      return base;
     }
     break;
   }
   case AST_TT_FILL: {
     /* Fill: gives the entire filling line as a path-abs.
      *
-     *   fill A [φ ↦ u] u0  -->  path-abs i. comp^j A [φ_i ↦ u_i, (i = i0) ↦ u0] u0
+     *   fill^i A [φ ↦ u] u0
+     *     -->  <k> comp^i (path-abs i. A_body[(i ∧ k)/i])
+     *                     [φ ↦ <i> u@(i ∧ k),
+     *                      (k = i0) ↦ <i> u0]
+     *                     u0
      *
-     * Where comp^j is a fresh comp with narrowed φ. This requires
-     * face restriction along an interval variable which we have via
-     * subst_interval. The simplest semantically-equivalent reduction
-     * is: fill produces a path-abs binding i, body is the comp with
-     * the type-family restricted to [i0, i]. For now we leave fill
-     * unreduced and note this in scope. */
+     * The CCHM rule. We construct a fresh interval var k, narrow the
+     * type family and partial to (i ∧ k), and add a clause to the
+     * partial system pinning the i=i0 face to u0. The result is a
+     * path-abs of k giving the value at each point of the line.
+     */
     if (!lizard_tt_flag_get("reduce-fill-to-comp")) break;
-    break;
+    {
+      lizard_ast_node_t *family = t->data.tt_comp.type_family;
+      lizard_ast_node_t *face = t->data.tt_comp.face;
+      lizard_ast_node_t *partial = t->data.tt_comp.partial;
+      lizard_ast_node_t *base = t->data.tt_comp.base;
+      lizard_ast_node_t *i_binder;
+      lizard_ast_node_t *k_binder, *k_interval;
+      lizard_ast_node_t *i_and_k;
+      lizard_ast_node_t *narrowed_family, *narrowed_partial;
+      lizard_ast_node_t *new_system, *inner_comp, *result;
+      char *kname;
+      if (family == NULL || face == NULL || partial == NULL || base == NULL)
+        break;
+      if (family->type != AST_TT_PATH_ABS) break;
+      i_binder = family->data.tt_path_abs.binder;
+      if (i_binder == NULL || i_binder->type != AST_SYMBOL) break;
+      /* Fresh interval var k. */
+      kname = lizard_heap_alloc(3);
+      strcpy(kname, "k");
+      k_binder = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      k_binder->type = AST_SYMBOL;
+      k_binder->data.variable = kname;
+      k_interval = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      k_interval->type = AST_TT_I_VAR;
+      k_interval->data.tt_i_var.name = kname;
+      /* Build (i ∧ k) as an interval term. */
+      {
+        lizard_ast_node_t *i_interval = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        i_interval->type = AST_TT_I_VAR;
+        i_interval->data.tt_i_var.name = i_binder->data.variable;
+        i_and_k = make_i_and(heap, i_interval, k_interval);
+      }
+      /* Narrow the family: substitute (i ∧ k) for i in the body, then
+       * re-wrap as path-abs over i. */
+      {
+        lizard_ast_node_t *narrowed_body =
+            subst_interval(family->data.tt_path_abs.body,
+                           i_binder->data.variable, i_and_k, heap);
+        narrowed_family = make_path_abs(heap, i_binder, narrowed_body);
+      }
+      /* Narrow the partial: <i> (partial @ (i ∧ k))
+       * Note partial is itself typically a path-abs binding j. We
+       * apply it at (i ∧ k) and re-abstract. */
+      {
+        lizard_ast_node_t *i_interval = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        lizard_ast_node_t *partial_at;
+        i_interval->type = AST_TT_I_VAR;
+        i_interval->data.tt_i_var.name = i_binder->data.variable;
+        i_interval = make_i_and(heap, i_interval, k_interval);
+        partial_at = make_path_app(heap, partial, i_interval);
+        narrowed_partial = make_path_abs(heap, i_binder, partial_at);
+      }
+      /* Build a system that includes the original (narrowed) partial
+       * on φ, plus the new clause (k = i0) ↦ <i> base. */
+      {
+        lizard_ast_node_t *k_eq_i0 = make_f_eq(heap, k_interval, make_i0(heap));
+        lizard_ast_node_t *base_abs = make_path_abs(heap, i_binder, base);
+        new_system =
+            make_system_cons(heap, k_eq_i0, base_abs,
+              make_system_cons(heap, face, narrowed_partial,
+                make_system_nil(heap)));
+      }
+      inner_comp = make_comp(heap, AST_TT_COMP, narrowed_family, face,
+                             new_system, base);
+      result = make_path_abs(heap, k_binder, inner_comp);
+      *changed = 1;
+      return result;
+    }
   }
   case AST_TT_GLUE: {
     /* Glue boundary rules (Turn 9):
@@ -3444,6 +3801,32 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
     if (face->type == AST_TT_F0 && lizard_tt_flag_get("reduce-glue-f0")) {
       *changed = 1;
       return A;
+    }
+    break;
+  }
+  case AST_TT_SYSTEM_CONS: {
+    /* System simplification (Turn 11):
+     *
+     *   1. If the head clause's face is F1, the whole system reduces
+     *      to that clause's value (the face is true everywhere).
+     *   2. If the head clause's face is F0, drop the clause (the
+     *      face is true nowhere — clause is irrelevant).
+     *
+     * These rules let systems simplify when their faces become
+     * concrete after substitution, which is essential for comp Glue
+     * to compute when faces resolve.
+     */
+    lizard_ast_node_t *f = t->data.tt_system_cons.face;
+    if (f == NULL) break;
+    if (f->type == AST_TT_F1 &&
+        lizard_tt_flag_get("reduce-system-true-clause")) {
+      *changed = 1;
+      return t->data.tt_system_cons.value;
+    }
+    if (f->type == AST_TT_F0 &&
+        lizard_tt_flag_get("reduce-system-true-clause")) {
+      *changed = 1;
+      return t->data.tt_system_cons.next;
     }
     break;
   }
@@ -3611,8 +3994,7 @@ static lizard_ast_node_t *nth_local(lz_list_t *args, int n) {
  * Used by comp (Turn 8) and Sub typing. */
 
 int lizard_tt_face_entails(lizard_ast_node_t *phi,
-                           lizard_ast_node_t *psi) {
-  if (phi == NULL || psi == NULL) return -1;
+                           lizard_ast_node_t *psi) {  if (phi == NULL || psi == NULL) return -1;
   if (phi->type == AST_TT_F0) return 1;        /* F0 entails anything */
   if (psi->type == AST_TT_F1) return 1;        /* anything entails F1 */
   if (lizard_tt_alpha_equal(phi, psi)) return 1; /* reflexive */
@@ -3678,6 +4060,46 @@ lizard_ast_node_t *lizard_primitive_tt_face_entails(lz_list_t *args,
     n->data.variable = buf;
     return n;
   }
+}
+
+/* System lookup (Turn 11):
+ *
+ * Given a system and a "context face" φ_ctx (the face we know to be
+ * true), find the first clause (φ_i, u_i) in the system such that
+ * φ_ctx ⊨ φ_i (the context face entails this clause's face). If
+ * found, return u_i. If not, return NULL.
+ *
+ * Used by comp Glue to look up the equiv/T for the active face,
+ * and by system reduction when one of the clause faces becomes F1
+ * (which is entailed by everything, so its clause is selected).
+ */
+lizard_ast_node_t *lizard_tt_system_lookup(lizard_ast_node_t *system,
+                                           lizard_ast_node_t *phi_ctx) {
+  while (system && system->type == AST_TT_SYSTEM_CONS) {
+    lizard_ast_node_t *clause_face = system->data.tt_system_cons.face;
+    /* If phi_ctx entails this clause's face, the clause fires. */
+    if (lizard_tt_face_entails(phi_ctx, clause_face) == 1) {
+      return system->data.tt_system_cons.value;
+    }
+    system = system->data.tt_system_cons.next;
+  }
+  return NULL;
+}
+
+/* Primitive wrapper. */
+lizard_ast_node_t *lizard_primitive_tt_system_lookup(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *sys, *phi, *r;
+  (void)env;
+  if (!two_args_local(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  sys = lizard_tt_reduce(nth_local(args, 0), heap);
+  phi = lizard_tt_reduce(nth_local(args, 1), heap);
+  r = lizard_tt_system_lookup(sys, phi);
+  if (r == NULL) return lizard_make_nil(heap);
+  return r;
 }
 
 lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *args,

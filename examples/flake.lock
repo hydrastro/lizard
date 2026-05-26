@@ -1,20 +1,19 @@
 {
   "nodes": {
-    "ds": {
-      "inputs": {
-        "nixpkgs": "nixpkgs"
-      },
+    "imgui": {
+      "flake": false,
       "locked": {
-        "lastModified": 1739704346,
-        "narHash": "sha256-n1ErSLEiupwPbPkfaEKRwqSQsrfAuEZSrjlesRHyq74=",
-        "owner": "hydrastro",
-        "repo": "ds",
-        "rev": "688cc2e0f5de9d8af1ef28b07a284423c7241a2c",
+        "lastModified": 1778596230,
+        "narHash": "sha256-NaSgDE5QEEMrsgYOCAPx5d0XvCIQ9T+ciAKfLFhlmzw=",
+        "owner": "ocornut",
+        "repo": "imgui",
+        "rev": "8936b58fe26e8c3da834b8f60b06511d537b4c63",
         "type": "github"
       },
       "original": {
-        "owner": "hydrastro",
-        "repo": "ds",
+        "owner": "ocornut",
+        "ref": "v1.92.8",
+        "repo": "imgui",
         "type": "github"
       }
     },
@@ -34,26 +33,10 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
-      "locked": {
-        "lastModified": 1739482815,
-        "narHash": "sha256-/5Lwtmp/8j+ro32gXzitucSdyjJ6QehfJCL58WNA7N0=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "ba0939c506a03c60a765cd7f7c43794816540eec",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
-        "ds": "ds",
-        "nixpkgs": "nixpkgs_2"
+        "imgui": "imgui",
+        "nixpkgs": "nixpkgs"
       }
     }
   },

@@ -1,0 +1,301 @@
+--- dynsys_orig/Makefile	2026-05-23 23:27:36.000000000 +0000
++++ dynsys_src/Makefile	2026-05-26 12:24:25.648474508 +0000
+@@ -1,9 +1,16 @@
+ # dynsys — GLFW/OpenGL dynamical-system visualizer with Dear ImGui + TPCAS
+ #
+-# Normal workflow:
++# Native Linux workflow:
+ #   nix develop
+ #   make
+ #   make run
++#
++# Windows cross-build workflow from NixOS:
++#   nix develop .#windows
++#   make windows
++#
++# The Windows build writes build/windows/dynsys.exe so it does not reuse
++# native Linux object files.
+ 
+ CC         ?= cc
+ CXX        ?= c++
+@@ -14,18 +21,38 @@
+ INSTALL    ?= install
+ PKG_CONFIG ?= pkg-config
+ 
++# Set TARGET_OS=windows directly, or use `make windows` / `make build-windows`.
++TARGET_OS ?= native
++HOST_TRIPLE := $(shell $(CC) -dumpmachine 2>/dev/null || echo unknown)
++WINDOWS_BUILD := 0
++ifeq ($(TARGET_OS),windows)
++  WINDOWS_BUILD := 1
++else ifneq (,$(findstring mingw,$(HOST_TRIPLE)))
++  WINDOWS_BUILD := 1
++else ifneq (,$(findstring windows,$(HOST_TRIPLE)))
++  WINDOWS_BUILD := 1
++endif
++
++BUILD_ROOT ?= build
++ifeq ($(WINDOWS_BUILD),1)
++  EXEEXT ?= .exe
++  BUILD_DIR := $(BUILD_ROOT)/windows
++else
++  EXEEXT ?=
++  BUILD_DIR := $(BUILD_ROOT)
++endif
++
+ SRC_DIR    := src
+ TPCAS_DIR  := vendor/tpcas
+ DS_DIR     := $(TPCAS_DIR)/vendor/ds/lib
+-BUILD_DIR  := build
+ OBJ_DIR    := $(BUILD_DIR)/obj
+ C_OBJ_DIR  := $(BUILD_DIR)/obj-c
+ CXX_OBJ_DIR:= $(BUILD_DIR)/obj-cxx
+ DEP_DIR    := $(BUILD_DIR)/dep
+ C_DEP_DIR  := $(BUILD_DIR)/dep-c
+ CXX_DEP_DIR:= $(BUILD_DIR)/dep-cxx
+-TARGET     := $(BUILD_DIR)/dynsys
+-IR_TEST_TARGET := $(BUILD_DIR)/ir_smoke
++TARGET     := $(BUILD_DIR)/dynsys$(EXEEXT)
++IR_TEST_TARGET := $(BUILD_DIR)/ir_smoke$(EXEEXT)
+ TEST_OBJ_DIR := $(BUILD_DIR)/obj-test
+ 
+ PREFIX ?= /usr/local
+@@ -35,6 +62,16 @@
+ PKGS ?= glfw3 glew cglm
+ IMGUI_DIR ?=
+ 
++# Used by the recursive `make windows` target. Override these if your MinGW
++# toolchain uses different names.
++WIN_TRIPLE ?= x86_64-w64-mingw32
++WIN_CC ?= $(WIN_TRIPLE)-gcc
++WIN_CXX ?= $(WIN_TRIPLE)-g++
++WIN_AR ?= $(WIN_TRIPLE)-ar
++WIN_PKG_CONFIG ?= pkg-config
++WIN_BUILD_DIR ?= $(BUILD_ROOT)/windows
++WIN_TARGET ?= $(WIN_BUILD_DIR)/dynsys.exe
++
+ WARNINGS_C   := -Wall -Wextra -Wpedantic
+ WARNINGS_CXX := -Wall -Wextra
+ CSTD         := -std=c11
+@@ -48,6 +85,9 @@
+ ifneq ($(strip $(IMGUI_DIR)),)
+   CPPFLAGS += -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends
+ endif
++ifeq ($(WINDOWS_BUILD),1)
++  CPPFLAGS += -D_WIN32_WINNT=0x0601
++endif
+ 
+ CFLAGS ?=
+ CFLAGS += $(CSTD) $(WARNINGS_C)
+@@ -55,7 +95,19 @@
+ CXXFLAGS += $(CXXSTD) $(WARNINGS_CXX)
+ LDFLAGS ?=
+ LDLIBS ?=
+-LDLIBS += $(PKG_LIBS) -lGL -ldl -lm
++
++ifeq ($(WINDOWS_BUILD),1)
++  # MinGW/Windows OpenGL + GLFW backend system libraries. pkg-config will
++  # usually provide most dependency flags, but these system libraries are cheap
++  # and make the link robust across MinGW package layouts.
++  LDLIBS += $(PKG_LIBS) -lopengl32 -lgdi32 -limm32 -lole32 -luuid -lwinmm -lm
++  WIN_STATIC_RUNTIME ?= 1
++  ifeq ($(WIN_STATIC_RUNTIME),1)
++    LDFLAGS += -static-libgcc -static-libstdc++
++  endif
++else
++  LDLIBS += $(PKG_LIBS) -lGL -ldl -lm
++endif
+ 
+ ifeq ($(MODE),release)
+   CFLAGS += -O2 -DNDEBUG
+@@ -94,7 +146,6 @@
+ IR_TEST_C_OBJS := $(patsubst %.c,$(TEST_OBJ_DIR)/%.o,$(C_SRCS))
+ IR_TEST_OBJS := $(IR_TEST_CPP_OBJS) $(IR_TEST_C_OBJS)
+ 
+-
+ IMGUI_CORE_SRCS := imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp
+ IMGUI_BACKEND_SRCS := imgui_impl_glfw.cpp imgui_impl_opengl3.cpp
+ IMGUI_CORE_OBJS := $(addprefix $(CXX_OBJ_DIR)/imgui/,$(IMGUI_CORE_SRCS:.cpp=.o))
+@@ -105,19 +156,34 @@
+ OBJS := $(DYNSYS_OBJS) $(C_OBJS) $(IMGUI_OBJS)
+ DEPS := $(DYNSYS_DEPS) $(C_DEPS) $(IMGUI_DEPS)
+ 
+-.PHONY: all check-deps check-legacy prune-legacy run headless headless-ast headless-smoke bench test ir-smoke debug release asan clean distclean install uninstall format print-vars help
++.PHONY: all build check-deps check-legacy prune-legacy run headless headless-ast headless-smoke bench test ir-smoke debug release asan windows build-windows clean distclean install uninstall format print-vars help
+ 
+ all: check-deps check-legacy $(TARGET)
+ 
++build: all
++
++windows build-windows:
++	$(MAKE) TARGET_OS=windows \
++	  BUILD_DIR="$(WIN_BUILD_DIR)" \
++	  TARGET="$(WIN_TARGET)" \
++	  CC="$(WIN_CC)" \
++	  CXX="$(WIN_CXX)" \
++	  AR="$(WIN_AR)" \
++	  PKG_CONFIG="$(WIN_PKG_CONFIG)"
++
+ check-deps:
+ 	@$(PKG_CONFIG) --exists $(PKGS) || { \
+ 	  echo "error: missing pkg-config dependencies: $(PKGS)" >&2; \
+-	  echo "hint: run 'nix develop' first, then run 'make' again." >&2; \
++	  if [ "$(WINDOWS_BUILD)" = "1" ]; then \
++	    echo "hint: run 'nix develop .#windows' first, then run 'make windows' again." >&2; \
++	  else \
++	    echo "hint: run 'nix develop' first, then run 'make' again." >&2; \
++	  fi; \
+ 	  exit 1; \
+ 	}
+ 	@if [ -z "$(strip $(IMGUI_DIR))" ]; then \
+ 	  echo "error: IMGUI_DIR is not set" >&2; \
+-	  echo "hint: run 'nix develop' first; the flake exports IMGUI_DIR." >&2; \
++	  echo "hint: run 'nix develop' or 'nix develop .#windows' first; the flake exports IMGUI_DIR." >&2; \
+ 	  echo "      or run: make IMGUI_DIR=/path/to/imgui" >&2; \
+ 	  exit 1; \
+ 	fi
+@@ -126,7 +192,6 @@
+ 	  exit 1; \
+ 	}
+ 
+-
+ check-legacy:
+ 	@if [ -f "$(SRC_DIR)/dynsys.c" ]; then \
+ 	  echo "warning: legacy $(SRC_DIR)/dynsys.c exists but is intentionally ignored; run 'make prune-legacy CLEAN_APPLY=1' to remove old FreeType code." >&2; \
+@@ -204,13 +269,13 @@
+ 
+ install: all
+ 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
+-	$(INSTALL) -m 0755 $(TARGET) $(DESTDIR)$(BINDIR)/dynsys
++	$(INSTALL) -m 0755 $(TARGET) $(DESTDIR)$(BINDIR)/dynsys$(EXEEXT)
+ 
+ uninstall:
+-	$(RM) $(DESTDIR)$(BINDIR)/dynsys
++	$(RM) $(DESTDIR)$(BINDIR)/dynsys $(DESTDIR)$(BINDIR)/dynsys.exe
+ 
+ clean:
+-	$(RMDIR) $(BUILD_DIR)
++	$(RMDIR) $(BUILD_ROOT)
+ 
+ distclean: clean
+ 	$(RM) result
+@@ -221,7 +286,13 @@
+ print-vars:
+ 	@echo "CC=$(CC)"
+ 	@echo "CXX=$(CXX)"
++	@echo "AR=$(AR)"
++	@echo "PKG_CONFIG=$(PKG_CONFIG)"
++	@echo "HOST_TRIPLE=$(HOST_TRIPLE)"
++	@echo "TARGET_OS=$(TARGET_OS)"
++	@echo "WINDOWS_BUILD=$(WINDOWS_BUILD)"
+ 	@echo "MODE=$(MODE)"
++	@echo "BUILD_DIR=$(BUILD_DIR)"
+ 	@echo "TARGET=$(TARGET)"
+ 	@echo "C_OBJ_DIR=$(C_OBJ_DIR)"
+ 	@echo "CXX_OBJ_DIR=$(CXX_OBJ_DIR)"
+@@ -229,19 +300,17 @@
+ 	@echo "IMGUI_DIR=$(IMGUI_DIR)"
+ 	@echo "PKG_CFLAGS=$(PKG_CFLAGS)"
+ 	@echo "PKG_LIBS=$(PKG_LIBS)"
++	@echo "LDLIBS=$(LDLIBS)"
+ 
+ help:
+ 	@echo "Targets:"
+-	@echo "  make             build $(TARGET)"
+-	@echo "  make run         build and run"
+-	@echo "  make test        build and run standalone IR smoke test"
+-	@echo "  make headless    run headless; pass ARGS='examples/lorenz.dyn --steps 10000'"
+-	@echo "  make bench       release IR/AST headless comparison on Lorenz"
+-	@echo "  make release     optimized build"
+-	@echo "  make asan        Address/UBSan build"
+-	@echo "  make clean       remove build artifacts"
+-	@echo "  make prune-legacy dry-run removal of old C/FreeType tree artifacts"
+-	@echo "  make prune-legacy CLEAN_APPLY=1 apply legacy cleanup"
+-	@echo "  make format      clang-format src/*.cpp"
++	@echo "  make                 build native $(TARGET)"
++	@echo "  make run             build and run native executable"
++	@echo "  make windows         cross-build build/windows/dynsys.exe"
++	@echo "  make build-windows   same as make windows"
++	@echo "  make test            build and run standalone IR smoke test"
++	@echo "  make headless        run headless; pass ARGS='examples/lorenz.dyn --steps 10000'"
++	@echo "  make bench           release IR/AST headless comparison on Lorenz"
++	@echo "  make release         optimized native build"
+ 
+ -include $(DEPS)
+--- dynsys_orig/flake.nix	2026-05-23 23:27:36.000000000 +0000
++++ dynsys_src/flake.nix	2026-05-26 12:24:10.670533413 +0000
+@@ -1,5 +1,5 @@
+ {
+-  description = "Development shell for the dynsys TPCAS + Dear ImGui visualizer";
++  description = "Development shells for the dynsys TPCAS + Dear ImGui visualizer";
+ 
+   inputs = {
+     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+@@ -17,6 +17,8 @@
+       devShells = forAllSystems (system:
+         let
+           pkgs = import nixpkgs { inherit system; };
++          winPkgs = pkgs.pkgsCross.mingwW64;
++          winTarget = winPkgs.stdenv.hostPlatform.config;
+         in {
+           default = pkgs.mkShell {
+             nativeBuildInputs = with pkgs; [
+@@ -46,13 +48,57 @@
+             shellHook = ''
+               export CC=clang
+               export CXX=clang++
+-              echo "dynsys Dear ImGui dev shell"
++              echo "dynsys Dear ImGui native dev shell"
+               echo "  build: make"
+               echo "  run:   make run"
+               echo "  clean: make clean"
+               echo "  IMGUI_DIR=$IMGUI_DIR"
+             '';
+           };
++
++          windows = winPkgs.mkShell {
++            strictDeps = true;
++
++            nativeBuildInputs = [
++              pkgs.gnumake
++              pkgs.pkg-config
++              winPkgs.stdenv.cc
++            ];
++
++            buildInputs = [
++              winPkgs.cglm
++              winPkgs.glew
++              winPkgs.glfw3
++            ];
++
++            IMGUI_DIR = "${imgui}";
++            PKG_CONFIG_ALLOW_CROSS = "1";
++
++            CC = "${winTarget}-gcc";
++            CXX = "${winTarget}-g++";
++            AR = "${winTarget}-ar";
++            WIN_TRIPLE = winTarget;
++            WIN_CC = "${winTarget}-gcc";
++            WIN_CXX = "${winTarget}-g++";
++            WIN_AR = "${winTarget}-ar";
++            WIN_PKG_CONFIG = "pkg-config";
++
++            shellHook = ''
++              export CC=${winTarget}-gcc
++              export CXX=${winTarget}-g++
++              export AR=${winTarget}-ar
++              export WIN_TRIPLE=${winTarget}
++              export WIN_CC=${winTarget}-gcc
++              export WIN_CXX=${winTarget}-g++
++              export WIN_AR=${winTarget}-ar
++              export WIN_PKG_CONFIG=pkg-config
++              echo "dynsys Windows cross-build shell"
++              echo "  target: ${winTarget}"
++              echo "  build:  make windows"
++              echo "  output: build/windows/dynsys.exe"
++              echo "  IMGUI_DIR=$IMGUI_DIR"
++            '';
++          };
+         });
+ 
+       formatter = forAllSystems (system:

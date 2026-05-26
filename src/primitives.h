@@ -491,3 +491,16 @@ lizard_ast_node_t *lizard_primitive_tt_unglue(lz_list_t *, lizard_env_t *, lizar
 lizard_ast_node_t *lizard_primitive_tt_unglue_p(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_ua(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_uap(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+
+/* Systems (Turn 11). */
+lizard_ast_node_t *lizard_primitive_tt_system_nil(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_nilp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_cons(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_consp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_face(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_system_next(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+
+/* System lookup (Turn 11). */
+lizard_ast_node_t *lizard_tt_system_lookup(lizard_ast_node_t *system, lizard_ast_node_t *phi);
+lizard_ast_node_t *lizard_primitive_tt_system_lookup(lz_list_t *, lizard_env_t *, lizard_heap_t *);
