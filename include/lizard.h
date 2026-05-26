@@ -212,7 +212,44 @@ typedef enum {
    * body at any i is the comp up to that point. Useful for proofs. */
   AST_TT_COMP,         /* (comp A phi u u0) */
   AST_TT_HCOMP,        /* (hcomp A phi u u0) */
-  AST_TT_FILL          /* (fill A phi u u0) */
+  AST_TT_FILL,         /* (fill A phi u u0) */
+  /* ----- Equivalences, Glue, and ua (Turns 9 & 10) -----
+   *
+   * Equiv A B is the type of equivalences from A to B. In the full
+   * CCHM development it's Σ(f : A → B). isEquiv f, where isEquiv f
+   * says all fibers of f are contractible. Building that out fully
+   * here would require contractibility, fibers, etc. — substantial
+   * extra machinery that isn't load-bearing for the computational
+   * content of ua. We treat Equiv as a primitive type former with
+   * two accessors (equiv-fun and equiv-inv) plus a constructor
+   * (id-equiv A). This is sound for what ua needs — the inverse is
+   * what makes comp over ua compute.
+   *
+   *   AST_TT_EQUIV_TYPE  — (Equiv A B), the type of equivalences
+   *   AST_TT_ID_EQUIV    — (id-equiv A), the identity equivalence
+   *   AST_TT_EQUIV_FUN   — (equiv-fun e), forward direction
+   *   AST_TT_EQUIV_INV   — (equiv-inv e), backward direction
+   *
+   * Glue A [φ ↦ (T, e)] is a type that's A outside φ and equivalent
+   * to T (via e) on φ. Plus introduction `glue` and elimination
+   * `unglue`. For the syntax we use a *single* face/T/e — the
+   * multi-face case can be encoded by combining φ's with F-or.
+   *
+   *   AST_TT_GLUE        — (Glue A φ T e)
+   *   AST_TT_GLUE_INTRO  — (glue φ t a)  — glues t along φ over a
+   *   AST_TT_UNGLUE      — (unglue e g)  — extracts the A-element
+   *
+   * Finally:
+   *   AST_TT_UA          — (ua e), a path in U built from equivalence e
+   */
+  AST_TT_EQUIV_TYPE,
+  AST_TT_ID_EQUIV,
+  AST_TT_EQUIV_FUN,
+  AST_TT_EQUIV_INV,
+  AST_TT_GLUE,
+  AST_TT_GLUE_INTRO,
+  AST_TT_UNGLUE,
+  AST_TT_UA
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -483,6 +520,37 @@ struct lizard_ast_node {
       lizard_ast_node_t *partial;
       lizard_ast_node_t *base;
     } tt_comp;
+    /* (Equiv A B) */
+    struct {
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_equiv_type;
+    /* (id-equiv A), (equiv-fun e), (equiv-inv e) — single operand */
+    struct {
+      lizard_ast_node_t *operand;
+    } tt_equiv_op;
+    /* (Glue A φ T e) */
+    struct {
+      lizard_ast_node_t *base;
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *t;
+      lizard_ast_node_t *equiv;
+    } tt_glue;
+    /* (glue φ t a) */
+    struct {
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *t;
+      lizard_ast_node_t *a;
+    } tt_glue_intro;
+    /* (unglue e g) */
+    struct {
+      lizard_ast_node_t *equiv;
+      lizard_ast_node_t *target;
+    } tt_unglue;
+    /* (ua e) */
+    struct {
+      lizard_ast_node_t *equiv;
+    } tt_ua;
   } data;
 };
 

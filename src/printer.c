@@ -649,6 +649,60 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_comp.base);
     fprintf(fp, ")");
     return;
+  case AST_TT_EQUIV_TYPE:
+    fprintf(fp, "(Equiv ");
+    lizard_fprint_value(fp, node->data.tt_equiv_type.domain);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_equiv_type.codomain);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_ID_EQUIV:
+    fprintf(fp, "(id-equiv ");
+    lizard_fprint_value(fp, node->data.tt_equiv_op.operand);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_EQUIV_FUN:
+    fprintf(fp, "(equiv-fun ");
+    lizard_fprint_value(fp, node->data.tt_equiv_op.operand);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_EQUIV_INV:
+    fprintf(fp, "(equiv-inv ");
+    lizard_fprint_value(fp, node->data.tt_equiv_op.operand);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_GLUE:
+    fprintf(fp, "(Glue ");
+    lizard_fprint_value(fp, node->data.tt_glue.base);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_glue.face);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_glue.t);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_glue.equiv);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_GLUE_INTRO:
+    fprintf(fp, "(glue-intro ");
+    lizard_fprint_value(fp, node->data.tt_glue_intro.face);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_glue_intro.t);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_glue_intro.a);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_UNGLUE:
+    fprintf(fp, "(unglue ");
+    lizard_fprint_value(fp, node->data.tt_unglue.equiv);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_unglue.target);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_UA:
+    fprintf(fp, "(ua ");
+    lizard_fprint_value(fp, node->data.tt_ua.equiv);
+    fprintf(fp, ")");
+    return;
   case AST_MACRO:
     fprintf(fp, "<macro>");
     return;

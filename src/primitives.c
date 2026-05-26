@@ -1423,6 +1423,14 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_COMP:         name = "comp";         break;
   case AST_TT_HCOMP:        name = "hcomp";        break;
   case AST_TT_FILL:         name = "fill";         break;
+  case AST_TT_EQUIV_TYPE:   name = "Equiv";        break;
+  case AST_TT_ID_EQUIV:     name = "id-equiv";     break;
+  case AST_TT_EQUIV_FUN:    name = "equiv-fun";    break;
+  case AST_TT_EQUIV_INV:    name = "equiv-inv";    break;
+  case AST_TT_GLUE:         name = "Glue";         break;
+  case AST_TT_GLUE_INTRO:   name = "glue-intro";   break;
+  case AST_TT_UNGLUE:       name = "unglue";       break;
+  case AST_TT_UA:           name = "ua";           break;
   default:               name = "unknown";      break;
   }
   return make_symbol(heap, name);
@@ -3714,6 +3722,149 @@ TT_ACCESSOR(tt_comp_face,        AST_TT_COMP, x->data.tt_comp.face)
 TT_ACCESSOR(tt_comp_partial,     AST_TT_COMP, x->data.tt_comp.partial)
 TT_ACCESSOR(tt_comp_base,        AST_TT_COMP, x->data.tt_comp.base)
 
+/* ===== Equivalences, Glue, and ua (Turns 9 & 10) ===== */
+
+/* (Equiv A B) — type former. Note: distinct from `equivalence` which
+ * is a notation-level 4-arg packaging. */
+lizard_ast_node_t *lizard_primitive_tt_equiv_type(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_EQUIV_TYPE;
+  n->data.tt_equiv_type.domain   = nth_arg(args, 0);
+  n->data.tt_equiv_type.codomain = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_equiv_typep, AST_TT_EQUIV_TYPE)
+TT_ACCESSOR(tt_equiv_domain,   AST_TT_EQUIV_TYPE, x->data.tt_equiv_type.domain)
+TT_ACCESSOR(tt_equiv_codomain, AST_TT_EQUIV_TYPE, x->data.tt_equiv_type.codomain)
+
+/* (id-equiv A) — the identity equivalence on A */
+lizard_ast_node_t *lizard_primitive_tt_id_equiv(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_ID_EQUIV;
+  n->data.tt_equiv_op.operand = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_id_equivp, AST_TT_ID_EQUIV)
+
+/* (equiv-fun e), (equiv-inv e) */
+lizard_ast_node_t *lizard_primitive_tt_equiv_fun(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_EQUIV_FUN;
+  n->data.tt_equiv_op.operand = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_equiv_funp, AST_TT_EQUIV_FUN)
+
+lizard_ast_node_t *lizard_primitive_tt_equiv_inv(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_EQUIV_INV;
+  n->data.tt_equiv_op.operand = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_equiv_invp, AST_TT_EQUIV_INV)
+
+/* (Glue A φ T e) */
+lizard_ast_node_t *lizard_primitive_tt_glue(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!four_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_GLUE;
+  n->data.tt_glue.base  = nth_arg(args, 0);
+  n->data.tt_glue.face  = nth_arg(args, 1);
+  n->data.tt_glue.t     = nth_arg(args, 2);
+  n->data.tt_glue.equiv = nth_arg(args, 3);
+  return n;
+}
+TT_PREDICATE(tt_gluep, AST_TT_GLUE)
+TT_ACCESSOR(tt_glue_base,  AST_TT_GLUE, x->data.tt_glue.base)
+TT_ACCESSOR(tt_glue_face,  AST_TT_GLUE, x->data.tt_glue.face)
+TT_ACCESSOR(tt_glue_t,     AST_TT_GLUE, x->data.tt_glue.t)
+TT_ACCESSOR(tt_glue_equiv, AST_TT_GLUE, x->data.tt_glue.equiv)
+
+/* (glue-intro φ t a) — written conceptually `glue φ t a` */
+lizard_ast_node_t *lizard_primitive_tt_glue_intro(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_GLUE_INTRO;
+  n->data.tt_glue_intro.face = nth_arg(args, 0);
+  n->data.tt_glue_intro.t    = nth_arg(args, 1);
+  n->data.tt_glue_intro.a    = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_glue_introp, AST_TT_GLUE_INTRO)
+
+/* (unglue e g) */
+lizard_ast_node_t *lizard_primitive_tt_unglue(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_UNGLUE;
+  n->data.tt_unglue.equiv  = nth_arg(args, 0);
+  n->data.tt_unglue.target = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_unglue_p, AST_TT_UNGLUE)
+
+/* (ua e) */
+lizard_ast_node_t *lizard_primitive_tt_ua(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_UA;
+  n->data.tt_ua.equiv = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_uap, AST_TT_UA)
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
@@ -4020,6 +4171,29 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "comp-face",     lizard_primitive_tt_comp_face);
   install_one(heap, env, "comp-partial",  lizard_primitive_tt_comp_partial);
   install_one(heap, env, "comp-base",     lizard_primitive_tt_comp_base);
+  /* Equivalences, Glue, ua (Turns 9 & 10). */
+  install_one(heap, env, "Equiv",         lizard_primitive_tt_equiv_type);
+  install_one(heap, env, "Equiv?",        lizard_primitive_tt_equiv_typep);
+  install_one(heap, env, "Equiv-domain",  lizard_primitive_tt_equiv_domain);
+  install_one(heap, env, "Equiv-codomain",lizard_primitive_tt_equiv_codomain);
+  install_one(heap, env, "id-equiv",      lizard_primitive_tt_id_equiv);
+  install_one(heap, env, "id-equiv?",     lizard_primitive_tt_id_equivp);
+  install_one(heap, env, "equiv-fun",     lizard_primitive_tt_equiv_fun);
+  install_one(heap, env, "equiv-fun?",    lizard_primitive_tt_equiv_funp);
+  install_one(heap, env, "equiv-inv",     lizard_primitive_tt_equiv_inv);
+  install_one(heap, env, "equiv-inv?",    lizard_primitive_tt_equiv_invp);
+  install_one(heap, env, "Glue",          lizard_primitive_tt_glue);
+  install_one(heap, env, "Glue?",         lizard_primitive_tt_gluep);
+  install_one(heap, env, "Glue-base",     lizard_primitive_tt_glue_base);
+  install_one(heap, env, "Glue-face",     lizard_primitive_tt_glue_face);
+  install_one(heap, env, "Glue-t",        lizard_primitive_tt_glue_t);
+  install_one(heap, env, "Glue-equiv",    lizard_primitive_tt_glue_equiv);
+  install_one(heap, env, "glue-intro",    lizard_primitive_tt_glue_intro);
+  install_one(heap, env, "glue-intro?",   lizard_primitive_tt_glue_introp);
+  install_one(heap, env, "unglue",        lizard_primitive_tt_unglue);
+  install_one(heap, env, "unglue?",       lizard_primitive_tt_unglue_p);
+  install_one(heap, env, "ua",            lizard_primitive_tt_ua);
+  install_one(heap, env, "ua?",           lizard_primitive_tt_uap);
   install_one(heap, env, "universe-leq?", lizard_primitive_tt_universe_leq);
   install_one(heap, env, "face-entails?", lizard_primitive_tt_face_entails);
   /* Bidirectional type checker for the λΠ fragment.
