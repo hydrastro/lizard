@@ -1250,6 +1250,54 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     /* Lambdas need a type from context (check mode). Without an
      * expected type, we can't infer a Lambda's type. */
     return type_error(heap, "Lambda cannot infer; needs expected type");
+  /* Phase H.1 — HIT typing.
+   *
+   * For H.1 we keep this minimal:
+   *   (HIT-ref 'name)        : (U 0)  if name registered, else error
+   *   (HIT-app 'cname ...)   : (HIT-ref 'host)  if cname is a registered
+   *                                              constructor in HIT host
+   * Declarations and constructor/path records aren't terms in the
+   * usual sense, so they don't have a type. We error if asked. */
+  case AST_TT_HIT_REF: {
+    lizard_ast_node_t *name = t->data.tt_hit_ref.name;
+    lizard_ast_node_t *decl;
+    if (name == NULL || name->type != AST_SYMBOL) {
+      return type_error(heap, "HIT-ref name not a symbol");
+    }
+    decl = lizard_tt_hit_lookup(name->data.variable);
+    if (decl == NULL) {
+      return type_error(heap, "HIT-ref name not registered");
+    }
+    /* H.1: every HIT lives at (U 0). Refinement of this rule belongs
+     * to a later phase where we attach universe annotations to HIT
+     * declarations. */
+    return lizard_tt_make_universe(heap, 0);
+  }
+  case AST_TT_HIT_APP: {
+    /* Look up the constructor across all registered HITs. If found,
+     * return (HIT-ref 'host). If not, error. */
+    lizard_ast_node_t *cname = t->data.tt_hit_app.name;
+    lizard_ast_node_t *host_decl;
+    if (cname == NULL || cname->type != AST_SYMBOL) {
+      return type_error(heap, "HIT-app name not a symbol");
+    }
+    host_decl = lizard_tt_hit_lookup_constructor_host(cname->data.variable);
+    if (host_decl == NULL) {
+      return type_error(heap, "HIT-app constructor not registered");
+    }
+    /* Return (HIT-ref 'host-name). */
+    {
+      lizard_ast_node_t *ref = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      ref->type = AST_TT_HIT_REF;
+      ref->data.tt_hit_ref.name = host_decl->data.tt_hit_decl.name;
+      return ref;
+    }
+  }
+  case AST_TT_HIT_DECL:
+  case AST_TT_HIT_CONSTRUCTOR:
+  case AST_TT_HIT_PATH:
+    /* These are declaration metadata, not term-level entities. */
+    return type_error(heap, "HIT declaration/record is not a term");
   default:
     return type_error(heap, "no inference rule for this term");
   }

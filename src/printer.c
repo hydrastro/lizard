@@ -380,6 +380,61 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_co_min.right);
     fprintf(fp, ")");
     return;
+  case AST_TT_HIT_DECL: {
+    lz_list_node_t *p;
+    fprintf(fp, "(HIT ");
+    lizard_fprint_value(fp, node->data.tt_hit_decl.name);
+    for (p = node->data.tt_hit_decl.constructors->head;
+         p != node->data.tt_hit_decl.constructors->nil; p = p->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)p)->ast);
+    }
+    for (p = node->data.tt_hit_decl.paths->head;
+         p != node->data.tt_hit_decl.paths->nil; p = p->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)p)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_HIT_CONSTRUCTOR: {
+    lz_list_node_t *p;
+    fprintf(fp, "(HIT-constructor ");
+    lizard_fprint_value(fp, node->data.tt_hit_constructor.name);
+    for (p = node->data.tt_hit_constructor.arg_types->head;
+         p != node->data.tt_hit_constructor.arg_types->nil; p = p->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)p)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_TT_HIT_PATH:
+    fprintf(fp, "(HIT-path ");
+    lizard_fprint_value(fp, node->data.tt_hit_path.name);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_hit_path.source);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_hit_path.target);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_HIT_REF:
+    fprintf(fp, "(HIT-ref ");
+    lizard_fprint_value(fp, node->data.tt_hit_ref.name);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *p;
+    fprintf(fp, "(HIT-app ");
+    lizard_fprint_value(fp, node->data.tt_hit_app.name);
+    for (p = node->data.tt_hit_app.args->head;
+         p != node->data.tt_hit_app.args->nil; p = p->next) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, ((lizard_ast_list_node_t *)p)->ast);
+    }
+    fprintf(fp, ")");
+    return;
+  }
   case AST_TT_ID:
     fprintf(fp, "(Id ");
     lizard_fprint_value(fp, node->data.tt_id.domain);

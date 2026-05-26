@@ -234,6 +234,18 @@ lizard_ast_node_t *lizard_primitive_tt_co_max(lz_list_t *, lizard_env_t *, lizar
 lizard_ast_node_t *lizard_primitive_tt_co_maxp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_co_min(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_co_minp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase H.1 — HIT primitives */
+lizard_ast_node_t *lizard_primitive_tt_hit_decl(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_declp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_constructor(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_constructorp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_path(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_pathp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_ref(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_refp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_app(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_appp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_hit_lookup(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_refl(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_inductive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -404,6 +416,13 @@ int lizard_tt_universe_leq(lizard_ast_node_t *, lizard_ast_node_t *);
 
 /* Phase L.3 — next fresh dimension. Per-process counter. */
 long lizard_tt_next_fresh_dim(void);
+
+/* Phase H.1 — HIT registry. Per-process. */
+void lizard_tt_hit_register(lizard_ast_node_t *decl);
+lizard_ast_node_t *lizard_tt_hit_lookup(const char *name);
+lizard_ast_node_t *lizard_tt_hit_lookup_constructor_host(const char *cname);
+void lizard_tt_hit_registry_reset(void);  /* mostly for tests */
+long lizard_tt_hit_registry_size(void);
 int lizard_tt_universe_convertible(lizard_ast_node_t *, lizard_ast_node_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_couniverse_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);

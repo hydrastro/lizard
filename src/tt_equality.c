@@ -103,6 +103,7 @@
 #include "lizard.h"
 #include "mem.h"
 #include <string.h>
+#include <stdlib.h>  /* malloc/free for H.1 HIT registry */
 
 /* ----- Flag system --------------------------------------------------- */
 
@@ -573,6 +574,43 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
   case AST_TT_TT:
   case AST_TT_BOT:
     return 0;
+  /* Phase H.1: HIT structures. We treat the declaration itself as a
+   * top-level form that doesn't capture variables — it's metadata —
+   * but HIT_APP, HIT_PATH, and HIT_CONSTRUCTOR can have variables in
+   * their arguments / endpoints / arg-types. */
+  case AST_TT_HIT_REF:
+    return 0;
+  case AST_TT_HIT_DECL: {
+    lz_list_node_t *p;
+    for (p = t->data.tt_hit_decl.constructors->head;
+         p != t->data.tt_hit_decl.constructors->nil; p = p->next) {
+      if (contains_free_var(((lizard_ast_list_node_t *)p)->ast, name)) return 1;
+    }
+    for (p = t->data.tt_hit_decl.paths->head;
+         p != t->data.tt_hit_decl.paths->nil; p = p->next) {
+      if (contains_free_var(((lizard_ast_list_node_t *)p)->ast, name)) return 1;
+    }
+    return 0;
+  }
+  case AST_TT_HIT_CONSTRUCTOR: {
+    lz_list_node_t *p;
+    for (p = t->data.tt_hit_constructor.arg_types->head;
+         p != t->data.tt_hit_constructor.arg_types->nil; p = p->next) {
+      if (contains_free_var(((lizard_ast_list_node_t *)p)->ast, name)) return 1;
+    }
+    return 0;
+  }
+  case AST_TT_HIT_PATH:
+    return contains_free_var(t->data.tt_hit_path.source, name) ||
+           contains_free_var(t->data.tt_hit_path.target, name);
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *p;
+    for (p = t->data.tt_hit_app.args->head;
+         p != t->data.tt_hit_app.args->nil; p = p->next) {
+      if (contains_free_var(((lizard_ast_list_node_t *)p)->ast, name)) return 1;
+    }
+    return 0;
+  }
   default:
     return 0;
   }
@@ -1034,6 +1072,104 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
   case AST_TT_TT:
   case AST_TT_BOT:
     return t;
+  /* Phase H.1: HIT structures. */
+  case AST_TT_HIT_REF:
+    return t;  /* name reference, no subterms */
+  case AST_TT_HIT_DECL: {
+    /* Substitute through each constructor and path. If nothing changed,
+     * return t unchanged; otherwise build a fresh decl node. */
+    lz_list_node_t *p;
+    lz_list_t *new_ctors, *new_paths;
+    int changed = 0;
+    new_ctors = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    new_paths = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    for (p = t->data.tt_hit_decl.constructors->head;
+         p != t->data.tt_hit_decl.constructors->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = subst_rec(old, x, v, heap);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_ctors, &cell->node);
+    }
+    for (p = t->data.tt_hit_decl.paths->head;
+         p != t->data.tt_hit_decl.paths->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = subst_rec(old, x, v, heap);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_paths, &cell->node);
+    }
+    if (!changed) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_DECL;
+      n->data.tt_hit_decl.name = t->data.tt_hit_decl.name;
+      n->data.tt_hit_decl.constructors = new_ctors;
+      n->data.tt_hit_decl.paths = new_paths;
+      return n;
+    }
+  }
+  case AST_TT_HIT_CONSTRUCTOR: {
+    lz_list_node_t *p;
+    lz_list_t *new_types;
+    int changed = 0;
+    new_types = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    for (p = t->data.tt_hit_constructor.arg_types->head;
+         p != t->data.tt_hit_constructor.arg_types->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = subst_rec(old, x, v, heap);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_types, &cell->node);
+    }
+    if (!changed) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_CONSTRUCTOR;
+      n->data.tt_hit_constructor.name = t->data.tt_hit_constructor.name;
+      n->data.tt_hit_constructor.arg_types = new_types;
+      return n;
+    }
+  }
+  case AST_TT_HIT_PATH: {
+    lizard_ast_node_t *src = subst_rec(t->data.tt_hit_path.source, x, v, heap);
+    lizard_ast_node_t *tgt = subst_rec(t->data.tt_hit_path.target, x, v, heap);
+    if (src == t->data.tt_hit_path.source && tgt == t->data.tt_hit_path.target) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_PATH;
+      n->data.tt_hit_path.name = t->data.tt_hit_path.name;
+      n->data.tt_hit_path.source = src;
+      n->data.tt_hit_path.target = tgt;
+      return n;
+    }
+  }
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *p;
+    lz_list_t *new_args;
+    int changed = 0;
+    new_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    for (p = t->data.tt_hit_app.args->head;
+         p != t->data.tt_hit_app.args->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = subst_rec(old, x, v, heap);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_args, &cell->node);
+    }
+    if (!changed) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_APP;
+      n->data.tt_hit_app.name = t->data.tt_hit_app.name;
+      n->data.tt_hit_app.args = new_args;
+      return n;
+    }
+  }
   default:
     return t;
   }
@@ -1285,6 +1421,46 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       n->data.tt_sigma_fresh.binder = t->data.tt_sigma_fresh.binder;
       n->data.tt_sigma_fresh.domain = dom;
       n->data.tt_sigma_fresh.codomain = cod;
+      return n;
+    }
+  }
+  /* Phase H.1: HIT structures may carry interval-dependent subterms
+   * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
+  case AST_TT_HIT_REF:
+    return t;
+  case AST_TT_HIT_PATH: {
+    lizard_ast_node_t *src = subst_interval(t->data.tt_hit_path.source, x, v, heap);
+    lizard_ast_node_t *tgt = subst_interval(t->data.tt_hit_path.target, x, v, heap);
+    if (src == t->data.tt_hit_path.source && tgt == t->data.tt_hit_path.target) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_PATH;
+      n->data.tt_hit_path.name = t->data.tt_hit_path.name;
+      n->data.tt_hit_path.source = src;
+      n->data.tt_hit_path.target = tgt;
+      return n;
+    }
+  }
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *p;
+    lz_list_t *new_args;
+    int changed = 0;
+    new_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    for (p = t->data.tt_hit_app.args->head;
+         p != t->data.tt_hit_app.args->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = subst_interval(old, x, v, heap);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_args, &cell->node);
+    }
+    if (!changed) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_APP;
+      n->data.tt_hit_app.name = t->data.tt_hit_app.name;
+      n->data.tt_hit_app.args = new_args;
       return n;
     }
   }
@@ -1656,6 +1832,72 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
   case AST_TT_TT:
   case AST_TT_BOT:
     return 1;       /* nullary — same type means equal */
+  /* Phase H.1: HIT structural equality. */
+  case AST_TT_HIT_REF:
+    return alpha_equal_rec(a->data.tt_hit_ref.name,
+                           b->data.tt_hit_ref.name, ea, eb);
+  case AST_TT_HIT_DECL: {
+    lz_list_node_t *pa, *pb;
+    if (!alpha_equal_rec(a->data.tt_hit_decl.name,
+                         b->data.tt_hit_decl.name, ea, eb)) return 0;
+    pa = a->data.tt_hit_decl.constructors->head;
+    pb = b->data.tt_hit_decl.constructors->head;
+    while (pa != a->data.tt_hit_decl.constructors->nil &&
+           pb != b->data.tt_hit_decl.constructors->nil) {
+      if (!alpha_equal_rec(((lizard_ast_list_node_t *)pa)->ast,
+                           ((lizard_ast_list_node_t *)pb)->ast, ea, eb)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    if (pa != a->data.tt_hit_decl.constructors->nil ||
+        pb != b->data.tt_hit_decl.constructors->nil) return 0;
+    pa = a->data.tt_hit_decl.paths->head;
+    pb = b->data.tt_hit_decl.paths->head;
+    while (pa != a->data.tt_hit_decl.paths->nil &&
+           pb != b->data.tt_hit_decl.paths->nil) {
+      if (!alpha_equal_rec(((lizard_ast_list_node_t *)pa)->ast,
+                           ((lizard_ast_list_node_t *)pb)->ast, ea, eb)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_decl.paths->nil &&
+           pb == b->data.tt_hit_decl.paths->nil;
+  }
+  case AST_TT_HIT_CONSTRUCTOR: {
+    lz_list_node_t *pa, *pb;
+    if (!alpha_equal_rec(a->data.tt_hit_constructor.name,
+                         b->data.tt_hit_constructor.name, ea, eb)) return 0;
+    pa = a->data.tt_hit_constructor.arg_types->head;
+    pb = b->data.tt_hit_constructor.arg_types->head;
+    while (pa != a->data.tt_hit_constructor.arg_types->nil &&
+           pb != b->data.tt_hit_constructor.arg_types->nil) {
+      if (!alpha_equal_rec(((lizard_ast_list_node_t *)pa)->ast,
+                           ((lizard_ast_list_node_t *)pb)->ast, ea, eb)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_constructor.arg_types->nil &&
+           pb == b->data.tt_hit_constructor.arg_types->nil;
+  }
+  case AST_TT_HIT_PATH:
+    return alpha_equal_rec(a->data.tt_hit_path.name,
+                           b->data.tt_hit_path.name, ea, eb) &&
+           alpha_equal_rec(a->data.tt_hit_path.source,
+                           b->data.tt_hit_path.source, ea, eb) &&
+           alpha_equal_rec(a->data.tt_hit_path.target,
+                           b->data.tt_hit_path.target, ea, eb);
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *pa, *pb;
+    if (!alpha_equal_rec(a->data.tt_hit_app.name,
+                         b->data.tt_hit_app.name, ea, eb)) return 0;
+    pa = a->data.tt_hit_app.args->head;
+    pb = b->data.tt_hit_app.args->head;
+    while (pa != a->data.tt_hit_app.args->nil &&
+           pb != b->data.tt_hit_app.args->nil) {
+      if (!alpha_equal_rec(((lizard_ast_list_node_t *)pa)->ast,
+                           ((lizard_ast_list_node_t *)pb)->ast, ea, eb)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_app.args->nil &&
+           pb == b->data.tt_hit_app.args->nil;
+  }
   default:
     return 0;
   }
@@ -1921,6 +2163,73 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   case AST_TT_TT:
   case AST_TT_BOT:
     return 1;
+  /* Phase H.1: HIT structural equality (same logic as alpha — these
+   * structures have no binders to track). */
+  case AST_TT_HIT_REF:
+    return lizard_tt_structurally_equal(a->data.tt_hit_ref.name,
+                                        b->data.tt_hit_ref.name);
+  case AST_TT_HIT_DECL: {
+    lz_list_node_t *pa, *pb;
+    if (!lizard_tt_structurally_equal(a->data.tt_hit_decl.name,
+                                      b->data.tt_hit_decl.name)) return 0;
+    pa = a->data.tt_hit_decl.constructors->head;
+    pb = b->data.tt_hit_decl.constructors->head;
+    while (pa != a->data.tt_hit_decl.constructors->nil &&
+           pb != b->data.tt_hit_decl.constructors->nil) {
+      if (!lizard_tt_structurally_equal(((lizard_ast_list_node_t *)pa)->ast,
+                                        ((lizard_ast_list_node_t *)pb)->ast)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    if (pa != a->data.tt_hit_decl.constructors->nil ||
+        pb != b->data.tt_hit_decl.constructors->nil) return 0;
+    pa = a->data.tt_hit_decl.paths->head;
+    pb = b->data.tt_hit_decl.paths->head;
+    while (pa != a->data.tt_hit_decl.paths->nil &&
+           pb != b->data.tt_hit_decl.paths->nil) {
+      if (!lizard_tt_structurally_equal(((lizard_ast_list_node_t *)pa)->ast,
+                                        ((lizard_ast_list_node_t *)pb)->ast)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_decl.paths->nil &&
+           pb == b->data.tt_hit_decl.paths->nil;
+  }
+  case AST_TT_HIT_CONSTRUCTOR: {
+    lz_list_node_t *pa, *pb;
+    if (!lizard_tt_structurally_equal(a->data.tt_hit_constructor.name,
+                                      b->data.tt_hit_constructor.name)) return 0;
+    pa = a->data.tt_hit_constructor.arg_types->head;
+    pb = b->data.tt_hit_constructor.arg_types->head;
+    while (pa != a->data.tt_hit_constructor.arg_types->nil &&
+           pb != b->data.tt_hit_constructor.arg_types->nil) {
+      if (!lizard_tt_structurally_equal(((lizard_ast_list_node_t *)pa)->ast,
+                                        ((lizard_ast_list_node_t *)pb)->ast)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_constructor.arg_types->nil &&
+           pb == b->data.tt_hit_constructor.arg_types->nil;
+  }
+  case AST_TT_HIT_PATH:
+    return lizard_tt_structurally_equal(a->data.tt_hit_path.name,
+                                        b->data.tt_hit_path.name) &&
+           lizard_tt_structurally_equal(a->data.tt_hit_path.source,
+                                        b->data.tt_hit_path.source) &&
+           lizard_tt_structurally_equal(a->data.tt_hit_path.target,
+                                        b->data.tt_hit_path.target);
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *pa, *pb;
+    if (!lizard_tt_structurally_equal(a->data.tt_hit_app.name,
+                                      b->data.tt_hit_app.name)) return 0;
+    pa = a->data.tt_hit_app.args->head;
+    pb = b->data.tt_hit_app.args->head;
+    while (pa != a->data.tt_hit_app.args->nil &&
+           pb != b->data.tt_hit_app.args->nil) {
+      if (!lizard_tt_structurally_equal(((lizard_ast_list_node_t *)pa)->ast,
+                                        ((lizard_ast_list_node_t *)pb)->ast)) return 0;
+      pa = pa->next; pb = pb->next;
+    }
+    return pa == a->data.tt_hit_app.args->nil &&
+           pb == b->data.tt_hit_app.args->nil;
+  }
   default:
     /* For types we don't specifically handle, fall back to pointer
      * equality. This means two structurally-equal-but-distinctly-
@@ -3066,6 +3375,56 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
   case AST_TT_UNIT:
   case AST_TT_TT:
   case AST_TT_BOT:
+    result = t;
+    break;
+  /* Phase H.1: HIT structures. Normalize subterms; no head reductions
+   * for HIT instances (no computation rules at this phase). */
+  case AST_TT_HIT_REF:
+    result = t;
+    break;
+  case AST_TT_HIT_PATH: {
+    lizard_ast_node_t *src = normalize_rec(t->data.tt_hit_path.source, heap, memo);
+    lizard_ast_node_t *tgt = normalize_rec(t->data.tt_hit_path.target, heap, memo);
+    if (src == t->data.tt_hit_path.source && tgt == t->data.tt_hit_path.target) result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_PATH;
+      n->data.tt_hit_path.name = t->data.tt_hit_path.name;
+      n->data.tt_hit_path.source = src;
+      n->data.tt_hit_path.target = tgt;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_HIT_APP: {
+    lz_list_node_t *p;
+    lz_list_t *new_args;
+    int changed = 0;
+    new_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    for (p = t->data.tt_hit_app.args->head;
+         p != t->data.tt_hit_app.args->nil; p = p->next) {
+      lizard_ast_node_t *old = ((lizard_ast_list_node_t *)p)->ast;
+      lizard_ast_node_t *new_ast = normalize_rec(old, heap, memo);
+      lizard_ast_list_node_t *cell = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+      cell->ast = new_ast;
+      if (new_ast != old) changed = 1;
+      list_append(new_args, &cell->node);
+    }
+    if (!changed) result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_HIT_APP;
+      n->data.tt_hit_app.name = t->data.tt_hit_app.name;
+      n->data.tt_hit_app.args = new_args;
+      result = n;
+    }
+    break;
+  }
+  /* HIT_DECL and HIT_CONSTRUCTOR contain types-of-args which COULD
+   * be normalized, but at H.1 we leave declarations literal. They're
+   * metadata, not computation. */
+  case AST_TT_HIT_DECL:
+  case AST_TT_HIT_CONSTRUCTOR:
     result = t;
     break;
   default:
@@ -4548,6 +4907,105 @@ lizard_ast_node_t *lizard_tt_reduce(lizard_ast_node_t *t,
 long lizard_tt_next_fresh_dim(void) {
   static long counter = 1000;
   return counter++;
+}
+
+/* ===== Phase H.1 — HIT registry =====
+ *
+ * Simple linked-list registry of declared HITs, keyed by name. The
+ * registry is per-process and lives in static storage; entries
+ * accumulate as HIT declarations are evaluated.
+ *
+ * Two operations matter for correctness: register a new HIT (which
+ * fails silently if the name already exists, treating re-declaration
+ * as an overwrite), and look up by name (returns NULL if missing).
+ */
+typedef struct hit_registry_entry {
+  const char *name;
+  lizard_ast_node_t *decl;
+  struct hit_registry_entry *next;
+} hit_registry_entry_t;
+
+static hit_registry_entry_t *hit_registry_head = NULL;
+
+void lizard_tt_hit_register(lizard_ast_node_t *decl) {
+  hit_registry_entry_t *entry;
+  const char *name;
+  if (decl == NULL || decl->type != AST_TT_HIT_DECL) return;
+  if (decl->data.tt_hit_decl.name == NULL ||
+      decl->data.tt_hit_decl.name->type != AST_SYMBOL) return;
+  name = decl->data.tt_hit_decl.name->data.variable;
+  /* Overwrite if already exists. */
+  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+    if (strcmp(entry->name, name) == 0) {
+      entry->decl = decl;
+      return;
+    }
+  }
+  /* Otherwise prepend. Note: registry entries leak across heap
+   * lifetimes by design — they're per-process metadata, not per-heap
+   * data. The name string is borrowed from the decl AST node, which
+   * is heap-allocated in lizard_heap. If the heap is destroyed, the
+   * registry will dangle. This is acceptable for H.1; a future
+   * iteration should either copy strings or tie registry life to
+   * the heap. */
+  entry = malloc(sizeof(hit_registry_entry_t));
+  if (entry == NULL) return;
+  entry->name = name;
+  entry->decl = decl;
+  entry->next = hit_registry_head;
+  hit_registry_head = entry;
+}
+
+lizard_ast_node_t *lizard_tt_hit_lookup(const char *name) {
+  hit_registry_entry_t *entry;
+  if (name == NULL) return NULL;
+  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+    if (strcmp(entry->name, name) == 0) {
+      return entry->decl;
+    }
+  }
+  return NULL;
+}
+
+void lizard_tt_hit_registry_reset(void) {
+  hit_registry_entry_t *entry = hit_registry_head;
+  while (entry != NULL) {
+    hit_registry_entry_t *next = entry->next;
+    free(entry);
+    entry = next;
+  }
+  hit_registry_head = NULL;
+}
+
+long lizard_tt_hit_registry_size(void) {
+  hit_registry_entry_t *entry;
+  long count = 0;
+  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+    count++;
+  }
+  return count;
+}
+
+/* Look up which HIT declaration owns a constructor with the given
+ * name. Returns the HIT_DECL or NULL if not found. Used by the
+ * typing rule for HIT_APP. */
+lizard_ast_node_t *lizard_tt_hit_lookup_constructor_host(const char *cname) {
+  hit_registry_entry_t *entry;
+  if (cname == NULL) return NULL;
+  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+    lz_list_node_t *p;
+    lz_list_t *ctors = entry->decl->data.tt_hit_decl.constructors;
+    for (p = ctors->head; p != ctors->nil; p = p->next) {
+      lizard_ast_node_t *ctor = ((lizard_ast_list_node_t *)p)->ast;
+      if (ctor->type == AST_TT_HIT_CONSTRUCTOR &&
+          ctor->data.tt_hit_constructor.name != NULL &&
+          ctor->data.tt_hit_constructor.name->type == AST_SYMBOL &&
+          strcmp(ctor->data.tt_hit_constructor.name->data.variable, cname) == 0) {
+        return entry->decl;
+      }
+    }
+  }
+  return NULL;
 }
 
 int lizard_tt_universe_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {

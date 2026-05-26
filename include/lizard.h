@@ -120,6 +120,36 @@ typedef enum {
   /* (Co-max c1 c2) and (Co-min c1 c2) — couniverse lattice ops. */
   AST_TT_CO_MAX,
   AST_TT_CO_MIN,
+  /* ===== Phase H.1 — Higher Inductive Types (HITs) =====
+   *
+   * Architecturally clean scaffold. HIT declarations are first-class
+   * data — an AST_TT_HIT_DECL node holds a name and two lists of
+   * constructor records (point constructors and path constructors).
+   *
+   * H.1 deliberately keeps semantics minimal: declarations are stored,
+   * looked up by name, substituted through, equality-tested, and
+   * pretty-printed. No computation rules for HIT instances yet —
+   * those require per-HIT or per-shape work (and the comp interaction
+   * with HIT path-constructors is the hard open research problem).
+   *
+   * The structure to grow into is uniform: every HIT is "a list of
+   * point constructors plus a list of path constructors", which is
+   * the shape that generic comp rules would later iterate over.
+   *
+   * Surface forms:
+   *   (HIT 'name (constructors ...) (paths ...))    — declaration
+   *   (HIT-constructor 'cname A1 A2 ...)            — point ctor record
+   *   (HIT-path 'pname source target ...)           — path ctor record
+   *   (HIT-ref 'name)                               — use the HIT as a type
+   *   (HIT-app 'cname arg1 arg2 ...)                — apply a constructor
+   *
+   * A registered HIT can be looked up via (HIT-lookup 'name).
+   */
+  AST_TT_HIT_DECL,
+  AST_TT_HIT_CONSTRUCTOR,
+  AST_TT_HIT_PATH,
+  AST_TT_HIT_REF,
+  AST_TT_HIT_APP,
   AST_TT_ID,           /* (Id A a b) — identity type */
   AST_TT_REFL,         /* (refl a) — reflexivity witness */
   AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
@@ -493,6 +523,33 @@ struct lizard_ast_node {
       lizard_ast_node_t *left;
       lizard_ast_node_t *right;
     } tt_co_min;
+    /* ===== Phase H.1 — HIT data layout =====
+     *
+     * Every HIT-related node carries its data as lz_list_t * lists of
+     * child AST nodes (rather than fixed-arity slots) so the same shape
+     * scales from nullary constructors to many-arg paths uniformly.
+     */
+    struct {
+      lizard_ast_node_t *name;        /* AST_SYMBOL — HIT name */
+      lz_list_t *constructors;        /* list of HIT_CONSTRUCTOR nodes */
+      lz_list_t *paths;               /* list of HIT_PATH nodes */
+    } tt_hit_decl;
+    struct {
+      lizard_ast_node_t *name;        /* AST_SYMBOL — constructor name */
+      lz_list_t *arg_types;           /* list of AST nodes (each an arg type) */
+    } tt_hit_constructor;
+    struct {
+      lizard_ast_node_t *name;        /* AST_SYMBOL — path name */
+      lizard_ast_node_t *source;      /* source endpoint */
+      lizard_ast_node_t *target;      /* target endpoint */
+    } tt_hit_path;
+    struct {
+      lizard_ast_node_t *name;        /* reference name; resolves via registry */
+    } tt_hit_ref;
+    struct {
+      lizard_ast_node_t *name;        /* constructor name */
+      lz_list_t *args;                /* applied args */
+    } tt_hit_app;
     struct {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *a;
