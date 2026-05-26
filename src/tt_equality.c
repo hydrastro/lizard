@@ -176,6 +176,11 @@ void lizard_tt_flags_init(void) {
   flag_find_or_create("reduce-u-suc-concrete")->value = 1;
   flag_find_or_create("reduce-u-max-concrete")->value = 1;
   flag_find_or_create("reduce-u-max-idem")->value = 1;
+  flag_find_or_create("reduce-u-min-concrete")->value = 1;
+  flag_find_or_create("reduce-u-min-idem")->value = 1;
+  flag_find_or_create("reduce-u-lattice-absorb")->value = 1;
+  /* Phase L.2: set-based universe operations. */
+  flag_find_or_create("reduce-u-set-concrete")->value = 1;
   /* Cubical layer simplification. */
   flag_find_or_create("reduce-i-and")->value = 1;
   flag_find_or_create("reduce-i-or")->value = 1;
@@ -259,6 +264,9 @@ static lizard_ast_node_t *make_xport(lizard_heap_t *heap,
 static lizard_ast_node_t *make_universe(lizard_heap_t *heap, long level);
 static lizard_ast_node_t *make_u_suc(lizard_heap_t *heap, lizard_ast_node_t *u);
 static lizard_ast_node_t *make_u_max(lizard_heap_t *heap,
+                                     lizard_ast_node_t *u,
+                                     lizard_ast_node_t *v);
+static lizard_ast_node_t *make_u_min(lizard_heap_t *heap,
                                      lizard_ast_node_t *u,
                                      lizard_ast_node_t *v);
 /* Cubical-layer helpers. */
@@ -390,6 +398,24 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_sigma.domain, name) ||
            contains_free_var(t->data.tt_sigma.codomain, name);
   }
+  case AST_TT_PI_FRESH: {
+    if (t->data.tt_pi_fresh.binder &&
+        t->data.tt_pi_fresh.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_pi_fresh.binder->data.variable, name) == 0) {
+      return contains_free_var(t->data.tt_pi_fresh.domain, name);
+    }
+    return contains_free_var(t->data.tt_pi_fresh.domain, name) ||
+           contains_free_var(t->data.tt_pi_fresh.codomain, name);
+  }
+  case AST_TT_SIGMA_FRESH: {
+    if (t->data.tt_sigma_fresh.binder &&
+        t->data.tt_sigma_fresh.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_sigma_fresh.binder->data.variable, name) == 0) {
+      return contains_free_var(t->data.tt_sigma_fresh.domain, name);
+    }
+    return contains_free_var(t->data.tt_sigma_fresh.domain, name) ||
+           contains_free_var(t->data.tt_sigma_fresh.codomain, name);
+  }
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -452,6 +478,9 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
   case AST_TT_U_MAX:
     return contains_free_var(t->data.tt_u_max.left, name) ||
            contains_free_var(t->data.tt_u_max.right, name);
+  case AST_TT_U_MIN:
+    return contains_free_var(t->data.tt_u_min.left, name) ||
+           contains_free_var(t->data.tt_u_min.right, name);
   /* Cubical: interval terms have their own variable namespace but we
    * conservatively say they don't bind term-level names. */
   case AST_TT_INTERVAL:
@@ -640,6 +669,44 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_PI_FRESH: {
+    lizard_ast_node_t *new_dom = subst_rec(t->data.tt_pi_fresh.domain, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_cod = subst_under_binder(
+        t->data.tt_pi_fresh.binder, t->data.tt_pi_fresh.codomain, x, v, heap,
+        &new_binder);
+    if (new_dom == t->data.tt_pi_fresh.domain &&
+        new_cod == t->data.tt_pi_fresh.codomain &&
+        new_binder == t->data.tt_pi_fresh.binder)
+      return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_PI_FRESH;
+      n->data.tt_pi_fresh.binder = new_binder;
+      n->data.tt_pi_fresh.domain = new_dom;
+      n->data.tt_pi_fresh.codomain = new_cod;
+      return n;
+    }
+  }
+  case AST_TT_SIGMA_FRESH: {
+    lizard_ast_node_t *new_dom = subst_rec(t->data.tt_sigma_fresh.domain, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_cod = subst_under_binder(
+        t->data.tt_sigma_fresh.binder, t->data.tt_sigma_fresh.codomain, x, v, heap,
+        &new_binder);
+    if (new_dom == t->data.tt_sigma_fresh.domain &&
+        new_cod == t->data.tt_sigma_fresh.codomain &&
+        new_binder == t->data.tt_sigma_fresh.binder)
+      return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_SIGMA_FRESH;
+      n->data.tt_sigma_fresh.binder = new_binder;
+      n->data.tt_sigma_fresh.domain = new_dom;
+      n->data.tt_sigma_fresh.codomain = new_cod;
+      return n;
+    }
+  }
   case AST_TT_APP: {
     lizard_ast_node_t *fn = subst_rec(t->data.tt_app.fun, x, v, heap);
     lizard_ast_node_t *ar = subst_rec(t->data.tt_app.arg, x, v, heap);
@@ -791,6 +858,12 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *r = subst_rec(t->data.tt_u_max.right, x, v, heap);
     if (l == t->data.tt_u_max.left && r == t->data.tt_u_max.right) return t;
     return make_u_max(heap, l, r);
+  }
+  case AST_TT_U_MIN: {
+    lizard_ast_node_t *l = subst_rec(t->data.tt_u_min.left, x, v, heap);
+    lizard_ast_node_t *r = subst_rec(t->data.tt_u_min.right, x, v, heap);
+    if (l == t->data.tt_u_min.left && r == t->data.tt_u_min.right) return t;
+    return make_u_min(heap, l, r);
   }
   /* Cubical nodes. Interval vars are a separate namespace from term
    * vars, so term-level substitution doesn't affect them. */
@@ -983,6 +1056,7 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
   case AST_NIL:
   case AST_STRING:
   case AST_TT_UNIVERSE:
+  case AST_TT_UNIVERSE_SET:
   case AST_TT_U_VAR:
   case AST_TT_UNIT:
   case AST_TT_TT:
@@ -1173,6 +1247,32 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_PI_FRESH: {
+    lizard_ast_node_t *dom = subst_interval(t->data.tt_pi_fresh.domain, x, v, heap);
+    lizard_ast_node_t *cod = subst_interval(t->data.tt_pi_fresh.codomain, x, v, heap);
+    if (dom == t->data.tt_pi_fresh.domain && cod == t->data.tt_pi_fresh.codomain) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_PI_FRESH;
+      n->data.tt_pi_fresh.binder = t->data.tt_pi_fresh.binder;
+      n->data.tt_pi_fresh.domain = dom;
+      n->data.tt_pi_fresh.codomain = cod;
+      return n;
+    }
+  }
+  case AST_TT_SIGMA_FRESH: {
+    lizard_ast_node_t *dom = subst_interval(t->data.tt_sigma_fresh.domain, x, v, heap);
+    lizard_ast_node_t *cod = subst_interval(t->data.tt_sigma_fresh.codomain, x, v, heap);
+    if (dom == t->data.tt_sigma_fresh.domain && cod == t->data.tt_sigma_fresh.codomain) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_SIGMA_FRESH;
+      n->data.tt_sigma_fresh.binder = t->data.tt_sigma_fresh.binder;
+      n->data.tt_sigma_fresh.domain = dom;
+      n->data.tt_sigma_fresh.codomain = cod;
+      return n;
+    }
+  }
   default:
     return t;
   }
@@ -1278,6 +1378,34 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_sigma.codomain, b->data.tt_sigma.codomain,
                            &na, &nb);
   }
+  case AST_TT_PI_FRESH: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_pi_fresh.domain, b->data.tt_pi_fresh.domain, ea, eb))
+      return 0;
+    na.name = (a->data.tt_pi_fresh.binder && a->data.tt_pi_fresh.binder->type == AST_SYMBOL)
+                  ? a->data.tt_pi_fresh.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_pi_fresh.binder && b->data.tt_pi_fresh.binder->type == AST_SYMBOL)
+                  ? b->data.tt_pi_fresh.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_pi_fresh.codomain, b->data.tt_pi_fresh.codomain,
+                           &na, &nb);
+  }
+  case AST_TT_SIGMA_FRESH: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_sigma_fresh.domain, b->data.tt_sigma_fresh.domain, ea, eb))
+      return 0;
+    na.name = (a->data.tt_sigma_fresh.binder &&
+               a->data.tt_sigma_fresh.binder->type == AST_SYMBOL)
+                  ? a->data.tt_sigma_fresh.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_sigma_fresh.binder &&
+               b->data.tt_sigma_fresh.binder->type == AST_SYMBOL)
+                  ? b->data.tt_sigma_fresh.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_sigma_fresh.codomain, b->data.tt_sigma_fresh.codomain,
+                           &na, &nb);
+  }
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -1288,6 +1416,16 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return a->data.tt_universe.level == b->data.tt_universe.level;
   case AST_TT_COUNIVERSE:
     return a->data.tt_couniverse.level == b->data.tt_couniverse.level;
+  case AST_TT_UNIVERSE_SET: {
+    long i;
+    if (a->data.tt_universe_set.count != b->data.tt_universe_set.count)
+      return 0;
+    for (i = 0; i < a->data.tt_universe_set.count; i++) {
+      if (a->data.tt_universe_set.dims[i] != b->data.tt_universe_set.dims[i])
+        return 0;
+    }
+    return 1;
+  }
   case AST_TT_ID:
     return alpha_equal_rec(a->data.tt_id.domain, b->data.tt_id.domain, ea, eb) &&
            alpha_equal_rec(a->data.tt_id.a, b->data.tt_id.a, ea, eb) &&
@@ -1365,6 +1503,11 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
                            b->data.tt_u_max.left, ea, eb) &&
            alpha_equal_rec(a->data.tt_u_max.right,
                            b->data.tt_u_max.right, ea, eb);
+  case AST_TT_U_MIN:
+    return alpha_equal_rec(a->data.tt_u_min.left,
+                           b->data.tt_u_min.left, ea, eb) &&
+           alpha_equal_rec(a->data.tt_u_min.right,
+                           b->data.tt_u_min.right, ea, eb);
   /* Cubical nodes. */
   case AST_TT_INTERVAL:
   case AST_TT_I0:
@@ -1515,6 +1658,14 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_sigma.binder, b->data.tt_sigma.binder) &&
            lizard_tt_structurally_equal(a->data.tt_sigma.domain, b->data.tt_sigma.domain) &&
            lizard_tt_structurally_equal(a->data.tt_sigma.codomain, b->data.tt_sigma.codomain);
+  case AST_TT_PI_FRESH:
+    return lizard_tt_structurally_equal(a->data.tt_pi_fresh.binder, b->data.tt_pi_fresh.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_pi_fresh.domain, b->data.tt_pi_fresh.domain) &&
+           lizard_tt_structurally_equal(a->data.tt_pi_fresh.codomain, b->data.tt_pi_fresh.codomain);
+  case AST_TT_SIGMA_FRESH:
+    return lizard_tt_structurally_equal(a->data.tt_sigma_fresh.binder, b->data.tt_sigma_fresh.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_sigma_fresh.domain, b->data.tt_sigma_fresh.domain) &&
+           lizard_tt_structurally_equal(a->data.tt_sigma_fresh.codomain, b->data.tt_sigma_fresh.codomain);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -1525,6 +1676,16 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return a->data.tt_universe.level == b->data.tt_universe.level;
   case AST_TT_COUNIVERSE:
     return a->data.tt_couniverse.level == b->data.tt_couniverse.level;
+  case AST_TT_UNIVERSE_SET: {
+    long i;
+    if (a->data.tt_universe_set.count != b->data.tt_universe_set.count)
+      return 0;
+    for (i = 0; i < a->data.tt_universe_set.count; i++) {
+      if (a->data.tt_universe_set.dims[i] != b->data.tt_universe_set.dims[i])
+        return 0;
+    }
+    return 1;
+  }
   case AST_TT_ID:
     return lizard_tt_structurally_equal(a->data.tt_id.domain, b->data.tt_id.domain) &&
            lizard_tt_structurally_equal(a->data.tt_id.a, b->data.tt_id.a) &&
@@ -1591,6 +1752,11 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
                                         b->data.tt_u_max.left) &&
            lizard_tt_structurally_equal(a->data.tt_u_max.right,
                                         b->data.tt_u_max.right);
+  case AST_TT_U_MIN:
+    return lizard_tt_structurally_equal(a->data.tt_u_min.left,
+                                        b->data.tt_u_min.left) &&
+           lizard_tt_structurally_equal(a->data.tt_u_min.right,
+                                        b->data.tt_u_min.right);
   case AST_TT_INTERVAL:
   case AST_TT_I0:
   case AST_TT_I1:
@@ -1894,6 +2060,91 @@ static lizard_ast_node_t *make_u_max(lizard_heap_t *heap,
   n->data.tt_u_max.left = u;
   n->data.tt_u_max.right = v;
   return n;
+}
+static lizard_ast_node_t *make_u_min(lizard_heap_t *heap,
+                                     lizard_ast_node_t *u,
+                                     lizard_ast_node_t *v) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_U_MIN;
+  n->data.tt_u_min.left = u;
+  n->data.tt_u_min.right = v;
+  return n;
+}
+
+/* Build a (U-set ...) node from a sorted, deduplicated dims array.
+ * Phase L.2 helper. The caller must guarantee the array is sorted
+ * and dedup'd; we don't re-sort here. count==0 is the empty set. */
+static lizard_ast_node_t *make_universe_set(lizard_heap_t *heap,
+                                            long *dims, long count) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_UNIVERSE_SET;
+  n->data.tt_universe_set.dims = dims;
+  n->data.tt_universe_set.count = count;
+  return n;
+}
+
+/* Sorted-array set union (Phase L.2). Output is sorted, deduped. */
+static lizard_ast_node_t *universe_set_union(lizard_heap_t *heap,
+                                             lizard_ast_node_t *a,
+                                             lizard_ast_node_t *b) {
+  long ai, bi, oi, na, nb;
+  long *out;
+  na = a->data.tt_universe_set.count;
+  nb = b->data.tt_universe_set.count;
+  if (na + nb == 0) return make_universe_set(heap, NULL, 0);
+  out = lizard_heap_alloc(sizeof(long) * (size_t)(na + nb));
+  ai = 0; bi = 0; oi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_universe_set.dims[ai];
+    long bv = b->data.tt_universe_set.dims[bi];
+    if (av < bv) { out[oi++] = av; ai++; }
+    else if (av > bv) { out[oi++] = bv; bi++; }
+    else { out[oi++] = av; ai++; bi++; }
+  }
+  while (ai < na) out[oi++] = a->data.tt_universe_set.dims[ai++];
+  while (bi < nb) out[oi++] = b->data.tt_universe_set.dims[bi++];
+  return make_universe_set(heap, out, oi);
+}
+
+/* Sorted-array set intersection (Phase L.2). */
+static lizard_ast_node_t *universe_set_intersect(lizard_heap_t *heap,
+                                                 lizard_ast_node_t *a,
+                                                 lizard_ast_node_t *b) {
+  long ai, bi, oi, na, nb, smaller;
+  long *out;
+  na = a->data.tt_universe_set.count;
+  nb = b->data.tt_universe_set.count;
+  smaller = (na < nb) ? na : nb;
+  if (smaller == 0) return make_universe_set(heap, NULL, 0);
+  out = lizard_heap_alloc(sizeof(long) * (size_t)smaller);
+  ai = 0; bi = 0; oi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_universe_set.dims[ai];
+    long bv = b->data.tt_universe_set.dims[bi];
+    if (av < bv) ai++;
+    else if (av > bv) bi++;
+    else { out[oi++] = av; ai++; bi++; }
+  }
+  if (oi == 0) return make_universe_set(heap, NULL, 0);
+  return make_universe_set(heap, out, oi);
+}
+
+/* Subset test: is A's dim set ⊆ B's? Both must be UNIVERSE_SET.
+ * Returns 1 yes, 0 no. */
+static int universe_set_subset(lizard_ast_node_t *a, lizard_ast_node_t *b) {
+  long ai, bi, na, nb;
+  na = a->data.tt_universe_set.count;
+  nb = b->data.tt_universe_set.count;
+  if (na > nb) return 0;
+  ai = 0; bi = 0;
+  while (ai < na && bi < nb) {
+    long av = a->data.tt_universe_set.dims[ai];
+    long bv = b->data.tt_universe_set.dims[bi];
+    if (av == bv) { ai++; bi++; }
+    else if (av > bv) { bi++; }
+    else return 0;  /* A has an element not in B */
+  }
+  return ai == na;
 }
 
 /* Cubical-layer constructors. */
@@ -2308,6 +2559,36 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     }
     break;
   }
+  case AST_TT_PI_FRESH: {
+    lizard_ast_node_t *dom = normalize_rec(t->data.tt_pi_fresh.domain, heap, memo);
+    lizard_ast_node_t *cod = normalize_rec(t->data.tt_pi_fresh.codomain, heap, memo);
+    if (dom == t->data.tt_pi_fresh.domain && cod == t->data.tt_pi_fresh.codomain)
+      result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_PI_FRESH;
+      n->data.tt_pi_fresh.binder = t->data.tt_pi_fresh.binder;
+      n->data.tt_pi_fresh.domain = dom;
+      n->data.tt_pi_fresh.codomain = cod;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_SIGMA_FRESH: {
+    lizard_ast_node_t *dom = normalize_rec(t->data.tt_sigma_fresh.domain, heap, memo);
+    lizard_ast_node_t *cod = normalize_rec(t->data.tt_sigma_fresh.codomain, heap, memo);
+    if (dom == t->data.tt_sigma_fresh.domain && cod == t->data.tt_sigma_fresh.codomain)
+      result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_SIGMA_FRESH;
+      n->data.tt_sigma_fresh.binder = t->data.tt_sigma_fresh.binder;
+      n->data.tt_sigma_fresh.domain = dom;
+      n->data.tt_sigma_fresh.codomain = cod;
+      result = n;
+    }
+    break;
+  }
   case AST_TT_ID: {
     lizard_ast_node_t *dom = normalize_rec(t->data.tt_id.domain, heap, memo);
     lizard_ast_node_t *a = normalize_rec(t->data.tt_id.a, heap, memo);
@@ -2444,6 +2725,13 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *r = normalize_rec(t->data.tt_u_max.right, heap, memo);
     if (l == t->data.tt_u_max.left && r == t->data.tt_u_max.right) result = t;
     else result = make_u_max(heap, l, r);
+    break;
+  }
+  case AST_TT_U_MIN: {
+    lizard_ast_node_t *l = normalize_rec(t->data.tt_u_min.left, heap, memo);
+    lizard_ast_node_t *r = normalize_rec(t->data.tt_u_min.right, heap, memo);
+    if (l == t->data.tt_u_min.left && r == t->data.tt_u_min.right) result = t;
+    else result = make_u_min(heap, l, r);
     break;
   }
   case AST_TT_INTERVAL:
@@ -3042,6 +3330,34 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
     lizard_ast_node_t *l = t->data.tt_u_max.left;
     lizard_ast_node_t *r = t->data.tt_u_max.right;
     if (l == NULL || r == NULL) break;
+    /* Phase L.2: (U-max (U-set ...) (U-set ...)) --> set union.
+     * The lattice join is set union; this is where the multi-dim
+     * lattice actually does its thing. */
+    if (l->type == AST_TT_UNIVERSE_SET && r->type == AST_TT_UNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      *changed = 1;
+      return universe_set_union(heap, l, r);
+    }
+    /* Mixed: lift single-nat universe to singleton set so we can
+     * combine with a set on the other side. */
+    if (l->type == AST_TT_UNIVERSE && r->type == AST_TT_UNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      long *dim = lizard_heap_alloc(sizeof(long));
+      lizard_ast_node_t *lift;
+      dim[0] = l->data.tt_universe.level;
+      lift = make_universe_set(heap, dim, 1);
+      *changed = 1;
+      return universe_set_union(heap, lift, r);
+    }
+    if (l->type == AST_TT_UNIVERSE_SET && r->type == AST_TT_UNIVERSE &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      long *dim = lizard_heap_alloc(sizeof(long));
+      lizard_ast_node_t *lift;
+      dim[0] = r->data.tt_universe.level;
+      lift = make_universe_set(heap, dim, 1);
+      *changed = 1;
+      return universe_set_union(heap, l, lift);
+    }
     if (l->type == AST_TT_UNIVERSE && r->type == AST_TT_UNIVERSE &&
         lizard_tt_flag_get("reduce-u-max-concrete")) {
       long ll = l->data.tt_universe.level;
@@ -3065,6 +3381,104 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
         lizard_tt_flag_get("reduce-u-max-concrete")) {
       *changed = 1;
       return l;
+    }
+    /* Absorption: (U-max u (U-min u v)) --> u
+     *             (U-max (U-min u v) u) --> u */
+    if (r->type == AST_TT_U_MIN &&
+        lizard_tt_flag_get("reduce-u-lattice-absorb") &&
+        (lizard_tt_alpha_equal(l, r->data.tt_u_min.left) ||
+         lizard_tt_alpha_equal(l, r->data.tt_u_min.right))) {
+      *changed = 1;
+      return l;
+    }
+    if (l->type == AST_TT_U_MIN &&
+        lizard_tt_flag_get("reduce-u-lattice-absorb") &&
+        (lizard_tt_alpha_equal(r, l->data.tt_u_min.left) ||
+         lizard_tt_alpha_equal(r, l->data.tt_u_min.right))) {
+      *changed = 1;
+      return r;
+    }
+    break;
+  }
+  case AST_TT_U_MIN: {
+    /* Meet (greatest lower bound). Dual lattice operation to U-max.
+     *
+     *   - Concrete: (U-min (U n) (U m)) --> (U min(n,m))
+     *   - Idempotence: (U-min u u) --> u
+     *   - Bottom absorption: (U-min (U 0) u) --> (U 0)
+     *     (since 0 is the bottom, meeting with bottom gives bottom)
+     *   - Absorption with U-max: (U-min u (U-max u v)) --> u
+     *
+     * Note the bottom-absorption is the DUAL of U-max's: in U-max,
+     * (U 0) is the unit (max with bottom is identity). In U-min,
+     * (U 0) is the annihilator (min with bottom is bottom).
+     */
+    lizard_ast_node_t *l = t->data.tt_u_min.left;
+    lizard_ast_node_t *r = t->data.tt_u_min.right;
+    if (l == NULL || r == NULL) break;
+    /* Phase L.2: (U-min (U-set ...) (U-set ...)) --> set intersection.
+     * The lattice meet is set intersection. */
+    if (l->type == AST_TT_UNIVERSE_SET && r->type == AST_TT_UNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      *changed = 1;
+      return universe_set_intersect(heap, l, r);
+    }
+    if (l->type == AST_TT_UNIVERSE && r->type == AST_TT_UNIVERSE_SET &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      long *dim = lizard_heap_alloc(sizeof(long));
+      lizard_ast_node_t *lift;
+      dim[0] = l->data.tt_universe.level;
+      lift = make_universe_set(heap, dim, 1);
+      *changed = 1;
+      return universe_set_intersect(heap, lift, r);
+    }
+    if (l->type == AST_TT_UNIVERSE_SET && r->type == AST_TT_UNIVERSE &&
+        lizard_tt_flag_get("reduce-u-set-concrete")) {
+      long *dim = lizard_heap_alloc(sizeof(long));
+      lizard_ast_node_t *lift;
+      dim[0] = r->data.tt_universe.level;
+      lift = make_universe_set(heap, dim, 1);
+      *changed = 1;
+      return universe_set_intersect(heap, l, lift);
+    }
+    if (l->type == AST_TT_UNIVERSE && r->type == AST_TT_UNIVERSE &&
+        lizard_tt_flag_get("reduce-u-min-concrete")) {
+      long ll = l->data.tt_universe.level;
+      long rr = r->data.tt_universe.level;
+      *changed = 1;
+      return make_universe(heap, ll < rr ? ll : rr);
+    }
+    if (lizard_tt_alpha_equal(l, r) &&
+        lizard_tt_flag_get("reduce-u-min-idem")) {
+      *changed = 1;
+      return l;
+    }
+    /* Bottom absorption: meet with (U 0) is (U 0). */
+    if (l->type == AST_TT_UNIVERSE && l->data.tt_universe.level == 0 &&
+        lizard_tt_flag_get("reduce-u-min-concrete")) {
+      *changed = 1;
+      return l;
+    }
+    if (r->type == AST_TT_UNIVERSE && r->data.tt_universe.level == 0 &&
+        lizard_tt_flag_get("reduce-u-min-concrete")) {
+      *changed = 1;
+      return r;
+    }
+    /* Absorption: (U-min u (U-max u v)) --> u
+     *             (U-min (U-max u v) u) --> u */
+    if (r->type == AST_TT_U_MAX &&
+        lizard_tt_flag_get("reduce-u-lattice-absorb") &&
+        (lizard_tt_alpha_equal(l, r->data.tt_u_max.left) ||
+         lizard_tt_alpha_equal(l, r->data.tt_u_max.right))) {
+      *changed = 1;
+      return l;
+    }
+    if (l->type == AST_TT_U_MAX &&
+        lizard_tt_flag_get("reduce-u-lattice-absorb") &&
+        (lizard_tt_alpha_equal(r, l->data.tt_u_max.left) ||
+         lizard_tt_alpha_equal(r, l->data.tt_u_max.right))) {
+      *changed = 1;
+      return r;
     }
     break;
   }
@@ -3892,11 +4306,54 @@ lizard_ast_node_t *lizard_tt_reduce(lizard_ast_node_t *t,
  * We reduce both sides first to put them in a normal form when
  * possible. */
 
+/* Phase L.3 — per-session fresh-dimension counter.
+ *
+ * Each call returns a new, distinct natural-number dimension. Used
+ * by the typing rule for `pi-fresh` and `sigma-fresh` to label the
+ * dimension introduced by a quantification. The counter is process-
+ * local (no global heap dependency), so it resets when a new lizard
+ * session starts — useful for deterministic testing.
+ *
+ * Starts at 1000 to leave room for "ordinary" dimensions 0-999 that
+ * users might write explicitly. Two pi-fresh calls in the same
+ * session get dims 1000, 1001, 1002, ...
+ */
+long lizard_tt_next_fresh_dim(void) {
+  static long counter = 1000;
+  return counter++;
+}
+
 int lizard_tt_universe_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {
   if (u == NULL || v == NULL) return -1;
   /* Both concrete integers */
   if (u->type == AST_TT_UNIVERSE && v->type == AST_TT_UNIVERSE) {
     return u->data.tt_universe.level <= v->data.tt_universe.level ? 1 : 0;
+  }
+  /* Phase L.2: (U-set S) ≤ (U-set T) iff S ⊆ T (subset is lattice order).
+   * This is where the multi-dimensional lattice produces *incomparable*
+   * elements — (U-set 0 1) and (U-set 0 2) are both ≤ (U-set 0 1 2)
+   * but neither is ≤ the other. */
+  if (u->type == AST_TT_UNIVERSE_SET && v->type == AST_TT_UNIVERSE_SET) {
+    return universe_set_subset(u, v) ? 1 : 0;
+  }
+  /* Mixed: lift (U n) to {n}-singleton for the comparison. */
+  if (u->type == AST_TT_UNIVERSE && v->type == AST_TT_UNIVERSE_SET) {
+    long *dim = lizard_heap_alloc(sizeof(long));
+    lizard_ast_node_t lift;
+    dim[0] = u->data.tt_universe.level;
+    lift.type = AST_TT_UNIVERSE_SET;
+    lift.data.tt_universe_set.dims = dim;
+    lift.data.tt_universe_set.count = 1;
+    return universe_set_subset(&lift, v) ? 1 : 0;
+  }
+  if (u->type == AST_TT_UNIVERSE_SET && v->type == AST_TT_UNIVERSE) {
+    long *dim = lizard_heap_alloc(sizeof(long));
+    lizard_ast_node_t lift;
+    dim[0] = v->data.tt_universe.level;
+    lift.type = AST_TT_UNIVERSE_SET;
+    lift.data.tt_universe_set.dims = dim;
+    lift.data.tt_universe_set.count = 1;
+    return universe_set_subset(u, &lift) ? 1 : 0;
   }
   /* Variable identity */
   if (u->type == AST_TT_U_VAR && v->type == AST_TT_U_VAR) {
@@ -3942,6 +4399,22 @@ int lizard_tt_universe_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {
     int l = lizard_tt_universe_leq(u, v->data.tt_u_max.left);
     int r = lizard_tt_universe_leq(u, v->data.tt_u_max.right);
     if (l == 1 || r == 1) return 1;
+    return -1;
+  }
+  /* (U-min u1 u2) ≤ v: meet is below either component, so if
+   * either component is ≤ v, the meet is too. */
+  if (u->type == AST_TT_U_MIN) {
+    int l = lizard_tt_universe_leq(u->data.tt_u_min.left, v);
+    int r = lizard_tt_universe_leq(u->data.tt_u_min.right, v);
+    if (l == 1 || r == 1) return 1;
+    return -1;
+  }
+  /* u ≤ (U-min v1 v2): u is below the meet iff u is below both. */
+  if (v->type == AST_TT_U_MIN) {
+    int l = lizard_tt_universe_leq(u, v->data.tt_u_min.left);
+    int r = lizard_tt_universe_leq(u, v->data.tt_u_min.right);
+    if (l == 1 && r == 1) return 1;
+    if (l == 0 || r == 0) return 0;
     return -1;
   }
   return -1;

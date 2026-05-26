@@ -1370,10 +1370,13 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_SYNTAX_RULES: name = "syntax-rules"; break;
   case AST_TT_PI:          name = "Pi";          break;
   case AST_TT_SIGMA:       name = "Sigma";       break;
+  case AST_TT_PI_FRESH:    name = "pi-fresh";    break;
+  case AST_TT_SIGMA_FRESH: name = "sigma-fresh"; break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
   case AST_TT_COUNIVERSE:  name = "Uco";         break;
+  case AST_TT_UNIVERSE_SET: name = "U-set";       break;
   case AST_TT_ID:          name = "Id";          break;
   case AST_TT_REFL:        name = "refl";        break;
   case AST_TT_INDUCTIVE:   name = "Inductive";   break;
@@ -1403,6 +1406,7 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_U_VAR:        name = "U-var";        break;
   case AST_TT_U_SUC:        name = "U-suc";        break;
   case AST_TT_U_MAX:        name = "U-max";        break;
+  case AST_TT_U_MIN:        name = "U-min";        break;
   case AST_TT_INTERVAL:     name = "I";            break;
   case AST_TT_I0:           name = "i0";           break;
   case AST_TT_I1:           name = "i1";           break;
@@ -2394,6 +2398,41 @@ lizard_ast_node_t *lizard_primitive_tt_sigma(lz_list_t *args, lizard_env_t *env,
   n->data.tt_sigma.codomain = nth_arg(args, 2);
   return n;
 }
+
+/* (pi-fresh 'x A B) — Phase L.3 dimension-creating Pi.
+ * Same term shape as Pi; differs only in typing. */
+lizard_ast_node_t *lizard_primitive_tt_pi_fresh(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PI_FRESH;
+  n->data.tt_pi_fresh.binder = nth_arg(args, 0);
+  n->data.tt_pi_fresh.domain = nth_arg(args, 1);
+  n->data.tt_pi_fresh.codomain = nth_arg(args, 2);
+  return n;
+}
+
+/* (sigma-fresh 'x A B) — Phase L.3 dimension-creating Sigma. */
+lizard_ast_node_t *lizard_primitive_tt_sigma_fresh(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SIGMA_FRESH;
+  n->data.tt_sigma_fresh.binder = nth_arg(args, 0);
+  n->data.tt_sigma_fresh.domain = nth_arg(args, 1);
+  n->data.tt_sigma_fresh.codomain = nth_arg(args, 2);
+  return n;
+}
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -2452,6 +2491,69 @@ lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *args,
   n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_COUNIVERSE;
   n->data.tt_couniverse.level = mpz_get_si(lvl->data.number);
+  return n;
+}
+
+/* (U-set d1 d2 ...) — multi-dimensional universe at the given set of
+ * dimensions. Phase L.2. Variadic. Sorts and dedups the inputs at
+ * construction so equality testing on the dims array is just memcmp.
+ * (U-set) with no args is the empty set, the lattice bottom. */
+lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *n, *arg;
+  long *raw, *deduped;
+  long count, i, j, unique;
+  lz_list_node_t *cur;
+  (void)env;
+  /* Count args. */
+  count = 0;
+  cur = args->head;
+  while (cur != args->nil) { count++; cur = cur->next; }
+  /* Allocate raw array. */
+  raw = NULL;
+  if (count > 0) {
+    raw = lizard_heap_alloc(sizeof(long) * (size_t)count);
+    for (i = 0; i < count; i++) {
+      arg = nth_arg(args, (int)i);
+      if (arg == NULL || arg->type != AST_NUMBER) {
+        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+      }
+      raw[i] = mpz_get_si(arg->data.number);
+      if (raw[i] < 0) {
+        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+      }
+    }
+    /* Insertion sort (typical size is tiny). */
+    for (i = 1; i < count; i++) {
+      long key = raw[i];
+      j = i - 1;
+      while (j >= 0 && raw[j] > key) {
+        raw[j+1] = raw[j];
+        j--;
+      }
+      raw[j+1] = key;
+    }
+    /* Dedup in place, then copy into a tighter array. */
+    unique = (count > 0) ? 1 : 0;
+    for (i = 1; i < count; i++) {
+      if (raw[i] != raw[unique-1]) {
+        raw[unique++] = raw[i];
+      }
+    }
+    if (unique > 0) {
+      deduped = lizard_heap_alloc(sizeof(long) * (size_t)unique);
+      for (i = 0; i < unique; i++) deduped[i] = raw[i];
+    } else {
+      deduped = NULL;
+    }
+    count = unique;
+    raw = deduped;
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_UNIVERSE_SET;
+  n->data.tt_universe_set.dims = raw;
+  n->data.tt_universe_set.count = count;
   return n;
 }
 lizard_ast_node_t *lizard_primitive_tt_id(lz_list_t *args, lizard_env_t *env,
@@ -2558,10 +2660,13 @@ lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *args, lizard_env_t *env,
   }
 TT_PREDICATE(tt_pip,          AST_TT_PI)
 TT_PREDICATE(tt_sigmap,       AST_TT_SIGMA)
+TT_PREDICATE(tt_pi_freshp,    AST_TT_PI_FRESH)
+TT_PREDICATE(tt_sigma_freshp, AST_TT_SIGMA_FRESH)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
 TT_PREDICATE(tt_couniversep,  AST_TT_COUNIVERSE)
+TT_PREDICATE(tt_universe_setp, AST_TT_UNIVERSE_SET)
 TT_PREDICATE(tt_idp,          AST_TT_ID)
 TT_PREDICATE(tt_reflp,        AST_TT_REFL)
 TT_PREDICATE(tt_inductivep,   AST_TT_INDUCTIVE)
@@ -3403,6 +3508,26 @@ TT_PREDICATE(tt_u_maxp, AST_TT_U_MAX)
 TT_ACCESSOR(tt_u_max_left,  AST_TT_U_MAX, x->data.tt_u_max.left)
 TT_ACCESSOR(tt_u_max_right, AST_TT_U_MAX, x->data.tt_u_max.right)
 
+/* (U-min u v) — meet (greatest lower bound). Dual of U-max.
+ * Phase L.1: with both join and meet, universes form a lattice. */
+lizard_ast_node_t *lizard_primitive_tt_u_min(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_U_MIN;
+  n->data.tt_u_min.left = nth_arg(args, 0);
+  n->data.tt_u_min.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_u_minp, AST_TT_U_MIN)
+TT_ACCESSOR(tt_u_min_left,  AST_TT_U_MIN, x->data.tt_u_min.left)
+TT_ACCESSOR(tt_u_min_right, AST_TT_U_MIN, x->data.tt_u_min.right)
+
 /* ===== Cubical layer ===== */
 
 /* The interval pre-type itself and its endpoints. Nullary. */
@@ -3992,10 +4117,16 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
    * system. See the comment above the primitives for the full caveat. */
   install_one(heap, env, "Pi",            lizard_primitive_tt_pi);
   install_one(heap, env, "Sigma",         lizard_primitive_tt_sigma);
+  install_one(heap, env, "pi-fresh",      lizard_primitive_tt_pi_fresh);
+  install_one(heap, env, "pi-fresh?",     lizard_primitive_tt_pi_freshp);
+  install_one(heap, env, "sigma-fresh",   lizard_primitive_tt_sigma_fresh);
+  install_one(heap, env, "sigma-fresh?",  lizard_primitive_tt_sigma_freshp);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);
   install_one(heap, env, "Uco",           lizard_primitive_tt_couniverse);
+  install_one(heap, env, "U-set",         lizard_primitive_tt_universe_set);
+  install_one(heap, env, "U-set?",        lizard_primitive_tt_universe_setp);
   install_one(heap, env, "Id",            lizard_primitive_tt_id);
   install_one(heap, env, "refl",          lizard_primitive_tt_refl);
   install_one(heap, env, "Inductive",     lizard_primitive_tt_inductive);
@@ -4144,6 +4275,10 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "U-suc-operand", lizard_primitive_tt_u_suc_operand);
   install_one(heap, env, "U-max",      lizard_primitive_tt_u_max);
   install_one(heap, env, "U-max?",     lizard_primitive_tt_u_maxp);
+  install_one(heap, env, "U-min",      lizard_primitive_tt_u_min);
+  install_one(heap, env, "U-min?",     lizard_primitive_tt_u_minp);
+  install_one(heap, env, "U-min-left", lizard_primitive_tt_u_min_left);
+  install_one(heap, env, "U-min-right",lizard_primitive_tt_u_min_right);
   install_one(heap, env, "U-max-left", lizard_primitive_tt_u_max_left);
   install_one(heap, env, "U-max-right",lizard_primitive_tt_u_max_right);
   /* Cubical layer: interval, paths, and connection operations.

@@ -306,6 +306,28 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_sigma.codomain);
     fprintf(fp, ")");
     return;
+  case AST_TT_PI_FRESH:
+    fprintf(fp, "(pi-fresh (");
+    if (node->data.tt_pi_fresh.binder) {
+      lizard_fprint_value(fp, node->data.tt_pi_fresh.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_pi_fresh.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_pi_fresh.codomain);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_SIGMA_FRESH:
+    fprintf(fp, "(sigma-fresh (");
+    if (node->data.tt_sigma_fresh.binder) {
+      lizard_fprint_value(fp, node->data.tt_sigma_fresh.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_sigma_fresh.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_sigma_fresh.codomain);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);
@@ -326,6 +348,15 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
   case AST_TT_COUNIVERSE:
     fprintf(fp, "(Uco %ld)", node->data.tt_couniverse.level);
     return;
+  case AST_TT_UNIVERSE_SET: {
+    long i;
+    fprintf(fp, "(U-set");
+    for (i = 0; i < node->data.tt_universe_set.count; i++) {
+      fprintf(fp, " %ld", node->data.tt_universe_set.dims[i]);
+    }
+    fprintf(fp, ")");
+    return;
+  }
   case AST_TT_ID:
     fprintf(fp, "(Id ");
     lizard_fprint_value(fp, node->data.tt_id.domain);
@@ -535,6 +566,13 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_u_max.left);
     fprintf(fp, " ");
     lizard_fprint_value(fp, node->data.tt_u_max.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_U_MIN:
+    fprintf(fp, "(U-min ");
+    lizard_fprint_value(fp, node->data.tt_u_min.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_u_min.right);
     fprintf(fp, ")");
     return;
   case AST_TT_INTERVAL:

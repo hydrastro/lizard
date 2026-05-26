@@ -197,7 +197,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (dom_univ->type != AST_TT_UNIVERSE &&
         dom_univ->type != AST_TT_U_SUC &&
         dom_univ->type != AST_TT_U_MAX &&
-        dom_univ->type != AST_TT_U_VAR) {
+        dom_univ->type != AST_TT_U_VAR &&
+        dom_univ->type != AST_TT_U_MIN &&
+        dom_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Pi domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
@@ -207,7 +209,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (cod_univ->type != AST_TT_UNIVERSE &&
         cod_univ->type != AST_TT_U_SUC &&
         cod_univ->type != AST_TT_U_MAX &&
-        cod_univ->type != AST_TT_U_VAR) {
+        cod_univ->type != AST_TT_U_VAR &&
+        cod_univ->type != AST_TT_U_MIN &&
+        cod_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Pi codomain not a type");
     }
     {
@@ -217,6 +221,123 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       n->data.tt_u_max.right = cod_univ;
       return lizard_tt_reduce(n, heap);
     }
+  }
+  case AST_TT_PI_FRESH: {
+    /* Phase L.3: dimension-creating Pi.
+     *
+     *   A : U_S    B : U_T (under x:A)
+     *   ─────────────────────────────────────────────
+     *   (pi-fresh x A B) : (U-max U_S U_T) ∨ (U-set fresh)
+     *
+     * Same structure as Pi but the result universe is *joined* with
+     * a singleton set containing a fresh dimension. After reduction
+     * with the L.2 set-union rules, the result is a single U-set
+     * containing all original dimensions plus the new one. */
+    lizard_ast_node_t *binder = t->data.tt_pi_fresh.binder;
+    lizard_ast_node_t *dom = t->data.tt_pi_fresh.domain;
+    lizard_ast_node_t *cod = t->data.tt_pi_fresh.codomain;
+    lizard_ast_node_t *dom_univ, *cod_univ;
+    lizard_ast_node_t *new_ctx;
+    lizard_ast_node_t *fresh_set;
+    lizard_ast_node_t *combined;
+    long *dim_ptr;
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "pi-fresh binder not a symbol");
+    }
+    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    if (is_error(dom_univ)) return dom_univ;
+    dom_univ = lizard_tt_reduce(dom_univ, heap);
+    if (dom_univ->type != AST_TT_UNIVERSE &&
+        dom_univ->type != AST_TT_U_SUC &&
+        dom_univ->type != AST_TT_U_MAX &&
+        dom_univ->type != AST_TT_U_VAR &&
+        dom_univ->type != AST_TT_U_MIN &&
+        dom_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "pi-fresh domain not a type");
+    }
+    new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
+    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    if (is_error(cod_univ)) return cod_univ;
+    cod_univ = lizard_tt_reduce(cod_univ, heap);
+    if (cod_univ->type != AST_TT_UNIVERSE &&
+        cod_univ->type != AST_TT_U_SUC &&
+        cod_univ->type != AST_TT_U_MAX &&
+        cod_univ->type != AST_TT_U_VAR &&
+        cod_univ->type != AST_TT_U_MIN &&
+        cod_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "pi-fresh codomain not a type");
+    }
+    fresh_set = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    dim_ptr = lizard_heap_alloc(sizeof(long));
+    dim_ptr[0] = lizard_tt_next_fresh_dim();
+    fresh_set->type = AST_TT_UNIVERSE_SET;
+    fresh_set->data.tt_universe_set.dims = dim_ptr;
+    fresh_set->data.tt_universe_set.count = 1;
+    {
+      lizard_ast_node_t *base = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      base->type = AST_TT_U_MAX;
+      base->data.tt_u_max.left = dom_univ;
+      base->data.tt_u_max.right = cod_univ;
+      combined = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      combined->type = AST_TT_U_MAX;
+      combined->data.tt_u_max.left = base;
+      combined->data.tt_u_max.right = fresh_set;
+    }
+    return lizard_tt_reduce(combined, heap);
+  }
+  case AST_TT_SIGMA_FRESH: {
+    /* Same dimension-creating rule for Sigma. */
+    lizard_ast_node_t *binder = t->data.tt_sigma_fresh.binder;
+    lizard_ast_node_t *dom = t->data.tt_sigma_fresh.domain;
+    lizard_ast_node_t *cod = t->data.tt_sigma_fresh.codomain;
+    lizard_ast_node_t *dom_univ, *cod_univ;
+    lizard_ast_node_t *new_ctx;
+    lizard_ast_node_t *fresh_set;
+    lizard_ast_node_t *combined;
+    long *dim_ptr;
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "sigma-fresh binder not a symbol");
+    }
+    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    if (is_error(dom_univ)) return dom_univ;
+    dom_univ = lizard_tt_reduce(dom_univ, heap);
+    if (dom_univ->type != AST_TT_UNIVERSE &&
+        dom_univ->type != AST_TT_U_SUC &&
+        dom_univ->type != AST_TT_U_MAX &&
+        dom_univ->type != AST_TT_U_VAR &&
+        dom_univ->type != AST_TT_U_MIN &&
+        dom_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "sigma-fresh domain not a type");
+    }
+    new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
+    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    if (is_error(cod_univ)) return cod_univ;
+    cod_univ = lizard_tt_reduce(cod_univ, heap);
+    if (cod_univ->type != AST_TT_UNIVERSE &&
+        cod_univ->type != AST_TT_U_SUC &&
+        cod_univ->type != AST_TT_U_MAX &&
+        cod_univ->type != AST_TT_U_VAR &&
+        cod_univ->type != AST_TT_U_MIN &&
+        cod_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "sigma-fresh codomain not a type");
+    }
+    fresh_set = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    dim_ptr = lizard_heap_alloc(sizeof(long));
+    dim_ptr[0] = lizard_tt_next_fresh_dim();
+    fresh_set->type = AST_TT_UNIVERSE_SET;
+    fresh_set->data.tt_universe_set.dims = dim_ptr;
+    fresh_set->data.tt_universe_set.count = 1;
+    {
+      lizard_ast_node_t *base = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      base->type = AST_TT_U_MAX;
+      base->data.tt_u_max.left = dom_univ;
+      base->data.tt_u_max.right = cod_univ;
+      combined = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      combined->type = AST_TT_U_MAX;
+      combined->data.tt_u_max.left = base;
+      combined->data.tt_u_max.right = fresh_set;
+    }
+    return lizard_tt_reduce(combined, heap);
   }
   case AST_TT_APP: {
     /* (@ f a) : B[a/x] where f : (Pi x A B) and a checks against A. */
@@ -271,7 +392,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_univ->type != AST_TT_UNIVERSE &&
         A_univ->type != AST_TT_U_SUC &&
         A_univ->type != AST_TT_U_MAX &&
-        A_univ->type != AST_TT_U_VAR) {
+        A_univ->type != AST_TT_U_VAR &&
+        A_univ->type != AST_TT_U_MIN &&
+        A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Id domain not a type");
     }
     if (!lizard_tt_check(ctx, a, A, heap)) {
@@ -326,7 +449,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (dom_univ->type != AST_TT_UNIVERSE &&
         dom_univ->type != AST_TT_U_SUC &&
         dom_univ->type != AST_TT_U_MAX &&
-        dom_univ->type != AST_TT_U_VAR) {
+        dom_univ->type != AST_TT_U_VAR &&
+        dom_univ->type != AST_TT_U_MIN &&
+        dom_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sigma domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
@@ -336,7 +461,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (cod_univ->type != AST_TT_UNIVERSE &&
         cod_univ->type != AST_TT_U_SUC &&
         cod_univ->type != AST_TT_U_MAX &&
-        cod_univ->type != AST_TT_U_VAR) {
+        cod_univ->type != AST_TT_U_VAR &&
+        cod_univ->type != AST_TT_U_MIN &&
+        cod_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sigma codomain not a type");
     }
     {
@@ -364,7 +491,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_univ->type != AST_TT_UNIVERSE &&
         A_univ->type != AST_TT_U_SUC &&
         A_univ->type != AST_TT_U_MAX &&
-        A_univ->type != AST_TT_U_VAR) {
+        A_univ->type != AST_TT_U_VAR &&
+        A_univ->type != AST_TT_U_MIN &&
+        A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sum left not a type");
     }
     B_univ = lizard_tt_infer(ctx, B, heap);
@@ -373,7 +502,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (B_univ->type != AST_TT_UNIVERSE &&
         B_univ->type != AST_TT_U_SUC &&
         B_univ->type != AST_TT_U_MAX &&
-        B_univ->type != AST_TT_U_VAR) {
+        B_univ->type != AST_TT_U_VAR &&
+        B_univ->type != AST_TT_U_MIN &&
+        B_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sum right not a type");
     }
     {
@@ -732,7 +863,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_univ->type != AST_TT_UNIVERSE &&
         A_univ->type != AST_TT_U_SUC &&
         A_univ->type != AST_TT_U_MAX &&
-        A_univ->type != AST_TT_U_VAR) {
+        A_univ->type != AST_TT_U_VAR &&
+        A_univ->type != AST_TT_U_MIN &&
+        A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Path domain not a type");
     }
     if (!lizard_tt_check(ctx, a, A, heap)) {
@@ -807,7 +940,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (l_type->type != AST_TT_UNIVERSE &&
         l_type->type != AST_TT_U_SUC &&
         l_type->type != AST_TT_U_MAX &&
-        l_type->type != AST_TT_U_VAR) {
+        l_type->type != AST_TT_U_VAR &&
+        l_type->type != AST_TT_U_MIN &&
+        l_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "F-and/F-or arg not a face");
     }
     r_type = lizard_tt_infer(ctx, t->data.tt_f_binop.right, heap);
@@ -816,7 +951,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (r_type->type != AST_TT_UNIVERSE &&
         r_type->type != AST_TT_U_SUC &&
         r_type->type != AST_TT_U_MAX &&
-        r_type->type != AST_TT_U_VAR) {
+        r_type->type != AST_TT_U_VAR &&
+        r_type->type != AST_TT_U_MIN &&
+        r_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "F-and/F-or arg not a face");
     }
     return lizard_tt_make_universe(heap, 0);
@@ -836,7 +973,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
         A_type->type != AST_TT_U_MAX &&
-        A_type->type != AST_TT_U_VAR) {
+        A_type->type != AST_TT_U_VAR &&
+        A_type->type != AST_TT_U_MIN &&
+        A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Partial type argument not a type");
     }
     return A_type;
@@ -856,7 +995,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
         A_type->type != AST_TT_U_MAX &&
-        A_type->type != AST_TT_U_VAR) {
+        A_type->type != AST_TT_U_VAR &&
+        A_type->type != AST_TT_U_MIN &&
+        A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sub type argument not a type");
     }
     face_type = lizard_tt_infer(ctx, t->data.tt_sub.face, heap);
@@ -948,7 +1089,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
         A_type->type != AST_TT_U_MAX &&
-        A_type->type != AST_TT_U_VAR) {
+        A_type->type != AST_TT_U_VAR &&
+        A_type->type != AST_TT_U_MIN &&
+        A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Equiv domain not a type");
     }
     return A_type;
@@ -965,7 +1108,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
         A_type->type != AST_TT_U_MAX &&
-        A_type->type != AST_TT_U_VAR) {
+        A_type->type != AST_TT_U_VAR &&
+        A_type->type != AST_TT_U_MIN &&
+        A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "id-equiv argument not a type");
     }
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -1044,7 +1189,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
         A_type->type != AST_TT_U_MAX &&
-        A_type->type != AST_TT_U_VAR) {
+        A_type->type != AST_TT_U_VAR &&
+        A_type->type != AST_TT_U_MIN &&
+        A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Glue base not a type");
     }
     T_type = lizard_tt_infer(ctx, T, heap);

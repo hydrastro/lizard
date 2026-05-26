@@ -6,40 +6,75 @@
 #   tests/*.c            C-level unit tests
 #   tests/*.lisp         end-to-end interpreter tests (golden output)
 #   examples/*.lisp      example programs
+#   docs/*.md            roadmap and API sketch
 #
 # Targets:
-#   make            build lib + repl
-#   make test       build & run all C tests + golden-output tests
-#   make examples   run every example file
-#   make install    install lib + headers + binary under PREFIX
-#   make clean      remove build artefacts
+#   make                 build lib + repl (release mode)
+#   make test            build & run all C tests + golden-output tests
+#   make examples        run every example file
+#   make install         install lib + headers + binary under PREFIX
+#   make clean           remove build artefacts
+#   make distclean       deep clean
+#
+# Development modes (Phase 0 of LIZARD_EVOLUTION_PLAN):
+#   make MODE=debug      O0 + full debug info
+#   make MODE=asan test  AddressSanitizer + UB sanitizer
+#   make MODE=coverage   gcov-instrumented (use via 'make coverage')
+#   make MODE=release    O2 (default)
+#
+# Tooling:
+#   make debug           shortcut for MODE=debug all
+#   make asan            shortcut for MODE=asan test
+#   make coverage        rebuild with coverage, run tests, write gcov reports
+#   make profile         release build + perf record on benchmark
+#   make format          clang-format -i across src/ and tests/
 
 CC       ?= gcc
 AR       ?= ar
 INSTALL  ?= install
+RM       ?= rm -f
+RMDIR    ?= rm -rf
 PREFIX   ?= /usr/local
+MODE     ?= release
 
-BUILD_DIR  := build
-SRC_DIR    := src
-INC_DIR    := include
-TEST_DIR   := tests
+BUILD_DIR   := build
+SRC_DIR     := src
+INC_DIR     := include
+TEST_DIR    := tests
 EXAMPLE_DIR := examples
 
 # --- flags ---------------------------------------------------------------
-CFLAGS   ?= -O2 -fPIC
-CFLAGS   += -std=c89 -Wall -Wextra -Werror -pedantic -pedantic-errors
-CFLAGS   += -Waggregate-return -Wbad-function-cast -Wcast-align -Wcast-qual
-CFLAGS   += -Wdeclaration-after-statement -Wfloat-equal -Wlogical-op
-CFLAGS   += -Wmissing-declarations -Wmissing-include-dirs -Wmissing-prototypes
-CFLAGS   += -Wnested-externs -Wpointer-arith -Wredundant-decls
-CFLAGS   += -Wsequence-point -Wstrict-prototypes -Wswitch -Wundef
-CFLAGS   += -Wunreachable-code -Wwrite-strings -Wconversion
-CFLAGS   += -Wno-unused-parameter
-CFLAGS   += -fno-common -fstack-protector-strong
-CFLAGS   += -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
-
+CPPFLAGS ?=
 CPPFLAGS += -I$(INC_DIR) -I$(SRC_DIR)
-LDLIBS   ?= -lds -lgmp
+
+WARNINGS := -Wall -Wextra -Werror -pedantic -pedantic-errors
+WARNINGS += -Waggregate-return -Wbad-function-cast -Wcast-align -Wcast-qual
+WARNINGS += -Wdeclaration-after-statement -Wfloat-equal -Wlogical-op
+WARNINGS += -Wmissing-declarations -Wmissing-include-dirs -Wmissing-prototypes
+WARNINGS += -Wnested-externs -Wpointer-arith -Wredundant-decls
+WARNINGS += -Wsequence-point -Wstrict-prototypes -Wswitch -Wundef
+WARNINGS += -Wunreachable-code -Wwrite-strings -Wconversion
+WARNINGS += -Wno-unused-parameter
+
+CFLAGS ?=
+CFLAGS += -std=c89 -fPIC $(WARNINGS) -fno-common
+CFLAGS += -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+
+LDFLAGS ?=
+LDLIBS  ?= -lds -lgmp
+
+# Mode-specific tweaks.
+ifeq ($(MODE),debug)
+  CFLAGS += -O0 -g3
+else ifeq ($(MODE),asan)
+  CFLAGS += -O1 -g3 -fno-omit-frame-pointer -fsanitize=address,undefined
+  LDFLAGS += -fsanitize=address,undefined
+else ifeq ($(MODE),coverage)
+  CFLAGS += -O0 -g3 --coverage
+  LDFLAGS += --coverage
+else
+  CFLAGS += -O2
+endif
 
 # --- sources -------------------------------------------------------------
 LIB_SRCS := lizard env mem parser primitives tokenizer printer tt_equality tt_check
@@ -51,8 +86,17 @@ LIB_SHARED := $(BUILD_DIR)/liblizard.so
 REPL_BIN   := $(BUILD_DIR)/lizard
 REPL_OBJ   := $(BUILD_DIR)/repl.o
 
-.PHONY: all clean distclean install uninstall test examples format
+.PHONY: all build clean distclean install uninstall test examples \
+        debug asan coverage profile format help
+
 all: $(LIB_STATIC) $(LIB_SHARED) $(REPL_BIN)
+build: all
+
+debug:
+	$(MAKE) MODE=debug all
+
+asan:
+	$(MAKE) MODE=asan test
 
 $(BUILD_DIR):
 	@mkdir -p $@
@@ -79,6 +123,21 @@ examples: $(REPL_BIN)
 	  $(REPL_BIN) < "$$f" || exit $$?; \
 	done
 
+# --- profiling / coverage -----------------------------------------------
+profile: MODE=release
+profile: $(REPL_BIN)
+	@command -v perf >/dev/null 2>&1 || { echo "perf not found"; exit 1; }
+	perf record --call-graph=dwarf -- $(REPL_BIN) < $(EXAMPLE_DIR)/22-benchmarks.lisp >/dev/null
+	perf report
+
+coverage:
+	$(MAKE) clean
+	$(MAKE) MODE=coverage test
+	@mkdir -p coverage
+	@gcov -o $(BUILD_DIR) $(SRC_DIR)/*.c >/dev/null || true
+	@mv *.gcov coverage/ 2>/dev/null || true
+	@echo "Coverage reports written to coverage/*.gcov"
+
 # --- install -------------------------------------------------------------
 install: all
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/lib
@@ -90,10 +149,10 @@ install: all
 	$(INSTALL) -m 0644 $(INC_DIR)/lizard.h $(DESTDIR)$(PREFIX)/include/
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/lib/liblizard.a
-	rm -f $(DESTDIR)$(PREFIX)/lib/liblizard.so
-	rm -f $(DESTDIR)$(PREFIX)/bin/lizard
-	rm -f $(DESTDIR)$(PREFIX)/include/lizard.h
+	$(RM) $(DESTDIR)$(PREFIX)/lib/liblizard.a
+	$(RM) $(DESTDIR)$(PREFIX)/lib/liblizard.so
+	$(RM) $(DESTDIR)$(PREFIX)/bin/lizard
+	$(RM) $(DESTDIR)$(PREFIX)/include/lizard.h
 
 # --- format --------------------------------------------------------------
 format:
@@ -101,9 +160,13 @@ format:
 	clang-format -i $(SRC_DIR)/*.c $(SRC_DIR)/*.h $(INC_DIR)/*.h $(TEST_DIR)/*.c
 
 clean:
-	rm -rf $(BUILD_DIR)
+	$(RMDIR) $(BUILD_DIR) coverage
+	$(RM) *.gcov *.gcda *.gcno
 
-# Deeper cleanup — also wipes profiler output, editor junk, core files.
-# Pass --deep to additionally remove the Nix result symlink and flake.lock.
-distclean:
+distclean: clean
 	@./scripts/clean.sh
+
+help:
+	@echo "Targets:    all test examples clean distclean install uninstall format"
+	@echo "Modes:      make MODE=debug | make MODE=asan test | make MODE=coverage"
+	@echo "Tooling:    make debug | make asan | make coverage | make profile"

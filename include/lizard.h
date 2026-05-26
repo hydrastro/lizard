@@ -64,10 +64,37 @@ typedef enum {
    * about it. */
   AST_TT_PI,           /* (Pi (x A) B) — dependent function type */
   AST_TT_SIGMA,        /* (Sigma (x A) B) — dependent pair type */
+  /* (pi-fresh 'x A B) and (sigma-fresh 'x A B) — Phase L.3.
+   *
+   * These are dimension-creating variants of Pi and Sigma. They have
+   * the *same term-level semantics* as Pi/Sigma (binder, lambda,
+   * application all unchanged), but their TYPING RULE introduces a
+   * fresh dimension into the result universe:
+   *
+   *   A : U_S    B : U_T (under x:A)
+   *   ─────────────────────────────────────────────
+   *   (pi-fresh x A B) : U_{S ∪ T ∪ {fresh dim}}
+   *
+   * This reifies the thesis claim that "what generates a new universe
+   * is quantifying on a previous universe": every dimension-creating
+   * quantification produces a universe with a strictly larger dim
+   * set than its parts.
+   *
+   * The fresh dim is a per-session counter (heap-resident), so two
+   * uses of pi-fresh in the same session get distinct dimensions.
+   */
+  AST_TT_PI_FRESH,
+  AST_TT_SIGMA_FRESH,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
   AST_TT_COUNIVERSE,   /* (Uco n) — couniverse at integer level */
+  /* (U-set d1 d2 ...) — multi-dimensional universe, indexed by a
+   * finite set of natural numbers rather than a single nat.
+   * Phase L.2 of the lattice work: this is the representation that
+   * makes (U-set 0 1) and (U-set 0 2) genuinely incomparable.
+   * The set is stored as a sorted array of distinct longs. */
+  AST_TT_UNIVERSE_SET,
   AST_TT_ID,           /* (Id A a b) — identity type */
   AST_TT_REFL,         /* (refl a) — reflexivity witness */
   AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
@@ -136,6 +163,14 @@ typedef enum {
   AST_TT_U_VAR,
   AST_TT_U_SUC,
   AST_TT_U_MAX,
+  /* (U-min u v) — the meet (greatest lower bound) of two universe
+   * expressions. Dual to U-max. Added in Phase L.1 (Phase L is the
+   * lattice work: universes are indexed by finite sets of naturals,
+   * the partial order is subset inclusion, join is U-max (= set
+   * union on indices), meet is U-min (= set intersection). With
+   * both join and meet, universes form a proper lattice rather than
+   * just a join-semilattice. */
+  AST_TT_U_MIN,
   /* ----- Cubical type theory layer (CCHM-style) -----
    * The interval, paths, and the machinery that makes univalence
    * a computation rule rather than a postulate. These coexist with
@@ -268,7 +303,24 @@ typedef enum {
    * both representations and treat them interchangeably.
    */
   AST_TT_SYSTEM_NIL,
-  AST_TT_SYSTEM_CONS
+  AST_TT_SYSTEM_CONS,
+  /* ----- Glue with system (Phase A.1) -----
+   *
+   * Generalizes Glue to take a face-system of (face, T, equiv) triples
+   * instead of a single (face, T, equiv). The CCHM `ua` definition:
+   *
+   *   ua e = <i> Glue-sys B [(i=i0) ↦ (A, e), (i=i1) ↦ (B, id-equiv B)]
+   *
+   * needs this two-clause form. With Glue-sys we can construct the
+   * proper interior for non-identity equivalences.
+   *
+   *   AST_TT_GLUE_SYS_NIL  — empty Glue-system, Glue degenerates to A
+   *   AST_TT_GLUE_SYS_CONS — (face, T, equiv, next) clause cell
+   *   AST_TT_GLUE_SYS      — (Glue-sys A system) the type former
+   */
+  AST_TT_GLUE_SYS_NIL,
+  AST_TT_GLUE_SYS_CONS,
+  AST_TT_GLUE_SYS
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -364,6 +416,19 @@ struct lizard_ast_node {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *codomain;
     } tt_sigma;
+    /* Phase L.3: pi-fresh and sigma-fresh share the same data shape
+     * as their non-fresh counterparts. The dimension-creating semantics
+     * lives in the typing rule, not in the data. */
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_pi_fresh;
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_sigma_fresh;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;
@@ -378,6 +443,15 @@ struct lizard_ast_node {
     struct {
       long level;
     } tt_couniverse;
+    /* Multi-dimensional universe (Phase L.2). The `dims` array holds
+     * a sorted list of distinct natural-number dimensions; `count` is
+     * its length. The set {0,2,5} is stored as dims=[0,2,5], count=3.
+     * The empty set {} is count=0 with dims allowed to be NULL; this
+     * represents the bottom of the lattice (the universe of nothing). */
+    struct {
+      long *dims;
+      long count;
+    } tt_universe_set;
     struct {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *a;
@@ -481,6 +555,10 @@ struct lizard_ast_node {
       lizard_ast_node_t *left;        /* (U-max u v) */
       lizard_ast_node_t *right;
     } tt_u_max;
+    struct {
+      lizard_ast_node_t *left;        /* (U-min u v) */
+      lizard_ast_node_t *right;
+    } tt_u_min;
     /* Cubical nodes. INTERVAL, I0, I1 are nullary (no data).
      * I_VAR holds a name (interval variable). I_AND, I_OR are
      * binary, I_NEG unary on interval terms. */

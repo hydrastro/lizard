@@ -16,6 +16,9 @@
 #                                      # reported, so you can review)
 #   ./scripts/clean.sh --inspect       # report on dirt without removing
 #                                      # anything (alias for --dry --suspicious)
+#   ./scripts/clean.sh --check         # exit nonzero if any dirt found
+#                                      # (CI-friendly; removes nothing,
+#                                      # implies --dry --suspicious)
 #   ./scripts/clean.sh --help          # this help
 #
 # Multiple flags can be combined. The --dry flag overrides removal
@@ -34,12 +37,14 @@ root=$(cd -- "$script_dir/.." &>/dev/null && pwd)
 dry=0
 deep=0
 suspicious=0
+check=0
 for arg in "$@"; do
   case "$arg" in
     --dry|-n)       dry=1 ;;
     --deep)         deep=1 ;;
     --suspicious)   suspicious=1 ;;
     --inspect)      dry=1; suspicious=1 ;;
+    --check)        dry=1; suspicious=1; check=1 ;;
     -h|--help)
       sed -n '2,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
@@ -199,7 +204,7 @@ if [[ $suspicious -eq 1 ]]; then
   echo "${c_dim}  These are NOT removed automatically. They're listed so${c_off}"
   echo "${c_dim}  you can review and decide.${c_off}"
 
-  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|build|src|include|tests|examples|scripts|prelude\.lisp|LICENSE.*)$'
+  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|build|src|include|tests|examples|scripts|docs|prelude\.lisp|LICENSE.*)$'
 
   found_any=0
   # Iterate over normal entries first, then dotfiles (safely).
@@ -241,6 +246,17 @@ fi
 
 # --- summary --------------------------------------------------------------
 echo
+if [[ $check -eq 1 ]]; then
+  # CI mode: fail if any dirt detected.
+  if [[ $would_remove_count -gt 0 ]]; then
+    echo "${c_remove}CHECK FAILED${c_off}: ${would_remove_count} pattern(s) of dirt detected."
+    echo "${c_dim}Run './scripts/clean.sh' to remove.${c_off}"
+    exit 1
+  else
+    echo "${c_ok}CHECK PASSED${c_off}: tree is clean."
+    exit 0
+  fi
+fi
 if [[ $dry -eq 1 ]]; then
   echo "${c_ok}Dry run complete${c_off} — would have removed ${would_remove_count} pattern(s)."
   echo "${c_dim}Run without --dry to actually remove.${c_off}"
