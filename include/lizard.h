@@ -62,17 +62,17 @@ typedef enum {
    * They are surface syntax / opaque values, suitable for designing
    * the look of a foundational system but not for verifying anything
    * about it. */
-  AST_TT_PI,          /* (Pi (x A) B) — dependent function type */
-  AST_TT_SIGMA,       /* (Sigma (x A) B) — dependent pair type */
-  AST_TT_APP,         /* (@ f a) — explicit application form */
-  AST_TT_SUM,         /* (Sum A B) — coproduct type */
-  AST_TT_UNIVERSE,    /* (U n) — universe at integer level */
-  AST_TT_COUNIVERSE,  /* (Uco n) — couniverse at integer level */
-  AST_TT_ID,          /* (Id A a b) — identity type */
-  AST_TT_REFL,        /* (refl a) — reflexivity witness */
-  AST_TT_INDUCTIVE,   /* (Inductive name ctors...) — inductive decl */
-  AST_TT_COINDUCTIVE, /* (Coinductive name dtors...) — coinductive decl */
-  AST_TT_ANNOT,       /* (: term type) — type annotation, stored only */
+  AST_TT_PI,           /* (Pi (x A) B) — dependent function type */
+  AST_TT_SIGMA,        /* (Sigma (x A) B) — dependent pair type */
+  AST_TT_APP,          /* (@ f a) — explicit application form */
+  AST_TT_SUM,          /* (Sum A B) — coproduct type */
+  AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
+  AST_TT_COUNIVERSE,   /* (Uco n) — couniverse at integer level */
+  AST_TT_ID,           /* (Id A a b) — identity type */
+  AST_TT_REFL,         /* (refl a) — reflexivity witness */
+  AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
+  AST_TT_COINDUCTIVE,  /* (Coinductive name dtors...) — coinductive decl */
+  AST_TT_ANNOT,        /* (: term type) — type annotation, stored only */
   /* ----- Context layer (still no checking) -----
    * Stratified along the couniverse hierarchy from your proposal:
    *   Uco -2 : variables / binding sites
@@ -102,7 +102,117 @@ typedef enum {
    * Distinct from Lisp's (lambda ...) — this lives in the TT layer
    * as an opaque carrier with a binder name, and the reduce engine
    * knows that (@ (Lambda 'x b) a) reduces to b[a/x]. */
-  AST_TT_LAMBDA
+  AST_TT_LAMBDA,
+  /* (ap f p) — congruence of identity along a function.
+   * The HOTT-flavored rule: ap(f, refl_a) reduces to refl_{f a}.
+   * In a real type theory, ap also has a typing rule:
+   *     If f : A -> B and p : Id A a a', then ap f p : Id B (f a) (f a').
+   * We don't check the typing here; ap is an opaque carrier with a
+   * specific computation rule. */
+  AST_TT_AP,
+  /* ----- More HOTT-fragment constructors -----
+   * Introduction and elimination forms for Sigma, Sum, Unit; plus J. */
+  AST_TT_PAIR,         /* (pair a b) — Sigma intro */
+  AST_TT_FST,          /* (fst p) — first projection */
+  AST_TT_SND,          /* (snd p) — second projection */
+  AST_TT_INL,          /* (inl a) — sum intro left */
+  AST_TT_INR,          /* (inr b) — sum intro right */
+  AST_TT_CASE,         /* (case s f g) — sum elim */
+  AST_TT_UNIT,         /* Unit — singleton type former */
+  AST_TT_TT,           /* tt — the unique inhabitant of Unit */
+  AST_TT_BOT,          /* Bot — empty type, target of contradictory Id */
+  AST_TT_J,            /* (J P d p) — path induction. P motive, d refl-case, p path */
+  AST_TT_XPORT,        /* (xport motive path value) — transport with explicit motive */
+  /* ----- Universe-level expressions -----
+   * (U n)         — concrete universe at integer level n
+   * (U-var 'i)    — universe-level variable (for polymorphism)
+   * (U-suc u)     — successor: one universe level above u
+   * (U-max u v)   — supremum of two universe expressions
+   * These compose: (U-max (U-suc (U-var 'i)) (U 2)) is "max(i+1, 2)".
+   * The reducer simplifies on concrete arguments: (U-suc (U 3)) -> (U 4).
+   * For polymorphism, `(U-var 'i)` stands for a universe variable bound
+   * elsewhere (in a Lambda or judgment). For cumulativity, the typing
+   * predicate `universe-leq?` decides u1 ≤ u2 when comparable. */
+  AST_TT_U_VAR,
+  AST_TT_U_SUC,
+  AST_TT_U_MAX,
+  /* ----- Cubical type theory layer (CCHM-style) -----
+   * The interval, paths, and the machinery that makes univalence
+   * a computation rule rather than a postulate. These coexist with
+   * the observational Id rules — they don't replace them.
+   *
+   * Interval pre-type:
+   *   AST_TT_INTERVAL  — the type I itself
+   *   AST_TT_I0        — the endpoint 0 of I
+   *   AST_TT_I1        — the endpoint 1 of I
+   *   AST_TT_I_VAR     — an interval variable bound by <i>
+   *
+   * Connection operations on interval terms:
+   *   AST_TT_I_AND     — i ∧ j (min in [0,1] reading)
+   *   AST_TT_I_OR      — i ∨ j (max)
+   *   AST_TT_I_NEG     — ~ i  (1 - i)
+   *
+   * Path type and its intro/elim:
+   *   AST_TT_PATH      — (Path A a b), the type of paths
+   *   AST_TT_PATH_ABS  — (<i> body), path abstraction
+   *   AST_TT_PATH_APP  — (p @ i), path application
+   */
+  AST_TT_INTERVAL,
+  AST_TT_I0,
+  AST_TT_I1,
+  AST_TT_I_VAR,
+  AST_TT_I_AND,
+  AST_TT_I_OR,
+  AST_TT_I_NEG,
+  AST_TT_PATH,
+  AST_TT_PATH_ABS,
+  AST_TT_PATH_APP,
+  /* ----- Faces and partial elements (Turn 7) -----
+   * A face formula is a boolean combination of equations on the
+   * interval. It describes a subset of the cube.
+   *
+   *   AST_TT_F0    — the always-false face (empty subset)
+   *   AST_TT_F1    — the always-true face (whole cube)
+   *   AST_TT_F_EQ  — atomic (i = endpoint) or (i = j); two interval terms
+   *   AST_TT_F_AND — conjunction of faces
+   *   AST_TT_F_OR  — disjunction of faces
+   *
+   * Partial and Sub:
+   *   AST_TT_PARTIAL  — (Partial φ A) is the type of A-elements
+   *                     defined only where φ holds
+   *   AST_TT_SUB      — (Sub A φ u) is A-elements agreeing with the
+   *                     partial element u on the face φ
+   */
+  AST_TT_F0,
+  AST_TT_F1,
+  AST_TT_F_EQ,
+  AST_TT_F_AND,
+  AST_TT_F_OR,
+  AST_TT_PARTIAL,
+  AST_TT_SUB,
+  /* ----- Kan composition (Turn 8) -----
+   *
+   * Kan composition `comp` is the operation that makes cubical type
+   * theory compute up to homotopy. It fills in a missing face of a
+   * partial cube. The signature:
+   *
+   *   comp A [φ ↦ u] u0  :  A @ i1
+   *
+   * where:
+   *   A     : interval-indexed type family (path-abs over types)
+   *   φ     : face formula
+   *   u     : partial element along the line, defined on φ
+   *   u0    : the starting face (at i0), agreeing with u on φ
+   *
+   * `hcomp` is the homogeneous case where the type family is constant:
+   *
+   *   hcomp A [φ ↦ u] u0  :  A
+   *
+   * `fill` is comp's "whole line" version — gives a path-abs whose
+   * body at any i is the comp up to that point. Useful for proofs. */
+  AST_TT_COMP,         /* (comp A phi u u0) */
+  AST_TT_HCOMP,        /* (hcomp A phi u u0) */
+  AST_TT_FILL          /* (fill A phi u u0) */
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -176,20 +286,20 @@ struct lizard_ast_node {
     struct {
       /* Open-addressed hash table with linear probing.
        * `keys[i] == NULL` marks an empty slot. */
-      size_t size; /* number of live entries */
-      size_t cap;  /* allocated capacity (always a power of two) */
+      size_t size;       /* number of live entries */
+      size_t cap;        /* allocated capacity (always a power of two) */
       lizard_ast_node_t **keys;
       lizard_ast_node_t **values;
     } hash;
     struct {
       /* (syntax-rules (literals...) (pattern1 template1) ...) */
-      lz_list_t *literals; /* list of AST_SYMBOL nodes */
-      lz_list_t *clauses;  /* list of (pattern, template) pairs;
-                              each clause is itself a 2-element list */
+      lz_list_t *literals;   /* list of AST_SYMBOL nodes */
+      lz_list_t *clauses;    /* list of (pattern, template) pairs;
+                                each clause is itself a 2-element list */
     } syntax_rules;
     /* ----- Type-theory carriers (no semantic checking) ----- */
     struct {
-      lizard_ast_node_t *binder; /* AST_SYMBOL, or NULL for ->/non-dep */
+      lizard_ast_node_t *binder;     /* AST_SYMBOL, or NULL for ->/non-dep */
       lizard_ast_node_t *domain;
       lizard_ast_node_t *codomain;
     } tt_pi;
@@ -234,17 +344,17 @@ struct lizard_ast_node {
     } tt_annot;
     /* Context layer. */
     struct {
-      lizard_ast_node_t *name; /* AST_SYMBOL */
-      lizard_ast_node_t *type; /* any type expression */
+      lizard_ast_node_t *name;       /* AST_SYMBOL */
+      lizard_ast_node_t *type;       /* any type expression */
     } tt_variable;
     struct {
-      lz_list_t *bindings; /* list of tt_variable nodes,
-                              order: leftmost = outermost */
+      lz_list_t *bindings;           /* list of tt_variable nodes,
+                                        order: leftmost = outermost */
     } tt_context;
     struct {
-      lizard_ast_node_t *source; /* source context */
-      lizard_ast_node_t *target; /* target context */
-      lz_list_t *mappings;       /* list of (name . term) pairs */
+      lizard_ast_node_t *source;     /* source context */
+      lizard_ast_node_t *target;     /* target context */
+      lz_list_t *mappings;           /* list of (name . term) pairs */
     } tt_substitution;
     struct {
       lizard_ast_node_t *context;
@@ -252,26 +362,127 @@ struct lizard_ast_node {
       lizard_ast_node_t *type;
     } tt_judgment;
     struct {
-      lizard_ast_node_t *left;  /* type A */
-      lizard_ast_node_t *right; /* type B */
-      lizard_ast_node_t *fwd;   /* claimed forward map A -> B */
-      lizard_ast_node_t *bwd;   /* claimed inverse B -> A */
+      lizard_ast_node_t *left;        /* type A */
+      lizard_ast_node_t *right;       /* type B */
+      lizard_ast_node_t *fwd;         /* claimed forward map A -> B */
+      lizard_ast_node_t *bwd;         /* claimed inverse B -> A */
     } tt_equiv;
     struct {
-      lizard_ast_node_t *path;  /* an Id proof */
-      lizard_ast_node_t *value; /* the thing being transported */
+      lizard_ast_node_t *path;        /* an Id proof */
+      lizard_ast_node_t *value;       /* the thing being transported */
     } tt_transport;
     struct {
-      lizard_ast_node_t *path; /* (sym p) reverses an Id proof */
+      lizard_ast_node_t *path;        /* (sym p) reverses an Id proof */
     } tt_id_sym;
     struct {
-      lizard_ast_node_t *p; /* (trans p q) composes two Id proofs */
+      lizard_ast_node_t *p;           /* (trans p q) composes two Id proofs */
       lizard_ast_node_t *q;
     } tt_id_trans;
     struct {
       lizard_ast_node_t *binder;
       lizard_ast_node_t *body;
     } tt_lambda;
+    struct {
+      lizard_ast_node_t *fn;          /* (ap f p) — congruence */
+      lizard_ast_node_t *path;
+    } tt_ap;
+    struct {
+      lizard_ast_node_t *fst;         /* (pair a b) — Sigma intro */
+      lizard_ast_node_t *snd;
+    } tt_pair;
+    struct {
+      lizard_ast_node_t *target;      /* (fst p) / (snd p) */
+    } tt_proj;
+    struct {
+      lizard_ast_node_t *value;       /* (inl a) or (inr b) */
+    } tt_inj;
+    struct {
+      lizard_ast_node_t *scrutinee;   /* (case s f g) */
+      lizard_ast_node_t *left_branch;
+      lizard_ast_node_t *right_branch;
+    } tt_case;
+    struct {
+      lizard_ast_node_t *motive;      /* (J P d p) */
+      lizard_ast_node_t *refl_case;
+      lizard_ast_node_t *path;
+    } tt_j;
+    struct {
+      lizard_ast_node_t *motive;      /* (xport motive path value) — the
+                                       * motive is a TT-level Lambda
+                                       * (Lambda 'x T) whose body T tells
+                                       * the engine which type-former rule
+                                       * to apply. */
+      lizard_ast_node_t *path;
+      lizard_ast_node_t *value;
+    } tt_xport;
+    struct {
+      const char *name;               /* (U-var 'i) */
+    } tt_u_var;
+    struct {
+      lizard_ast_node_t *operand;     /* (U-suc u) */
+    } tt_u_suc;
+    struct {
+      lizard_ast_node_t *left;        /* (U-max u v) */
+      lizard_ast_node_t *right;
+    } tt_u_max;
+    /* Cubical nodes. INTERVAL, I0, I1 are nullary (no data).
+     * I_VAR holds a name (interval variable). I_AND, I_OR are
+     * binary, I_NEG unary on interval terms. */
+    struct {
+      const char *name;               /* (I-var 'i) */
+    } tt_i_var;
+    struct {
+      lizard_ast_node_t *left;        /* (I-and i j) or (I-or i j) */
+      lizard_ast_node_t *right;
+    } tt_i_binop;
+    struct {
+      lizard_ast_node_t *operand;     /* (I-neg i) */
+    } tt_i_neg;
+    /* (Path A a b) — path type. */
+    struct {
+      lizard_ast_node_t *domain;      /* the ambient type A */
+      lizard_ast_node_t *a;            /* endpoint at i0 */
+      lizard_ast_node_t *b;            /* endpoint at i1 */
+    } tt_path;
+    /* (<i> body) — path abstraction. The binder is the interval var. */
+    struct {
+      lizard_ast_node_t *binder;      /* AST_SYMBOL for the interval var */
+      lizard_ast_node_t *body;
+    } tt_path_abs;
+    /* (p @ i) — path application at interval point. */
+    struct {
+      lizard_ast_node_t *path;
+      lizard_ast_node_t *point;       /* interval term */
+    } tt_path_app;
+    /* Face: (F-eq i j) where i,j are interval terms. */
+    struct {
+      lizard_ast_node_t *left;
+      lizard_ast_node_t *right;
+    } tt_f_eq;
+    /* Face: (F-and φ ψ) and (F-or φ ψ). */
+    struct {
+      lizard_ast_node_t *left;
+      lizard_ast_node_t *right;
+    } tt_f_binop;
+    /* (Partial φ A) — the type of A-elements defined on face φ. */
+    struct {
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *type;
+    } tt_partial;
+    /* (Sub A φ u) — A-elements agreeing with u on φ. */
+    struct {
+      lizard_ast_node_t *type;        /* the ambient A */
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *partial;     /* the partial element u */
+    } tt_sub;
+    /* Shared shape for comp, hcomp, fill. */
+    struct {
+      lizard_ast_node_t *type_family; /* (path-abs i A_i) for comp/fill,
+                                       * constant type for hcomp */
+      lizard_ast_node_t *face;
+      lizard_ast_node_t *partial;
+      lizard_ast_node_t *base;
+    } tt_comp;
   } data;
 };
 

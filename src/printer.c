@@ -260,8 +260,7 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     size_t i;
     fprintf(fp, "#(");
     for (i = 0; i < node->data.vector.size; i++) {
-      if (i > 0)
-        fprintf(fp, " ");
+      if (i > 0) fprintf(fp, " ");
       lizard_fprint_value(fp, node->data.vector.elements[i]);
     }
     fprintf(fp, ")");
@@ -273,8 +272,7 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, "#hash(");
     for (i = 0; i < node->data.hash.cap; i++) {
       if (node->data.hash.keys[i] != NULL) {
-        if (!first)
-          fprintf(fp, " ");
+        if (!first) fprintf(fp, " ");
         first = 0;
         fprintf(fp, "(");
         lizard_fprint_value(fp, node->data.hash.keys[i]);
@@ -402,8 +400,7 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, " [");
     for (it = node->data.tt_substitution.mappings->head;
          it != node->data.tt_substitution.mappings->nil; it = it->next) {
-      if (it != node->data.tt_substitution.mappings->head)
-        fprintf(fp, " ");
+      if (it != node->data.tt_substitution.mappings->head) fprintf(fp, " ");
       lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
     }
     fprintf(fp, "])");
@@ -453,6 +450,203 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_lambda.binder);
     fprintf(fp, " ");
     lizard_fprint_value(fp, node->data.tt_lambda.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_AP:
+    fprintf(fp, "(ap ");
+    lizard_fprint_value(fp, node->data.tt_ap.fn);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_ap.path);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_PAIR:
+    fprintf(fp, "(Pair ");
+    lizard_fprint_value(fp, node->data.tt_pair.fst);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_pair.snd);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_FST:
+    fprintf(fp, "(fst ");
+    lizard_fprint_value(fp, node->data.tt_proj.target);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_SND:
+    fprintf(fp, "(snd ");
+    lizard_fprint_value(fp, node->data.tt_proj.target);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_INL:
+    fprintf(fp, "(inl ");
+    lizard_fprint_value(fp, node->data.tt_inj.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_INR:
+    fprintf(fp, "(inr ");
+    lizard_fprint_value(fp, node->data.tt_inj.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_CASE:
+    fprintf(fp, "(Case ");
+    lizard_fprint_value(fp, node->data.tt_case.scrutinee);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_case.left_branch);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_case.right_branch);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_UNIT:
+    fprintf(fp, "Unit");
+    return;
+  case AST_TT_TT:
+    fprintf(fp, "tt");
+    return;
+  case AST_TT_BOT:
+    fprintf(fp, "Bot");
+    return;
+  case AST_TT_J:
+    fprintf(fp, "(J ");
+    lizard_fprint_value(fp, node->data.tt_j.motive);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_j.refl_case);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_j.path);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_XPORT:
+    fprintf(fp, "(xport ");
+    lizard_fprint_value(fp, node->data.tt_xport.motive);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_xport.path);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_xport.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_U_VAR:
+    fprintf(fp, "(U-var %s)", node->data.tt_u_var.name);
+    return;
+  case AST_TT_U_SUC:
+    fprintf(fp, "(U-suc ");
+    lizard_fprint_value(fp, node->data.tt_u_suc.operand);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_U_MAX:
+    fprintf(fp, "(U-max ");
+    lizard_fprint_value(fp, node->data.tt_u_max.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_u_max.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_INTERVAL:
+    fprintf(fp, "I");
+    return;
+  case AST_TT_I0:
+    fprintf(fp, "i0");
+    return;
+  case AST_TT_I1:
+    fprintf(fp, "i1");
+    return;
+  case AST_TT_I_VAR:
+    fprintf(fp, "(I-var %s)", node->data.tt_i_var.name);
+    return;
+  case AST_TT_I_AND:
+    fprintf(fp, "(I-and ");
+    lizard_fprint_value(fp, node->data.tt_i_binop.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_i_binop.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_I_OR:
+    fprintf(fp, "(I-or ");
+    lizard_fprint_value(fp, node->data.tt_i_binop.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_i_binop.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_I_NEG:
+    fprintf(fp, "(I-neg ");
+    lizard_fprint_value(fp, node->data.tt_i_neg.operand);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_PATH:
+    fprintf(fp, "(Path ");
+    lizard_fprint_value(fp, node->data.tt_path.domain);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_path.a);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_path.b);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_PATH_ABS:
+    fprintf(fp, "(<");
+    lizard_fprint_value(fp, node->data.tt_path_abs.binder);
+    fprintf(fp, "> ");
+    lizard_fprint_value(fp, node->data.tt_path_abs.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_PATH_APP:
+    fprintf(fp, "(");
+    lizard_fprint_value(fp, node->data.tt_path_app.path);
+    fprintf(fp, " @ ");
+    lizard_fprint_value(fp, node->data.tt_path_app.point);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_F0:
+    fprintf(fp, "F0");
+    return;
+  case AST_TT_F1:
+    fprintf(fp, "F1");
+    return;
+  case AST_TT_F_EQ:
+    fprintf(fp, "(F-eq ");
+    lizard_fprint_value(fp, node->data.tt_f_eq.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_f_eq.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_F_AND:
+    fprintf(fp, "(F-and ");
+    lizard_fprint_value(fp, node->data.tt_f_binop.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_f_binop.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_F_OR:
+    fprintf(fp, "(F-or ");
+    lizard_fprint_value(fp, node->data.tt_f_binop.left);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_f_binop.right);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_PARTIAL:
+    fprintf(fp, "(Partial ");
+    lizard_fprint_value(fp, node->data.tt_partial.face);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_partial.type);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_SUB:
+    fprintf(fp, "(Sub ");
+    lizard_fprint_value(fp, node->data.tt_sub.type);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_sub.face);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_sub.partial);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_COMP:
+  case AST_TT_HCOMP:
+  case AST_TT_FILL:
+    fprintf(fp, "(%s ",
+            node->type == AST_TT_COMP ? "comp" :
+            node->type == AST_TT_HCOMP ? "hcomp" : "fill");
+    lizard_fprint_value(fp, node->data.tt_comp.type_family);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_comp.face);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_comp.partial);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_comp.base);
     fprintf(fp, ")");
     return;
   case AST_MACRO:

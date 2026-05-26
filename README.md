@@ -24,26 +24,37 @@ macro system with both `define-syntax`-style transformer lambdas and
 `syntax-rules` (with basic hygiene), exception handling, vectors,
 hash tables, and a bunch of other practical features described below.
 
-**Lizard also has a type-theory notation playground.** You can write
-`(Pi (x A) B)`, `(Sigma (n Nat) (Vec n))`, `(U 0)`, `(Uco -2)`,
-`(Id A a b)`, `(refl x)`, `(judgment Γ t T)`, and so on. These are
-**opaque carriers** — lizard does not check that types are well-
-formed, that variables are bound in the right contexts, that a
-judgment is derivable, or anything else of substance. They exist so
-that the surface syntax of a proposed foundational type theory can be
-sketched, walked, and pattern-matched on. They are notation, not
-verification. Building a real type checker for any of this is a
-separate project; this codebase does not contain one.
+**Lizard has a small dependent type checker for the λΠ fragment.**
+There is a real, working, bidirectional type checker for variables,
+universes, Pi types, lambdas, applications, and annotations, with
+cumulativity through a universe lattice that supports `(U n)`,
+`(U-var 'i)`, `(U-suc u)`, and `(U-max u v)` plus a decision
+procedure `universe-leq?`. The interface is `(infer Γ t)` and
+`(check Γ t T)`. This is the smallest interesting dependent type
+theory; typing rules for the rest of lizard's HOTT-fragment terms
+(Id, refl, J, xport, Pair, Case, etc.) are not yet implemented and
+are incremental future work — one term form per turn.
 
-**One exception: the computational identity engine.** Lizard does
-implement a real judgmental equality decision procedure for the
-identity-type fragment (`refl`, `Id-sym`, `Id-trans`, `transport`,
-their interactions). For *this fragment*, `(equal? a b)` decides
-whether two terms are judgmentally equal by running rewrite rules to
-normal form. Each rule is gated by a flag, so the rule set is
-pluggable. This is the smallest piece of a HoTT-style type theory
-that contains real computational content. See the "Computational
-identity" section below.
+**Lizard also has a type-theory notation playground.** You can write
+`(Sigma (n Nat) (Vec n))`, `(Uco -2)`, `(judgment Γ t T)`, and so on
+for forms that don't yet have typing rules. These are **opaque
+carriers** — lizard's checker rejects what it doesn't know how to
+check, and the equality engine has reduction rules for many of them
+(see below), but most of them aren't yet integrated with the type
+checker. They exist so that the surface syntax of a proposed
+foundational type theory can be sketched, walked, and pattern-matched
+on.
+
+**Lizard's computational identity engine** implements a real
+judgmental equality decision procedure for a fragment of HOTT-style
+computation: 23+ reduction rules including the path algebra
+(`sym`/`trans`/`transport`), the HOTT-distinctive rules (`Id` computing
+on Pi, Sigma, Sum, Unit; `ap` as a functor on paths; `J` on refl;
+`xport` per type former), and universe simplification. Each rule is
+gated by a flag. `(equal? a b)` decides whether two terms are
+judgmentally equal in this fragment by running rewrite rules to
+normal form and comparing under alpha-equivalence. See the
+"Computational identity" section below.
 
 ## Layout
 
@@ -401,18 +412,89 @@ It is a **judgmental equality engine** for the identity-type fragment.
 (equal? a b)      ; Decide judgmental equality: reduce both, compare.
 ```
 
-The built-in rewrite rules:
+The built-in rewrite rules (23 total):
 
 ```
-sym(refl_a)              -->  refl_a
-sym(sym(p))              -->  p
-trans(refl_a, p)         -->  p
-trans(p, refl_a)         -->  p
-trans(refl_a, sym(refl_a)) -->  refl_a    (* via trans-refl-l + sym-refl *)
-trans(trans(p,q), r)     -->  trans(p, trans(q,r))
-transport(refl_a, x)     -->  x
-(@ (Lambda 'x b) a)      -->  b[a/x]      (* pi-beta, capture-avoiding *)
+;; Identity algebra
+sym(refl_a)               -->  refl_a
+sym(sym(p))               -->  p
+trans(refl_a, p)          -->  p
+trans(p, refl_a)          -->  p
+trans(trans(p,q), r)      -->  trans(p, trans(q,r))
+transport(refl_a, x)      -->  x                              (legacy 2-arg)
+
+;; Pi
+(@ (Lambda 'x b) a)       -->  b[a/x]                         (pi-beta)
+
+;; ap — congruence over the path category
+ap(f, refl_a)             -->  refl_{f a}                     (HOTT)
+ap(f, sym p)              -->  sym (ap f p)                   (HOTT)
+ap(f, trans p q)          -->  trans (ap f p) (ap f q)        (HOTT)
+
+;; Sigma intro/elim
+fst (Pair a b)            -->  a
+snd (Pair a b)            -->  b
+
+;; Sum intro/elim
+Case (inl a) f g          -->  (@ f a)
+Case (inr b) f g          -->  (@ g b)
+
+;; Id computes on type formers
+Id (Pi x A B) f g         -->  Pi x A (Id B (f x) (g x))      (HOTT)
+Id (Sigma _ A B) (Pair a b) (Pair a' b')
+                          -->  Sigma _ (Id A a a') (Id B b b')  (HOTT, non-dep)
+Id (Sum A B) (inl a) (inl a')      -->  Id A a a'             (HOTT)
+Id (Sum A B) (inr b) (inr b')      -->  Id B b b'             (HOTT)
+Id (Sum A B) (inl _) (inr _)       -->  Bot                   (HOTT)
+Id (Sum A B) (inr _) (inl _)       -->  Bot                   (HOTT)
+Id Unit x y               -->  Unit                           (HOTT)
+
+;; Path induction
+J P d (refl a)            -->  d
+
+;; Transport-with-motive computes on type formers
+xport _ (refl _) v        -->  v                              (HOTT)
+xport (Lambda _ Unit) p tt
+                          -->  tt                             (HOTT)
+xport (Lambda _ (Sum A B)) p (inl a)
+                          -->  inl (xport (Lambda _ A) p a)   (HOTT)
+xport (Lambda _ (Sum A B)) p (inr b)
+                          -->  inr (xport (Lambda _ B) p b)   (HOTT)
+xport (Lambda _ (Sigma _ A B)) p (Pair a b)
+                          -->  Pair (xport ... p a) (xport ... p b)   (HOTT, non-dep)
+xport (Lambda _ (Pi y A B)) p f
+                          -->  Lambda y (xport (Lambda _ B) p (@ f y))  (HOTT, non-dep)
 ```
+
+The HOTT-fragment rules implement:
+
+- **Computational functional extensionality** (`Id-on-Pi`).
+- **Identity on Sigma/Sum/Unit** computes structurally per
+  type former.
+- **Discrimination of constructors** for Sum via `Id` reducing
+  to `Bot` on conflicting cases — making `inl` and `inr`
+  provably distinct.
+- **`ap` is a functor** on the path category.
+- **`J` on refl** — path induction's β-rule.
+- **Transport on type formers** — the other half of HOTT's
+  computational story per type former. Each type former has a
+  matching `Id`-rule (what identity looks like) and `xport`-rule
+  (how to use a path).
+
+**Transport with motive (`xport`).** The construction is
+`(xport (Lambda 'x T) path value)`. The motive `Lambda` carries the
+type family along the path; the rule that fires depends on the
+shape of the motive body `T`. The legacy 2-argument `(transport
+path value)` is preserved with just the refl rule.
+
+**What's still missing from full HOTT:**
+- Dependent `Id`-on-Sigma and `xport`-on-Sigma/Pi (need transport
+  composition with binder substitution)
+- `Nat`, `Bool`, `List` with their `Id` and `xport` rules
+- Univalence as a computation rule (research-grade)
+- Higher inductive types (research-grade)
+- Coherence proofs
+- Type checking
 
 Plus structural recursion — rules apply inside subterms (including
 inside `Pi`, `Sigma`, `Id`, `App`, `Sum`, `Lambda` containers) before
@@ -508,6 +590,22 @@ The flags currently defined:
 | `reduce-trans-assoc` | `trans(trans(p,q),r) -> trans(p, trans(q,r))` |
 | `reduce-transport-refl` | `transport(refl, x) -> x` |
 | `reduce-pi-beta` | `(@ (Lambda 'x b) a) -> b[a/x]` |
+| `reduce-ap-refl` | `ap(f, refl_a) -> refl_{f a}` — HOTT congruence |
+| `reduce-ap-sym` | `ap(f, sym p) -> sym (ap f p)` — HOTT |
+| `reduce-ap-trans` | `ap(f, trans p q) -> trans (ap f p) (ap f q)` — HOTT |
+| `reduce-id-pi` | `Id (Pi x A B) f g -> Pi x A (Id B (f x) (g x))` — HOTT funext |
+| `reduce-id-sigma` | `Id (Sigma _ A B) (Pair a b) (Pair a' b') -> Sigma _ (Id A a a') (Id B b b')` |
+| `reduce-id-sum` | `Id (Sum A B) (inl _) (inl _) -> Id A _ _`, conflicting -> Bot |
+| `reduce-id-unit` | `Id Unit x y -> Unit` — contractibility |
+| `reduce-fst-beta` | `fst (Pair a b) -> a` |
+| `reduce-snd-beta` | `snd (Pair a b) -> b` |
+| `reduce-case-beta` | `Case (inl a) f g -> (@ f a)`, `(inr b) -> (@ g b)` |
+| `reduce-j-refl` | `J P d (refl a) -> d` — path induction |
+| `reduce-xport-refl` | `xport _ (refl _) v -> v` |
+| `reduce-xport-unit` | `xport (Lambda _ Unit) p tt -> tt` |
+| `reduce-xport-sum` | `xport ... (inl a) -> inl (xport ... a)`, similarly inr |
+| `reduce-xport-sigma` | `xport ... (Pair a b) -> Pair (xport ... a) (xport ... b)` |
+| `reduce-xport-pi` | `xport over Pi -> Lambda whose body xports the result` |
 | `reduce-structural` | apply rules inside subterms |
 
 With a flag off, the corresponding rule does not fire, and `equal?`
@@ -626,27 +724,116 @@ Judgments print as `(Γ |- term : type)` so they read like the
 conclusion of an inference rule. They package three pieces of data;
 they do not check anything.
 
+# Type checker — bidirectional, for λΠ + Pi + one universe
+
+Lizard now has a real, working dependent type checker for the
+smallest interesting type theory: λΠ + Pi + one universe with
+cumulativity. The implementation lives in `src/tt_check.c` and
+exposes two primitives:
+
+```
+(infer Γ t)    ; returns the type of t in context Γ, or an error
+(check Γ t T)  ; returns #t iff t checks against T in Γ
+```
+
+The checker is **bidirectional** in the standard sense:
+
+- **Inferred forms** synthesize their type from the term:
+  variables (context lookup), `(U n)` (gives `(U n+1)`), `(Pi x A B)`
+  (gives `(U-max univ(A) univ(B))`), `(@ f a)` (uses f's Pi codomain
+  with substitution), `(annot t T)` (checks t against T, returns T).
+- **Checked forms** require an expected type:
+  `(Lambda x b)` checks against a Pi type by extending the context
+  with `x : domain` and checking `b` against the codomain.
+
+**Conversion** uses normalization (the 23-rule equality engine)
+followed by alpha-equality, with cumulativity allowed when both
+sides are universes. So `(check Γ (U 0) (U 5))` is `#t` because
+`(U 0) : (U 1)` and `(U 1) ≤ (U 5)` by cumulativity.
+
+**Example:**
+```
+> (infer (context) (U 0))
+(U 1)
+
+> (check (context) (Lambda 'x 'x) (Pi 'x (U 0) (U 0)))
+#t
+
+> (define ctx (context (variable 'f (Pi 'x (U 0) (U 0)))
+                       (variable 'a (U 0))))
+> (infer ctx (@ 'f 'a))
+(U 0)
+
+> (check (context) (U 0) (U 5))                ; cumulativity
+#t
+```
+
+**Universe lattice.** The checker uses a universe-expression layer
+with `(U-var 'i)`, `(U-suc u)`, `(U-max u v)`, reduction rules that
+simplify concrete arithmetic and idempotence, and a `universe-leq?`
+predicate returning `#t`, `#f`, or `'unknown`:
+
+```
+> (universe-leq? (U 3) (U 5))              => #t
+> (universe-leq? (U-var 'i) (U-var 'i))    => #t
+> (universe-leq? (U-var 'i) (U-var 'j))    => unknown
+> (universe-leq? (U-suc (U 2)) (U 3))      => #t
+```
+
+The `'unknown` answer is honest — without unification the system
+can't decide ordering involving distinct universe variables.
+
+**What the type checker handles today:**
+- Variables, contexts (via the existing `(context ...)` constructor)
+- Universes `(U n)` with cumulativity
+- Universe expressions `(U-var i)`, `(U-suc u)`, `(U-max u v)`
+- Pi formation, Pi introduction (Lambda check), Pi elimination (application)
+- **Sigma formation, Pair check, fst / snd projections**
+- **Sum formation, inl / inr check, Case (non-dependent) elimination**
+- **Id formation, refl check (against reflexive Id types)**
+- **Unit / tt / Bot type formation**
+- **`J` (path induction) elimination using a motive**
+- **`xport` (transport with motive)**
+- **`ap` (congruence of a function along a path), non-dependent**
+- Annotations `(annot t T)`
+
+**What it doesn't handle yet** (each is incremental future work):
+- Universe-level Λ-binder for true polymorphism (currently universe
+  variables can appear free and be compared, but aren't bound)
+- Dependent Case eliminator (current is non-dependent)
+- Nat, Bool, List as full members with their typing rules
+- Implicit arguments / elaboration / unification
+
 # What is *not* in lizard
 
-I want to be explicit because the surface looks like a proof
-assistant and isn't one.
+The surface looks like a proof assistant. This list is what would
+be needed to make it one and what's still missing.
 
-- **No type checking.** `(Pi (x Nat) banana)` constructs fine. So
-  does `(judgment Γ t T)` for any unrelated `t` and `T`.
-- **No conversion / definitional equality.** `(Id Nat (+ 2 2) 4)` and
-  `(Id Nat 4 4)` are structurally distinct values.
-- **No computational identity.** `refl` is just a tag.
+- **Type checking for the HOTT-fragment forms.** The 23-rule equality
+  engine knows how to *compute* with Id, refl, J, xport, Pair, Case,
+  etc. The checker doesn't yet know how to *type-check* terms built
+  from them. Each form's typing rule is a focused turn of work to add.
+- **Universe-level binders.** Lizard has universe variables and a
+  cumulativity decision procedure, but no Λ-binder at the universe
+  level — so "polymorphism" here means "comparing free universe
+  variables," not the Coq-style universe-quantified definitions.
+- **No universe constraint solver.** When two universe expressions
+  are compared and neither is decidable, the answer is honestly
+  `'unknown` rather than a constraint queued for later resolution.
 - **No checked inductive definitions.** Strict positivity, coverage,
-  termination — none of these are verified.
-- **No proof obligations.** A `judgment` value is the *shape* of a
-  conclusion. It is not a proof of anything.
-- **No universe polymorphism, no cumulativity check, no Uco-level
-  enforcement** beyond the runtime tag returned by `uco-level`.
+  termination — none of these are verified. Specific inductive
+  types (Sigma, Sum, Unit, Bot) are hardcoded with their rules.
+- **No implicit-argument elaboration, no metavariables, no
+  unification.** Annotations are explicit; arguments are explicit.
+- **No higher inductive types.** This is research-grade for any
+  observational-identity system and is not in lizard.
+- **No coherence proofs** between the 23 reduction rules — confluence
+  is informally asserted, not proved.
+- **No proof obligations on judgments.** A `judgment` value remains
+  a structural shape, not a proof.
 
-This is a notation playground. To make any of these checks real
-requires a separate kernel — a bidirectional type checker with
-normalization-by-evaluation for conversion. That is a multi-month
-project and is not what lizard is.
+These are real gaps. Each (except HITs and full coherence) is a
+focused chunk of additional work that can be added incrementally.
 
 # Test suite
 
@@ -686,6 +873,26 @@ under lizard:
 - **22** performance benchmarks — exercises both evaluator and engine
 - **23** pi-beta reduction, alpha-equivalence, capture-avoidance,
   Church booleans — lambda calculus in the engine
+- **24** HOTT-fragment rules — ap-refl and Id-on-Pi (computational
+  functional extensionality), demonstrating the rules that
+  distinguish HOTT from MLTT
+- **25** HOTT fragment expanded — Sigma/Sum/Unit intro and elim,
+  Id-on-type-formers (Pi, Sigma non-dep, Sum, Unit), J on refl, ap
+  as a functor on the path category. 18 reduction rules total.
+- **26** transport-on-type-formers — `xport` with motive, the
+  per-type-former transport rules that pair with the Id rules.
+  23 reduction rules total.
+- **27** bidirectional type checker — `infer` and `check` for λΠ +
+  Pi + one universe with cumulativity. The smallest interesting
+  dependent type theory, working end-to-end.
+- **28** universe lattice + cumulativity — `U-var`, `U-suc`,
+  `U-max`, the `universe-leq?` predicate with #t/#f/unknown for
+  partial decidability, and how cumulativity plugs into the
+  type checker.
+- **29** HOTT typing rules — typing for the entire HOTT fragment:
+  Id formation, refl check, Sigma/Sum formation, Pair/inl/inr
+  check, fst/snd/Case elim, ap, xport, J. Ends with a complete
+  proof of `Pi x:U. Id U x x` checking end-to-end.
 
 # Contributing
 

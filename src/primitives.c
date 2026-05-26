@@ -16,7 +16,7 @@ extern lizard_ast_node_t *callcc_value;
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 static lizard_ast_node_t *lizard_make_number_copy(lizard_heap_t *heap,
-                                                  lizard_ast_node_t *source) {
+                                                   lizard_ast_node_t *source) {
   lizard_ast_node_t *copy;
   copy = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   copy->type = AST_NUMBER;
@@ -826,8 +826,7 @@ lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,
   return lizard_make_bool(heap, node_arg->ast->type == AST_SYMBOL);
 }
 
-lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args,
-                                               lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args, lizard_env_t *env,
                                                lizard_heap_t *heap) {
   lizard_ast_list_node_t *node_arg;
   (void)env;
@@ -1010,24 +1009,12 @@ lizard_ast_node_t *lizard_primitive_write(lz_list_t *args, lizard_env_t *env,
       fputc('"', stdout);
       while (*s) {
         switch (*s) {
-        case '"':
-          fputs("\\\"", stdout);
-          break;
-        case '\\':
-          fputs("\\\\", stdout);
-          break;
-        case '\n':
-          fputs("\\n", stdout);
-          break;
-        case '\t':
-          fputs("\\t", stdout);
-          break;
-        case '\r':
-          fputs("\\r", stdout);
-          break;
-        default:
-          fputc(*s, stdout);
-          break;
+        case '"':  fputs("\\\"", stdout); break;
+        case '\\': fputs("\\\\", stdout); break;
+        case '\n': fputs("\\n",  stdout); break;
+        case '\t': fputs("\\t",  stdout); break;
+        case '\r': fputs("\\r",  stdout); break;
+        default:   fputc(*s,     stdout); break;
         }
         s++;
       }
@@ -1095,8 +1082,8 @@ lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
   ast_list = lizard_parse(tokens, heap);
   result = lizard_make_nil(heap);
   for (iter = ast_list->head; iter != ast_list->nil; iter = iter->next) {
-    lizard_ast_node_t *expanded =
-        lizard_expand_macros(((lizard_ast_list_node_t *)iter)->ast, env, heap);
+    lizard_ast_node_t *expanded = lizard_expand_macros(
+        ((lizard_ast_list_node_t *)iter)->ast, env, heap);
     result = lizard_eval(expanded, env, heap, lizard_identity_cont);
     if (result && result->type == AST_ERROR) {
       return result;
@@ -1165,15 +1152,13 @@ static int binary_numbers(lz_list_t *args, lizard_heap_t *heap,
 
 /* (arithmetic-shift x n) — shift x left by n bits if n>0, right if n<0.
  * Uses mpz_mul_2exp / mpz_fdiv_q_2exp: one GMP call. */
-lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
-                                                lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args, lizard_env_t *env,
                                                 lizard_heap_t *heap) {
   lizard_ast_node_t *x, *n, *err = NULL;
   lizard_ast_node_t *result;
   long shift;
   (void)env;
-  if (!binary_numbers(args, heap, &x, &n, &err))
-    return err;
+  if (!binary_numbers(args, heap, &x, &n, &err)) return err;
   if (!mpz_fits_slong_p(n->data.number)) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
@@ -1198,8 +1183,7 @@ lizard_ast_node_t *lizard_primitive_expt(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *result;
   unsigned long exp;
   (void)env;
-  if (!binary_numbers(args, heap, &b, &e, &err))
-    return err;
+  if (!binary_numbers(args, heap, &b, &e, &err)) return err;
   if (mpz_sgn(e->data.number) < 0 || !mpz_fits_ulong_p(e->data.number)) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
@@ -1217,8 +1201,7 @@ lizard_ast_node_t *lizard_primitive_gcd(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *a, *b, *err = NULL;
   lizard_ast_node_t *result;
   (void)env;
-  if (!binary_numbers(args, heap, &a, &b, &err))
-    return err;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
@@ -1232,8 +1215,7 @@ lizard_ast_node_t *lizard_primitive_lcm(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *a, *b, *err = NULL;
   lizard_ast_node_t *result;
   (void)env;
-  if (!binary_numbers(args, heap, &a, &b, &err))
-    return err;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
@@ -1247,8 +1229,7 @@ lizard_ast_node_t *lizard_primitive_quotient(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *a, *b, *err = NULL;
   lizard_ast_node_t *result;
   (void)env;
-  if (!binary_numbers(args, heap, &a, &b, &err))
-    return err;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
   if (mpz_sgn(b->data.number) == 0) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
@@ -1260,14 +1241,12 @@ lizard_ast_node_t *lizard_primitive_quotient(lz_list_t *args, lizard_env_t *env,
 }
 
 /* (remainder a b) — truncating-division remainder (same sign as a). */
-lizard_ast_node_t *lizard_primitive_remainder(lz_list_t *args,
-                                              lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_remainder(lz_list_t *args, lizard_env_t *env,
                                               lizard_heap_t *heap) {
   lizard_ast_node_t *a, *b, *err = NULL;
   lizard_ast_node_t *result;
   (void)env;
-  if (!binary_numbers(args, heap, &a, &b, &err))
-    return err;
+  if (!binary_numbers(args, heap, &a, &b, &err)) return err;
   if (mpz_sgn(b->data.number) == 0) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
@@ -1285,8 +1264,7 @@ lizard_ast_node_t *lizard_primitive_abs(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *result;
   (void)env;
   err = unary_number(args, heap, &x);
-  if (err)
-    return err;
+  if (err) return err;
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
@@ -1301,8 +1279,7 @@ lizard_ast_node_t *lizard_primitive_square(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *result;
   (void)env;
   err = unary_number(args, heap, &x);
-  if (err)
-    return err;
+  if (err) return err;
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
@@ -1355,8 +1332,7 @@ static lizard_ast_node_t *make_string(lizard_heap_t *heap, const char *src,
                                       size_t len) {
   lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   char *buf = lizard_heap_alloc(len + 1);
-  if (len > 0)
-    memcpy(buf, src, len);
+  if (len > 0) memcpy(buf, src, len);
   buf[len] = '\0';
   n->type = AST_STRING;
   n->data.string = buf;
@@ -1374,123 +1350,80 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   }
   node = (lizard_ast_list_node_t *)args->head;
   switch (node->ast->type) {
-  case AST_NUMBER:
-    name = "number";
-    break;
-  case AST_STRING:
-    name = "string";
-    break;
-  case AST_SYMBOL:
-    name = "symbol";
-    break;
-  case AST_BOOL:
-    name = "boolean";
-    break;
-  case AST_NIL:
-    name = "nil";
-    break;
-  case AST_PAIR:
-    name = "pair";
-    break;
-  case AST_APPLICATION:
-    name = "list";
-    break;
-  case AST_LAMBDA:
-    name = "procedure";
-    break;
-  case AST_PRIMITIVE:
-    name = "primitive";
-    break;
-  case AST_MACRO:
-    name = "macro";
-    break;
-  case AST_QUOTE:
-    name = "quote";
-    break;
-  case AST_QUASIQUOTE:
-    name = "quasiquote";
-    break;
-  case AST_PROMISE:
-    name = "promise";
-    break;
-  case AST_ERROR:
-    name = "error";
-    break;
-  case AST_CONTINUATION:
-    name = "continuation";
-    break;
-  case AST_VECTOR:
-    name = "vector";
-    break;
-  case AST_HASH:
-    name = "hash";
-    break;
-  case AST_SYNTAX_RULES:
-    name = "syntax-rules";
-    break;
-  case AST_TT_PI:
-    name = "Pi";
-    break;
-  case AST_TT_SIGMA:
-    name = "Sigma";
-    break;
-  case AST_TT_APP:
-    name = "@";
-    break;
-  case AST_TT_SUM:
-    name = "Sum";
-    break;
-  case AST_TT_UNIVERSE:
-    name = "U";
-    break;
-  case AST_TT_COUNIVERSE:
-    name = "Uco";
-    break;
-  case AST_TT_ID:
-    name = "Id";
-    break;
-  case AST_TT_REFL:
-    name = "refl";
-    break;
-  case AST_TT_INDUCTIVE:
-    name = "Inductive";
-    break;
-  case AST_TT_COINDUCTIVE:
-    name = "Coinductive";
-    break;
-  case AST_TT_ANNOT:
-    name = "annot";
-    break;
-  case AST_TT_VARIABLE:
-    name = "variable";
-    break;
-  case AST_TT_CONTEXT:
-    name = "context";
-    break;
-  case AST_TT_SUBSTITUTION:
-    name = "substitution";
-    break;
-  case AST_TT_JUDGMENT:
-    name = "judgment";
-    break;
-  case AST_TT_EQUIV:
-    name = "equivalence";
-    break;
-  case AST_TT_TRANSPORT:
-    name = "transport";
-    break;
-  case AST_TT_ID_SYM:
-    name = "Id-sym";
-    break;
-  case AST_TT_ID_TRANS:
-    name = "Id-trans";
-    break;
-  case AST_TT_LAMBDA:
-    name = "Lambda";
-    break;
-  default:
-    name = "unknown";
-    break;
+  case AST_NUMBER:       name = "number";       break;
+  case AST_STRING:       name = "string";       break;
+  case AST_SYMBOL:       name = "symbol";       break;
+  case AST_BOOL:         name = "boolean";      break;
+  case AST_NIL:          name = "nil";          break;
+  case AST_PAIR:         name = "pair";         break;
+  case AST_APPLICATION:  name = "list";         break;
+  case AST_LAMBDA:       name = "procedure";    break;
+  case AST_PRIMITIVE:    name = "primitive";    break;
+  case AST_MACRO:        name = "macro";        break;
+  case AST_QUOTE:        name = "quote";        break;
+  case AST_QUASIQUOTE:   name = "quasiquote";   break;
+  case AST_PROMISE:      name = "promise";      break;
+  case AST_ERROR:        name = "error";        break;
+  case AST_CONTINUATION: name = "continuation"; break;
+  case AST_VECTOR:       name = "vector";       break;
+  case AST_HASH:         name = "hash";         break;
+  case AST_SYNTAX_RULES: name = "syntax-rules"; break;
+  case AST_TT_PI:          name = "Pi";          break;
+  case AST_TT_SIGMA:       name = "Sigma";       break;
+  case AST_TT_APP:         name = "@";           break;
+  case AST_TT_SUM:         name = "Sum";         break;
+  case AST_TT_UNIVERSE:    name = "U";           break;
+  case AST_TT_COUNIVERSE:  name = "Uco";         break;
+  case AST_TT_ID:          name = "Id";          break;
+  case AST_TT_REFL:        name = "refl";        break;
+  case AST_TT_INDUCTIVE:   name = "Inductive";   break;
+  case AST_TT_COINDUCTIVE: name = "Coinductive"; break;
+  case AST_TT_ANNOT:       name = "annot";       break;
+  case AST_TT_VARIABLE:     name = "variable";     break;
+  case AST_TT_CONTEXT:      name = "context";      break;
+  case AST_TT_SUBSTITUTION: name = "substitution"; break;
+  case AST_TT_JUDGMENT:     name = "judgment";     break;
+  case AST_TT_EQUIV:        name = "equivalence";  break;
+  case AST_TT_TRANSPORT:    name = "transport";    break;
+  case AST_TT_ID_SYM:       name = "Id-sym";       break;
+  case AST_TT_ID_TRANS:     name = "Id-trans";     break;
+  case AST_TT_LAMBDA:       name = "Lambda";       break;
+  case AST_TT_AP:           name = "ap";           break;
+  case AST_TT_PAIR:         name = "Pair";         break;
+  case AST_TT_FST:          name = "fst";          break;
+  case AST_TT_SND:          name = "snd";          break;
+  case AST_TT_INL:          name = "inl";          break;
+  case AST_TT_INR:          name = "inr";          break;
+  case AST_TT_CASE:         name = "Case";         break;
+  case AST_TT_UNIT:         name = "Unit";         break;
+  case AST_TT_TT:           name = "tt";           break;
+  case AST_TT_BOT:          name = "Bot";          break;
+  case AST_TT_J:            name = "J";            break;
+  case AST_TT_XPORT:        name = "xport";        break;
+  case AST_TT_U_VAR:        name = "U-var";        break;
+  case AST_TT_U_SUC:        name = "U-suc";        break;
+  case AST_TT_U_MAX:        name = "U-max";        break;
+  case AST_TT_INTERVAL:     name = "I";            break;
+  case AST_TT_I0:           name = "i0";           break;
+  case AST_TT_I1:           name = "i1";           break;
+  case AST_TT_I_VAR:        name = "I-var";        break;
+  case AST_TT_I_AND:        name = "I-and";        break;
+  case AST_TT_I_OR:         name = "I-or";         break;
+  case AST_TT_I_NEG:        name = "I-neg";        break;
+  case AST_TT_PATH:         name = "Path";         break;
+  case AST_TT_PATH_ABS:     name = "path-abs";     break;
+  case AST_TT_PATH_APP:     name = "path-app";     break;
+  case AST_TT_F0:           name = "F0";           break;
+  case AST_TT_F1:           name = "F1";           break;
+  case AST_TT_F_EQ:         name = "F-eq";         break;
+  case AST_TT_F_AND:        name = "F-and";        break;
+  case AST_TT_F_OR:         name = "F-or";         break;
+  case AST_TT_PARTIAL:      name = "Partial";      break;
+  case AST_TT_SUB:          name = "Sub";          break;
+  case AST_TT_COMP:         name = "comp";         break;
+  case AST_TT_HCOMP:        name = "hcomp";        break;
+  case AST_TT_FILL:         name = "fill";         break;
+  default:               name = "unknown";      break;
   }
   return make_symbol(heap, name);
 }
@@ -1519,7 +1452,8 @@ lizard_ast_node_t *lizard_primitive_env_keys(lz_list_t *args, lizard_env_t *env,
 }
 
 /* (defined? 'sym) -> #t if sym is bound in current env, #f otherwise. */
-lizard_ast_node_t *lizard_primitive_definedp(lz_list_t *args, lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_definedp(lz_list_t *args,
+                                             lizard_env_t *env,
                                              lizard_heap_t *heap) {
   lizard_ast_list_node_t *node;
   if (args->head == args->nil || args->head->next != args->nil) {
@@ -1558,8 +1492,8 @@ lizard_ast_node_t *lizard_primitive_proc_arity(lz_list_t *args,
   if (fn->type != AST_LAMBDA) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
-  param_list =
-      ((lizard_ast_list_node_t *)fn->data.lambda.parameters->head)->ast;
+  param_list = ((lizard_ast_list_node_t *)fn->data.lambda.parameters->head)
+                   ->ast;
   if (param_list->type == AST_NIL) {
     count = 0;
   } else if (param_list->type == AST_APPLICATION) {
@@ -1583,8 +1517,7 @@ lizard_ast_node_t *lizard_primitive_proc_arity(lz_list_t *args,
 
 static int get_string(lz_list_node_t *node, const char **out, size_t *len) {
   lizard_ast_node_t *ast = ((lizard_ast_list_node_t *)node)->ast;
-  if (ast->type != AST_STRING)
-    return 0;
+  if (ast->type != AST_STRING) return 0;
   *out = ast->data.string;
   *len = strlen(ast->data.string);
   return 1;
@@ -1806,7 +1739,8 @@ lizard_ast_node_t *lizard_primitive_raise(lz_list_t *args, lizard_env_t *env,
   if (args->head == args->nil || args->head->next != args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  return make_user_error(heap, ((lizard_ast_list_node_t *)args->head)->ast);
+  return make_user_error(heap,
+                         ((lizard_ast_list_node_t *)args->head)->ast);
 }
 
 /* (try thunk handler) — call (thunk); if it errors, call (handler err).
@@ -1908,9 +1842,9 @@ static lizard_ast_node_t *make_vector(lizard_heap_t *heap, size_t n,
   v = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   v->type = AST_VECTOR;
   v->data.vector.size = n;
-  v->data.vector.elements = lizard_heap_alloc(n * sizeof(lizard_ast_node_t *));
-  for (i = 0; i < n; i++)
-    v->data.vector.elements[i] = fill;
+  v->data.vector.elements =
+      lizard_heap_alloc(n * sizeof(lizard_ast_node_t *));
+  for (i = 0; i < n; i++) v->data.vector.elements[i] = fill;
   return v;
 }
 
@@ -1929,8 +1863,7 @@ lizard_ast_node_t *lizard_primitive_make_vector(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
   n = mpz_get_si(n_ast->data.number);
-  if (n < 0)
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  if (n < 0) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   fill = (args->head->next != args->nil)
              ? ((lizard_ast_list_node_t *)args->head->next)->ast
              : lizard_make_nil(heap);
@@ -1946,8 +1879,7 @@ lizard_ast_node_t *lizard_primitive_vector(lz_list_t *args, lizard_env_t *env,
   size_t i;
   (void)env;
   n = 0;
-  for (iter = args->head; iter != args->nil; iter = iter->next)
-    n++;
+  for (iter = args->head; iter != args->nil; iter = iter->next) n++;
   v = make_vector(heap, n, lizard_make_nil(heap));
   i = 0;
   for (iter = args->head; iter != args->nil; iter = iter->next) {
@@ -2129,21 +2061,14 @@ static unsigned long lizard_hash_value(lizard_ast_node_t *k) {
 }
 
 static int lizard_keys_eq(lizard_ast_node_t *a, lizard_ast_node_t *b) {
-  if (!a || !b || a->type != b->type)
-    return 0;
+  if (!a || !b || a->type != b->type) return 0;
   switch (a->type) {
-  case AST_NUMBER:
-    return mpz_cmp(a->data.number, b->data.number) == 0;
-  case AST_STRING:
-    return strcmp(a->data.string, b->data.string) == 0;
-  case AST_SYMBOL:
-    return strcmp(a->data.variable, b->data.variable) == 0;
-  case AST_BOOL:
-    return a->data.boolean == b->data.boolean;
-  case AST_NIL:
-    return 1;
-  default:
-    return a == b;
+  case AST_NUMBER: return mpz_cmp(a->data.number, b->data.number) == 0;
+  case AST_STRING: return strcmp(a->data.string, b->data.string) == 0;
+  case AST_SYMBOL: return strcmp(a->data.variable, b->data.variable) == 0;
+  case AST_BOOL:   return a->data.boolean == b->data.boolean;
+  case AST_NIL:    return 1;
+  default:         return a == b;
   }
 }
 
@@ -2155,8 +2080,7 @@ static void hash_grow(lizard_heap_t *heap, lizard_ast_node_t *h) {
   size_t i, idx;
   h->data.hash.cap = new_cap;
   h->data.hash.keys = lizard_heap_alloc(new_cap * sizeof(lizard_ast_node_t *));
-  h->data.hash.values =
-      lizard_heap_alloc(new_cap * sizeof(lizard_ast_node_t *));
+  h->data.hash.values = lizard_heap_alloc(new_cap * sizeof(lizard_ast_node_t *));
   for (i = 0; i < new_cap; i++) {
     h->data.hash.keys[i] = NULL;
     h->data.hash.values[i] = NULL;
@@ -2272,8 +2196,7 @@ lizard_ast_node_t *lizard_primitive_hash_ref(lz_list_t *args, lizard_env_t *env,
               ? ((lizard_ast_list_node_t *)args->head->next->next)->ast
               : lizard_make_bool(heap, false);
   idx = hash_find_slot(h, k, &found);
-  if (found)
-    return h->data.hash.values[idx];
+  if (found) return h->data.hash.values[idx];
   return deflt;
 }
 
@@ -2360,8 +2283,7 @@ lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
   idx = hash_find_slot(h, k, &found);
-  if (!found)
-    return lizard_make_bool(heap, false);
+  if (!found) return lizard_make_bool(heap, false);
   /* Linear-probing deletion: clear slot then re-insert any cluster
    * elements that may now have been displaced. */
   h->data.hash.keys[idx] = NULL;
@@ -2382,9 +2304,7 @@ lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
       a = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       b = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
       c = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-      a->ast = h;
-      b->ast = rk;
-      c->ast = rv;
+      a->ast = h; b->ast = rk; c->ast = rv;
       list_append(fake_args, &a->node);
       list_append(fake_args, &b->node);
       list_append(fake_args, &c->node);
@@ -2422,12 +2342,16 @@ static int three_args(lz_list_t *args) {
          args->head->next->next != args->nil &&
          args->head->next->next->next == args->nil;
 }
+static int four_args(lz_list_t *args) {
+  return args->head != args->nil && args->head->next != args->nil &&
+         args->head->next->next != args->nil &&
+         args->head->next->next->next != args->nil &&
+         args->head->next->next->next->next == args->nil;
+}
 static lizard_ast_node_t *nth_arg(lz_list_t *args, int n) {
   lz_list_node_t *it = args->head;
-  while (n-- > 0 && it != args->nil)
-    it = it->next;
-  if (it == args->nil)
-    return NULL;
+  while (n-- > 0 && it != args->nil) it = it->next;
+  if (it == args->nil) return NULL;
   return ((lizard_ast_list_node_t *)it)->ast;
 }
 
@@ -2611,8 +2535,9 @@ lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *args, lizard_env_t *env,
 
 /* Predicates. */
 #define TT_PREDICATE(name, tag)                                                \
-  lizard_ast_node_t *lizard_primitive_##name(                                  \
-      lz_list_t *args, lizard_env_t *env, lizard_heap_t *heap) {               \
+  lizard_ast_node_t *lizard_primitive_##name(lz_list_t *args,                  \
+                                             lizard_env_t *env,                \
+                                             lizard_heap_t *heap) {            \
     lizard_ast_node_t *x;                                                      \
     (void)env;                                                                 \
     if (!single_arg(args)) {                                                   \
@@ -2621,22 +2546,23 @@ lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *args, lizard_env_t *env,
     x = nth_arg(args, 0);                                                      \
     return lizard_make_bool(heap, x && x->type == tag);                        \
   }
-TT_PREDICATE(tt_pip, AST_TT_PI)
-TT_PREDICATE(tt_sigmap, AST_TT_SIGMA)
-TT_PREDICATE(tt_appp, AST_TT_APP)
-TT_PREDICATE(tt_sump, AST_TT_SUM)
-TT_PREDICATE(tt_universep, AST_TT_UNIVERSE)
-TT_PREDICATE(tt_couniversep, AST_TT_COUNIVERSE)
-TT_PREDICATE(tt_idp, AST_TT_ID)
-TT_PREDICATE(tt_reflp, AST_TT_REFL)
-TT_PREDICATE(tt_inductivep, AST_TT_INDUCTIVE)
+TT_PREDICATE(tt_pip,          AST_TT_PI)
+TT_PREDICATE(tt_sigmap,       AST_TT_SIGMA)
+TT_PREDICATE(tt_appp,         AST_TT_APP)
+TT_PREDICATE(tt_sump,         AST_TT_SUM)
+TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
+TT_PREDICATE(tt_couniversep,  AST_TT_COUNIVERSE)
+TT_PREDICATE(tt_idp,          AST_TT_ID)
+TT_PREDICATE(tt_reflp,        AST_TT_REFL)
+TT_PREDICATE(tt_inductivep,   AST_TT_INDUCTIVE)
 TT_PREDICATE(tt_coinductivep, AST_TT_COINDUCTIVE)
-TT_PREDICATE(tt_annotp, AST_TT_ANNOT)
+TT_PREDICATE(tt_annotp,       AST_TT_ANNOT)
 
 /* Accessors — pull fields out of TT nodes. Return error on mismatch. */
 #define TT_ACCESSOR(name, tag, expr)                                           \
-  lizard_ast_node_t *lizard_primitive_##name(                                  \
-      lz_list_t *args, lizard_env_t *env, lizard_heap_t *heap) {               \
+  lizard_ast_node_t *lizard_primitive_##name(lz_list_t *args,                  \
+                                             lizard_env_t *env,                \
+                                             lizard_heap_t *heap) {            \
     lizard_ast_node_t *x;                                                      \
     lizard_ast_node_t *r;                                                      \
     (void)env;                                                                 \
@@ -2650,25 +2576,25 @@ TT_PREDICATE(tt_annotp, AST_TT_ANNOT)
     r = (expr);                                                                \
     return r ? r : lizard_make_nil(heap);                                      \
   }
-TT_ACCESSOR(tt_pi_binder, AST_TT_PI, x->data.tt_pi.binder)
-TT_ACCESSOR(tt_pi_domain, AST_TT_PI, x->data.tt_pi.domain)
-TT_ACCESSOR(tt_pi_codomain, AST_TT_PI, x->data.tt_pi.codomain)
+TT_ACCESSOR(tt_pi_binder,    AST_TT_PI,    x->data.tt_pi.binder)
+TT_ACCESSOR(tt_pi_domain,    AST_TT_PI,    x->data.tt_pi.domain)
+TT_ACCESSOR(tt_pi_codomain,  AST_TT_PI,    x->data.tt_pi.codomain)
 TT_ACCESSOR(tt_sigma_binder, AST_TT_SIGMA, x->data.tt_sigma.binder)
 TT_ACCESSOR(tt_sigma_domain, AST_TT_SIGMA, x->data.tt_sigma.domain)
 TT_ACCESSOR(tt_sigma_codomain, AST_TT_SIGMA, x->data.tt_sigma.codomain)
-TT_ACCESSOR(tt_app_fun, AST_TT_APP, x->data.tt_app.fun)
-TT_ACCESSOR(tt_app_arg, AST_TT_APP, x->data.tt_app.arg)
-TT_ACCESSOR(tt_sum_left, AST_TT_SUM, x->data.tt_sum.left)
-TT_ACCESSOR(tt_sum_right, AST_TT_SUM, x->data.tt_sum.right)
-TT_ACCESSOR(tt_id_domain, AST_TT_ID, x->data.tt_id.domain)
-TT_ACCESSOR(tt_id_a, AST_TT_ID, x->data.tt_id.a)
-TT_ACCESSOR(tt_id_b, AST_TT_ID, x->data.tt_id.b)
-TT_ACCESSOR(tt_refl_value, AST_TT_REFL, x->data.tt_refl.value)
+TT_ACCESSOR(tt_app_fun,      AST_TT_APP,   x->data.tt_app.fun)
+TT_ACCESSOR(tt_app_arg,      AST_TT_APP,   x->data.tt_app.arg)
+TT_ACCESSOR(tt_sum_left,     AST_TT_SUM,   x->data.tt_sum.left)
+TT_ACCESSOR(tt_sum_right,    AST_TT_SUM,   x->data.tt_sum.right)
+TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
+TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
+TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
+TT_ACCESSOR(tt_refl_value,   AST_TT_REFL,  x->data.tt_refl.value)
 TT_ACCESSOR(tt_inductive_name, AST_TT_INDUCTIVE, x->data.tt_inductive.name)
 TT_ACCESSOR(tt_coinductive_name, AST_TT_COINDUCTIVE,
             x->data.tt_coinductive.name)
-TT_ACCESSOR(tt_annot_term, AST_TT_ANNOT, x->data.tt_annot.term)
-TT_ACCESSOR(tt_annot_type, AST_TT_ANNOT, x->data.tt_annot.type)
+TT_ACCESSOR(tt_annot_term,   AST_TT_ANNOT, x->data.tt_annot.term)
+TT_ACCESSOR(tt_annot_type,   AST_TT_ANNOT, x->data.tt_annot.type)
 
 /* Universe level — returns the integer. */
 lizard_ast_node_t *lizard_primitive_tt_universe_level(lz_list_t *args,
@@ -2731,8 +2657,7 @@ lizard_ast_node_t *lizard_primitive_tt_inductive_ctors(lz_list_t *args,
     size_t n = 0, i;
     lizard_ast_node_t **buf;
     for (it = x->data.tt_inductive.constructors->head;
-         it != x->data.tt_inductive.constructors->nil; it = it->next)
-      n++;
+         it != x->data.tt_inductive.constructors->nil; it = it->next) n++;
     buf = lizard_heap_alloc((n + 1) * sizeof(lizard_ast_node_t *));
     i = 0;
     for (it = x->data.tt_inductive.constructors->head;
@@ -2767,8 +2692,7 @@ lizard_ast_node_t *lizard_primitive_tt_coinductive_dtors(lz_list_t *args,
     size_t n = 0, i;
     lizard_ast_node_t **buf;
     for (it = x->data.tt_coinductive.destructors->head;
-         it != x->data.tt_coinductive.destructors->nil; it = it->next)
-      n++;
+         it != x->data.tt_coinductive.destructors->nil; it = it->next) n++;
     buf = lizard_heap_alloc((n + 1) * sizeof(lizard_ast_node_t *));
     i = 0;
     for (it = x->data.tt_coinductive.destructors->head;
@@ -2901,8 +2825,7 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_lookup(lz_list_t *args,
     size_t n = 0, i;
     lizard_ast_node_t **buf;
     for (it = ctx->data.tt_context.bindings->head;
-         it != ctx->data.tt_context.bindings->nil; it = it->next)
-      n++;
+         it != ctx->data.tt_context.bindings->nil; it = it->next) n++;
     buf = lizard_heap_alloc((n + 1) * sizeof(lizard_ast_node_t *));
     i = 0;
     for (it = ctx->data.tt_context.bindings->head;
@@ -2942,8 +2865,7 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_bindings(lz_list_t *args,
     size_t n = 0, i;
     lizard_ast_node_t **buf;
     for (it = ctx->data.tt_context.bindings->head;
-         it != ctx->data.tt_context.bindings->nil; it = it->next)
-      n++;
+         it != ctx->data.tt_context.bindings->nil; it = it->next) n++;
     buf = lizard_heap_alloc((n + 1) * sizeof(lizard_ast_node_t *));
     i = 0;
     for (it = ctx->data.tt_context.bindings->head;
@@ -2977,8 +2899,7 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_length(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
   for (it = ctx->data.tt_context.bindings->head;
-       it != ctx->data.tt_context.bindings->nil; it = it->next)
-    count++;
+       it != ctx->data.tt_context.bindings->nil; it = it->next) count++;
   r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   r->type = AST_NUMBER;
   mpz_init_set_si(r->data.number, count);
@@ -3062,21 +2983,12 @@ lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   x = nth_arg(args, 0);
-  if (!x)
-    return lizard_make_bool(heap, false);
+  if (!x) return lizard_make_bool(heap, false);
   switch (x->type) {
-  case AST_TT_VARIABLE:
-    lvl = -2;
-    break;
-  case AST_TT_CONTEXT:
-    lvl = -1;
-    break;
-  case AST_TT_SUBSTITUTION:
-    lvl = 0;
-    break;
-  case AST_TT_JUDGMENT:
-    lvl = 0;
-    break;
+  case AST_TT_VARIABLE:     lvl = -2; break;
+  case AST_TT_CONTEXT:      lvl = -1; break;
+  case AST_TT_SUBSTITUTION: lvl =  0; break;
+  case AST_TT_JUDGMENT:     lvl =  0; break;
   default:
     return lizard_make_bool(heap, false);
   }
@@ -3087,20 +2999,18 @@ lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *args,
 }
 
 /* Predicates and accessors. */
-TT_PREDICATE(tt_variablep, AST_TT_VARIABLE)
-TT_PREDICATE(tt_contextp, AST_TT_CONTEXT)
+TT_PREDICATE(tt_variablep,     AST_TT_VARIABLE)
+TT_PREDICATE(tt_contextp,      AST_TT_CONTEXT)
 TT_PREDICATE(tt_substitutionp, AST_TT_SUBSTITUTION)
-TT_PREDICATE(tt_judgmentp, AST_TT_JUDGMENT)
+TT_PREDICATE(tt_judgmentp,     AST_TT_JUDGMENT)
 
-TT_ACCESSOR(tt_var_name, AST_TT_VARIABLE, x->data.tt_variable.name)
-TT_ACCESSOR(tt_var_type, AST_TT_VARIABLE, x->data.tt_variable.type)
-TT_ACCESSOR(tt_subst_source, AST_TT_SUBSTITUTION,
-            x->data.tt_substitution.source)
-TT_ACCESSOR(tt_subst_target, AST_TT_SUBSTITUTION,
-            x->data.tt_substitution.target)
-TT_ACCESSOR(tt_judg_context, AST_TT_JUDGMENT, x->data.tt_judgment.context)
-TT_ACCESSOR(tt_judg_term, AST_TT_JUDGMENT, x->data.tt_judgment.term)
-TT_ACCESSOR(tt_judg_type, AST_TT_JUDGMENT, x->data.tt_judgment.type)
+TT_ACCESSOR(tt_var_name,      AST_TT_VARIABLE,     x->data.tt_variable.name)
+TT_ACCESSOR(tt_var_type,      AST_TT_VARIABLE,     x->data.tt_variable.type)
+TT_ACCESSOR(tt_subst_source,  AST_TT_SUBSTITUTION, x->data.tt_substitution.source)
+TT_ACCESSOR(tt_subst_target,  AST_TT_SUBSTITUTION, x->data.tt_substitution.target)
+TT_ACCESSOR(tt_judg_context,  AST_TT_JUDGMENT,     x->data.tt_judgment.context)
+TT_ACCESSOR(tt_judg_term,     AST_TT_JUDGMENT,     x->data.tt_judgment.term)
+TT_ACCESSOR(tt_judg_type,     AST_TT_JUDGMENT,     x->data.tt_judgment.type)
 
 /* ---------------------------------------------------------------------
  * Identity manipulation + equivalence (NOTATION ONLY).
@@ -3122,7 +3032,8 @@ TT_ACCESSOR(tt_judg_type, AST_TT_JUDGMENT, x->data.tt_judgment.type)
 
 /* (equivalence A B fwd bwd) — claims A ≃ B via fwd : A -> B and
  * bwd : B -> A. */
-lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args, lizard_env_t *env,
+lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args,
+                                             lizard_env_t *env,
                                              lizard_heap_t *heap) {
   lizard_ast_node_t *n;
   (void)env;
@@ -3134,10 +3045,10 @@ lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args, lizard_env_t *env,
   }
   n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_EQUIV;
-  n->data.tt_equiv.left = nth_arg(args, 0);
+  n->data.tt_equiv.left  = nth_arg(args, 0);
   n->data.tt_equiv.right = nth_arg(args, 1);
-  n->data.tt_equiv.fwd = nth_arg(args, 2);
-  n->data.tt_equiv.bwd = nth_arg(args, 3);
+  n->data.tt_equiv.fwd   = nth_arg(args, 2);
+  n->data.tt_equiv.bwd   = nth_arg(args, 3);
   return n;
 }
 
@@ -3188,20 +3099,20 @@ lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *args,
   return n;
 }
 
-TT_PREDICATE(tt_equivp, AST_TT_EQUIV)
+TT_PREDICATE(tt_equivp,     AST_TT_EQUIV)
 TT_PREDICATE(tt_transportp, AST_TT_TRANSPORT)
-TT_PREDICATE(tt_id_symp, AST_TT_ID_SYM)
-TT_PREDICATE(tt_id_transp, AST_TT_ID_TRANS)
+TT_PREDICATE(tt_id_symp,    AST_TT_ID_SYM)
+TT_PREDICATE(tt_id_transp,  AST_TT_ID_TRANS)
 
-TT_ACCESSOR(tt_equiv_left, AST_TT_EQUIV, x->data.tt_equiv.left)
-TT_ACCESSOR(tt_equiv_right, AST_TT_EQUIV, x->data.tt_equiv.right)
-TT_ACCESSOR(tt_equiv_fwd, AST_TT_EQUIV, x->data.tt_equiv.fwd)
-TT_ACCESSOR(tt_equiv_bwd, AST_TT_EQUIV, x->data.tt_equiv.bwd)
-TT_ACCESSOR(tt_transport_path, AST_TT_TRANSPORT, x->data.tt_transport.path)
+TT_ACCESSOR(tt_equiv_left,    AST_TT_EQUIV,     x->data.tt_equiv.left)
+TT_ACCESSOR(tt_equiv_right,   AST_TT_EQUIV,     x->data.tt_equiv.right)
+TT_ACCESSOR(tt_equiv_fwd,     AST_TT_EQUIV,     x->data.tt_equiv.fwd)
+TT_ACCESSOR(tt_equiv_bwd,     AST_TT_EQUIV,     x->data.tt_equiv.bwd)
+TT_ACCESSOR(tt_transport_path,  AST_TT_TRANSPORT, x->data.tt_transport.path)
 TT_ACCESSOR(tt_transport_value, AST_TT_TRANSPORT, x->data.tt_transport.value)
-TT_ACCESSOR(tt_id_sym_path, AST_TT_ID_SYM, x->data.tt_id_sym.path)
-TT_ACCESSOR(tt_id_trans_p, AST_TT_ID_TRANS, x->data.tt_id_trans.p)
-TT_ACCESSOR(tt_id_trans_q, AST_TT_ID_TRANS, x->data.tt_id_trans.q)
+TT_ACCESSOR(tt_id_sym_path,   AST_TT_ID_SYM,    x->data.tt_id_sym.path)
+TT_ACCESSOR(tt_id_trans_p,    AST_TT_ID_TRANS,  x->data.tt_id_trans.p)
+TT_ACCESSOR(tt_id_trans_q,    AST_TT_ID_TRANS,  x->data.tt_id_trans.q)
 
 /* TT-level Lambda. */
 lizard_ast_node_t *lizard_primitive_tt_lambda(lz_list_t *args,
@@ -3215,211 +3126,915 @@ lizard_ast_node_t *lizard_primitive_tt_lambda(lz_list_t *args,
   n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_LAMBDA;
   n->data.tt_lambda.binder = nth_arg(args, 0);
-  n->data.tt_lambda.body = nth_arg(args, 1);
+  n->data.tt_lambda.body   = nth_arg(args, 1);
   return n;
 }
 TT_PREDICATE(tt_lambdap, AST_TT_LAMBDA)
 TT_ACCESSOR(tt_lambda_binder, AST_TT_LAMBDA, x->data.tt_lambda.binder)
-TT_ACCESSOR(tt_lambda_body, AST_TT_LAMBDA, x->data.tt_lambda.body)
+TT_ACCESSOR(tt_lambda_body,   AST_TT_LAMBDA, x->data.tt_lambda.body)
+
+/* ap — congruence of identity along a function. */
+lizard_ast_node_t *lizard_primitive_tt_ap(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_AP;
+  n->data.tt_ap.fn   = nth_arg(args, 0);
+  n->data.tt_ap.path = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_app_p_hott, AST_TT_AP)
+TT_ACCESSOR(tt_ap_fn,   AST_TT_AP, x->data.tt_ap.fn)
+TT_ACCESSOR(tt_ap_path, AST_TT_AP, x->data.tt_ap.path)
+
+/* pair / fst / snd */
+lizard_ast_node_t *lizard_primitive_tt_pair(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PAIR;
+  n->data.tt_pair.fst = nth_arg(args, 0);
+  n->data.tt_pair.snd = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_pairp, AST_TT_PAIR)
+TT_ACCESSOR(tt_pair_first,  AST_TT_PAIR, x->data.tt_pair.fst)
+TT_ACCESSOR(tt_pair_second, AST_TT_PAIR, x->data.tt_pair.snd)
+
+lizard_ast_node_t *lizard_primitive_tt_fst(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_FST;
+  n->data.tt_proj.target = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_fstp, AST_TT_FST)
+TT_ACCESSOR(tt_fst_target, AST_TT_FST, x->data.tt_proj.target)
+
+lizard_ast_node_t *lizard_primitive_tt_snd(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SND;
+  n->data.tt_proj.target = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_sndp, AST_TT_SND)
+TT_ACCESSOR(tt_snd_target, AST_TT_SND, x->data.tt_proj.target)
+
+/* inl / inr / case */
+lizard_ast_node_t *lizard_primitive_tt_inl(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_INL;
+  n->data.tt_inj.value = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_inlp, AST_TT_INL)
+TT_ACCESSOR(tt_inl_value, AST_TT_INL, x->data.tt_inj.value)
+
+lizard_ast_node_t *lizard_primitive_tt_inr(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_INR;
+  n->data.tt_inj.value = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_inrp, AST_TT_INR)
+TT_ACCESSOR(tt_inr_value, AST_TT_INR, x->data.tt_inj.value)
+
+lizard_ast_node_t *lizard_primitive_tt_case(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CASE;
+  n->data.tt_case.scrutinee    = nth_arg(args, 0);
+  n->data.tt_case.left_branch  = nth_arg(args, 1);
+  n->data.tt_case.right_branch = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_casep, AST_TT_CASE)
+TT_ACCESSOR(tt_case_scrutinee, AST_TT_CASE, x->data.tt_case.scrutinee)
+TT_ACCESSOR(tt_case_left,  AST_TT_CASE, x->data.tt_case.left_branch)
+TT_ACCESSOR(tt_case_right, AST_TT_CASE, x->data.tt_case.right_branch)
+
+/* Unit type and its inhabitant; Bot. These are nullary — no args. */
+lizard_ast_node_t *lizard_primitive_tt_unit(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_UNIT;
+  return n;
+}
+TT_PREDICATE(tt_unitp, AST_TT_UNIT)
+
+lizard_ast_node_t *lizard_primitive_tt_tt(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TT;
+  return n;
+}
+TT_PREDICATE(tt_ttp, AST_TT_TT)
+
+lizard_ast_node_t *lizard_primitive_tt_bot(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_BOT;
+  return n;
+}
+TT_PREDICATE(tt_botp, AST_TT_BOT)
+
+/* J — path induction. (J motive refl-case path). */
+lizard_ast_node_t *lizard_primitive_tt_j(lz_list_t *args,
+                                         lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_J;
+  n->data.tt_j.motive    = nth_arg(args, 0);
+  n->data.tt_j.refl_case = nth_arg(args, 1);
+  n->data.tt_j.path      = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_jp, AST_TT_J)
+TT_ACCESSOR(tt_j_motive,    AST_TT_J, x->data.tt_j.motive)
+TT_ACCESSOR(tt_j_refl_case, AST_TT_J, x->data.tt_j.refl_case)
+TT_ACCESSOR(tt_j_path,      AST_TT_J, x->data.tt_j.path)
+
+/* xport — transport with explicit motive. The motive is a Lambda
+ * (Lambda 'x T) whose body T tells the engine which per-type-former
+ * rule to apply. (xport (Lambda 'x T) path value). */
+lizard_ast_node_t *lizard_primitive_tt_xport(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_XPORT;
+  n->data.tt_xport.motive = nth_arg(args, 0);
+  n->data.tt_xport.path   = nth_arg(args, 1);
+  n->data.tt_xport.value  = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_xportp, AST_TT_XPORT)
+TT_ACCESSOR(tt_xport_motive, AST_TT_XPORT, x->data.tt_xport.motive)
+TT_ACCESSOR(tt_xport_path,   AST_TT_XPORT, x->data.tt_xport.path)
+TT_ACCESSOR(tt_xport_value,  AST_TT_XPORT, x->data.tt_xport.value)
+
+/* Universe-expression constructors. (U-var 'i), (U-suc u), (U-max u v). */
+lizard_ast_node_t *lizard_primitive_tt_u_var(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n, *name_arg;
+  char *buf;
+  size_t len;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (!name_arg || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_U_VAR;
+  len = strlen(name_arg->data.variable);
+  buf = lizard_heap_alloc(len + 1);
+  strcpy(buf, name_arg->data.variable);
+  n->data.tt_u_var.name = buf;
+  return n;
+}
+TT_PREDICATE(tt_u_varp, AST_TT_U_VAR)
+
+lizard_ast_node_t *lizard_primitive_tt_u_suc(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_U_SUC;
+  n->data.tt_u_suc.operand = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_u_sucp, AST_TT_U_SUC)
+TT_ACCESSOR(tt_u_suc_operand, AST_TT_U_SUC, x->data.tt_u_suc.operand)
+
+lizard_ast_node_t *lizard_primitive_tt_u_max(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_U_MAX;
+  n->data.tt_u_max.left = nth_arg(args, 0);
+  n->data.tt_u_max.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_u_maxp, AST_TT_U_MAX)
+TT_ACCESSOR(tt_u_max_left,  AST_TT_U_MAX, x->data.tt_u_max.left)
+TT_ACCESSOR(tt_u_max_right, AST_TT_U_MAX, x->data.tt_u_max.right)
+
+/* ===== Cubical layer ===== */
+
+/* The interval pre-type itself and its endpoints. Nullary. */
+lizard_ast_node_t *lizard_primitive_tt_interval(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_INTERVAL;
+  return n;
+}
+TT_PREDICATE(tt_intervalp, AST_TT_INTERVAL)
+
+lizard_ast_node_t *lizard_primitive_tt_i0(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I0;
+  return n;
+}
+TT_PREDICATE(tt_i0p, AST_TT_I0)
+
+lizard_ast_node_t *lizard_primitive_tt_i1(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I1;
+  return n;
+}
+TT_PREDICATE(tt_i1p, AST_TT_I1)
+
+/* (I-var 'i) — an interval variable */
+lizard_ast_node_t *lizard_primitive_tt_i_var(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n, *name_arg;
+  char *buf;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (!name_arg || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I_VAR;
+  buf = lizard_heap_alloc(strlen(name_arg->data.variable) + 1);
+  strcpy(buf, name_arg->data.variable);
+  n->data.tt_i_var.name = buf;
+  return n;
+}
+TT_PREDICATE(tt_i_varp, AST_TT_I_VAR)
+
+/* (I-and i j) */
+lizard_ast_node_t *lizard_primitive_tt_i_and(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I_AND;
+  n->data.tt_i_binop.left = nth_arg(args, 0);
+  n->data.tt_i_binop.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_i_andp, AST_TT_I_AND)
+
+/* (I-or i j) */
+lizard_ast_node_t *lizard_primitive_tt_i_or(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I_OR;
+  n->data.tt_i_binop.left = nth_arg(args, 0);
+  n->data.tt_i_binop.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_i_orp, AST_TT_I_OR)
+
+/* (I-neg i) */
+lizard_ast_node_t *lizard_primitive_tt_i_neg(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_I_NEG;
+  n->data.tt_i_neg.operand = nth_arg(args, 0);
+  return n;
+}
+TT_PREDICATE(tt_i_negp, AST_TT_I_NEG)
+
+/* (Path A a b) — path type */
+lizard_ast_node_t *lizard_primitive_tt_path(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PATH;
+  n->data.tt_path.domain = nth_arg(args, 0);
+  n->data.tt_path.a      = nth_arg(args, 1);
+  n->data.tt_path.b      = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_pathp, AST_TT_PATH)
+TT_ACCESSOR(tt_path_domain, AST_TT_PATH, x->data.tt_path.domain)
+TT_ACCESSOR(tt_path_a,      AST_TT_PATH, x->data.tt_path.a)
+TT_ACCESSOR(tt_path_b,      AST_TT_PATH, x->data.tt_path.b)
+
+/* (path-abs 'i body) — path abstraction, like Lambda but for intervals */
+lizard_ast_node_t *lizard_primitive_tt_path_abs(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n, *binder_arg;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  binder_arg = nth_arg(args, 0);
+  if (!binder_arg || binder_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PATH_ABS;
+  n->data.tt_path_abs.binder = binder_arg;
+  n->data.tt_path_abs.body = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_path_absp, AST_TT_PATH_ABS)
+TT_ACCESSOR(tt_path_abs_binder, AST_TT_PATH_ABS, x->data.tt_path_abs.binder)
+TT_ACCESSOR(tt_path_abs_body,   AST_TT_PATH_ABS, x->data.tt_path_abs.body)
+
+/* (path-app p i) — path application, written conceptually as (p @ i) */
+lizard_ast_node_t *lizard_primitive_tt_path_app(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PATH_APP;
+  n->data.tt_path_app.path  = nth_arg(args, 0);
+  n->data.tt_path_app.point = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_path_appp, AST_TT_PATH_APP)
+TT_ACCESSOR(tt_path_app_path,  AST_TT_PATH_APP, x->data.tt_path_app.path)
+TT_ACCESSOR(tt_path_app_point, AST_TT_PATH_APP, x->data.tt_path_app.point)
+
+/* ===== Faces and partial elements (Turn 7) ===== */
+
+lizard_ast_node_t *lizard_primitive_tt_f0(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_F0;
+  return n;
+}
+TT_PREDICATE(tt_f0p, AST_TT_F0)
+
+lizard_ast_node_t *lizard_primitive_tt_f1(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_F1;
+  return n;
+}
+TT_PREDICATE(tt_f1p, AST_TT_F1)
+
+/* (F-eq i j) — face: interval term i equals interval term j. */
+lizard_ast_node_t *lizard_primitive_tt_f_eq(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_F_EQ;
+  n->data.tt_f_eq.left  = nth_arg(args, 0);
+  n->data.tt_f_eq.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_f_eqp, AST_TT_F_EQ)
+TT_ACCESSOR(tt_f_eq_left,  AST_TT_F_EQ, x->data.tt_f_eq.left)
+TT_ACCESSOR(tt_f_eq_right, AST_TT_F_EQ, x->data.tt_f_eq.right)
+
+lizard_ast_node_t *lizard_primitive_tt_f_and(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_F_AND;
+  n->data.tt_f_binop.left  = nth_arg(args, 0);
+  n->data.tt_f_binop.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_f_andp, AST_TT_F_AND)
+
+lizard_ast_node_t *lizard_primitive_tt_f_or(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_F_OR;
+  n->data.tt_f_binop.left  = nth_arg(args, 0);
+  n->data.tt_f_binop.right = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_f_orp, AST_TT_F_OR)
+
+/* (Partial φ A) */
+lizard_ast_node_t *lizard_primitive_tt_partial(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_PARTIAL;
+  n->data.tt_partial.face = nth_arg(args, 0);
+  n->data.tt_partial.type = nth_arg(args, 1);
+  return n;
+}
+TT_PREDICATE(tt_partialp, AST_TT_PARTIAL)
+TT_ACCESSOR(tt_partial_face, AST_TT_PARTIAL, x->data.tt_partial.face)
+TT_ACCESSOR(tt_partial_type, AST_TT_PARTIAL, x->data.tt_partial.type)
+
+/* (Sub A φ u) */
+lizard_ast_node_t *lizard_primitive_tt_sub(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_SUB;
+  n->data.tt_sub.type    = nth_arg(args, 0);
+  n->data.tt_sub.face    = nth_arg(args, 1);
+  n->data.tt_sub.partial = nth_arg(args, 2);
+  return n;
+}
+TT_PREDICATE(tt_subp, AST_TT_SUB)
+TT_ACCESSOR(tt_sub_type,    AST_TT_SUB, x->data.tt_sub.type)
+TT_ACCESSOR(tt_sub_face,    AST_TT_SUB, x->data.tt_sub.face)
+TT_ACCESSOR(tt_sub_partial, AST_TT_SUB, x->data.tt_sub.partial)
+
+/* ===== Kan composition (Turn 8) =====
+ *
+ * comp, hcomp, fill all take the same 4 arguments:
+ *   (op type_family face partial base)
+ * and differ only in semantics. */
+
+#define MAKE_COMP_FAMILY(NAME, AST_KIND)                                       \
+  lizard_ast_node_t *lizard_primitive_tt_##NAME(lz_list_t *args,               \
+                                                lizard_env_t *env,             \
+                                                lizard_heap_t *heap) {         \
+    lizard_ast_node_t *n;                                                      \
+    (void)env;                                                                 \
+    if (!four_args(args)) {                                                    \
+      return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);             \
+    }                                                                          \
+    n = lizard_heap_alloc(sizeof(lizard_ast_node_t));                          \
+    n->type = AST_KIND;                                                        \
+    n->data.tt_comp.type_family = nth_arg(args, 0);                            \
+    n->data.tt_comp.face        = nth_arg(args, 1);                            \
+    n->data.tt_comp.partial     = nth_arg(args, 2);                            \
+    n->data.tt_comp.base        = nth_arg(args, 3);                            \
+    return n;                                                                  \
+  }                                                                            \
+  TT_PREDICATE(tt_##NAME##p, AST_KIND)
+
+MAKE_COMP_FAMILY(comp,  AST_TT_COMP)
+MAKE_COMP_FAMILY(hcomp, AST_TT_HCOMP)
+MAKE_COMP_FAMILY(fill,  AST_TT_FILL)
+
+TT_ACCESSOR(tt_comp_type_family, AST_TT_COMP, x->data.tt_comp.type_family)
+TT_ACCESSOR(tt_comp_face,        AST_TT_COMP, x->data.tt_comp.face)
+TT_ACCESSOR(tt_comp_partial,     AST_TT_COMP, x->data.tt_comp.partial)
+TT_ACCESSOR(tt_comp_base,        AST_TT_COMP, x->data.tt_comp.base)
 
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
-  install_one(heap, env, "null?", lizard_primitive_nullp);
-  install_one(heap, env, "pair?", lizard_primitive_pairp);
+  install_one(heap, env, "null?",   lizard_primitive_nullp);
+  install_one(heap, env, "pair?",   lizard_primitive_pairp);
   install_one(heap, env, "string?", lizard_primitive_stringp);
-  install_one(heap, env, "bool?", lizard_primitive_boolp);
+  install_one(heap, env, "bool?",   lizard_primitive_boolp);
   install_one(heap, env, "number?", lizard_primitive_numberp);
   install_one(heap, env, "symbol?", lizard_primitive_symbolp);
   install_one(heap, env, "procedure?", lizard_primitive_procedurep);
-  install_one(heap, env, "+", lizard_primitive_plus);
-  install_one(heap, env, "-", lizard_primitive_minus);
-  install_one(heap, env, "*", lizard_primitive_multiply);
-  install_one(heap, env, "/", lizard_primitive_divide);
-  install_one(heap, env, "=", lizard_primitive_equal);
-  install_one(heap, env, "^", lizard_primitive_pow);
-  install_one(heap, env, "%", lizard_primitive_mod);
-  install_one(heap, env, "<", lizard_primitive_lt);
-  install_one(heap, env, "<=", lizard_primitive_le);
-  install_one(heap, env, ">", lizard_primitive_gt);
-  install_one(heap, env, ">=", lizard_primitive_ge);
-  install_one(heap, env, "cons", lizard_primitive_cons);
-  install_one(heap, env, "car", lizard_primitive_car);
-  install_one(heap, env, "cdr", lizard_primitive_cdr);
-  install_one(heap, env, "list", lizard_primitive_list);
-  install_one(heap, env, "eval", lizard_primitive_eval);
+  install_one(heap, env, "+",       lizard_primitive_plus);
+  install_one(heap, env, "-",       lizard_primitive_minus);
+  install_one(heap, env, "*",       lizard_primitive_multiply);
+  install_one(heap, env, "/",       lizard_primitive_divide);
+  install_one(heap, env, "=",       lizard_primitive_equal);
+  install_one(heap, env, "^",       lizard_primitive_pow);
+  install_one(heap, env, "%",       lizard_primitive_mod);
+  install_one(heap, env, "<",       lizard_primitive_lt);
+  install_one(heap, env, "<=",      lizard_primitive_le);
+  install_one(heap, env, ">",       lizard_primitive_gt);
+  install_one(heap, env, ">=",      lizard_primitive_ge);
+  install_one(heap, env, "cons",    lizard_primitive_cons);
+  install_one(heap, env, "car",     lizard_primitive_car);
+  install_one(heap, env, "cdr",     lizard_primitive_cdr);
+  install_one(heap, env, "list",    lizard_primitive_list);
+  install_one(heap, env, "eval",    lizard_primitive_eval);
   install_one(heap, env, "unquote", lizard_primitive_unquote);
-  install_one(heap, env, "tokens", lizard_primitive_tokens);
-  install_one(heap, env, "ast", lizard_primitive_ast);
-  install_one(heap, env, "and", lizard_primitive_and);
-  install_one(heap, env, "or", lizard_primitive_or);
-  install_one(heap, env, "not", lizard_primitive_not);
-  install_one(heap, env, "xor", lizard_primitive_xor);
-  install_one(heap, env, "nand", lizard_primitive_nand);
-  install_one(heap, env, "nor", lizard_primitive_nor);
-  install_one(heap, env, "xnor", lizard_primitive_xnor);
+  install_one(heap, env, "tokens",  lizard_primitive_tokens);
+  install_one(heap, env, "ast",     lizard_primitive_ast);
+  install_one(heap, env, "and",     lizard_primitive_and);
+  install_one(heap, env, "or",      lizard_primitive_or);
+  install_one(heap, env, "not",     lizard_primitive_not);
+  install_one(heap, env, "xor",     lizard_primitive_xor);
+  install_one(heap, env, "nand",    lizard_primitive_nand);
+  install_one(heap, env, "nor",     lizard_primitive_nor);
+  install_one(heap, env, "xnor",    lizard_primitive_xnor);
   install_one(heap, env, "display", lizard_primitive_display);
-  install_one(heap, env, "write", lizard_primitive_write);
+  install_one(heap, env, "write",   lizard_primitive_write);
   install_one(heap, env, "newline", lizard_primitive_newline);
-  install_one(heap, env, "load", lizard_primitive_load);
+  install_one(heap, env, "load",    lizard_primitive_load);
   install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
-  install_one(heap, env, "expt", lizard_primitive_expt);
-  install_one(heap, env, "gcd", lizard_primitive_gcd);
-  install_one(heap, env, "lcm", lizard_primitive_lcm);
-  install_one(heap, env, "quotient", lizard_primitive_quotient);
-  install_one(heap, env, "remainder", lizard_primitive_remainder);
-  install_one(heap, env, "abs", lizard_primitive_abs);
-  install_one(heap, env, "square", lizard_primitive_square);
-  install_one(heap, env, "modular-expt", lizard_primitive_modexpt);
+  install_one(heap, env, "expt",            lizard_primitive_expt);
+  install_one(heap, env, "gcd",             lizard_primitive_gcd);
+  install_one(heap, env, "lcm",             lizard_primitive_lcm);
+  install_one(heap, env, "quotient",        lizard_primitive_quotient);
+  install_one(heap, env, "remainder",       lizard_primitive_remainder);
+  install_one(heap, env, "abs",             lizard_primitive_abs);
+  install_one(heap, env, "square",          lizard_primitive_square);
+  install_one(heap, env, "modular-expt",    lizard_primitive_modexpt);
   /* Reflection. */
-  install_one(heap, env, "type-of", lizard_primitive_type_of);
-  install_one(heap, env, "env-keys", lizard_primitive_env_keys);
-  install_one(heap, env, "defined?", lizard_primitive_definedp);
+  install_one(heap, env, "type-of",         lizard_primitive_type_of);
+  install_one(heap, env, "env-keys",        lizard_primitive_env_keys);
+  install_one(heap, env, "defined?",        lizard_primitive_definedp);
   install_one(heap, env, "procedure-arity", lizard_primitive_proc_arity);
   /* String ops. */
-  install_one(heap, env, "string-length", lizard_primitive_str_length);
-  install_one(heap, env, "string-append", lizard_primitive_str_append);
-  install_one(heap, env, "substring", lizard_primitive_substring);
-  install_one(heap, env, "string=?", lizard_primitive_str_eq);
-  install_one(heap, env, "number->string", lizard_primitive_num_to_str);
-  install_one(heap, env, "string->number", lizard_primitive_str_to_num);
-  install_one(heap, env, "symbol->string", lizard_primitive_sym_to_str);
-  install_one(heap, env, "string->symbol", lizard_primitive_str_to_sym);
+  install_one(heap, env, "string-length",   lizard_primitive_str_length);
+  install_one(heap, env, "string-append",   lizard_primitive_str_append);
+  install_one(heap, env, "substring",       lizard_primitive_substring);
+  install_one(heap, env, "string=?",        lizard_primitive_str_eq);
+  install_one(heap, env, "number->string",  lizard_primitive_num_to_str);
+  install_one(heap, env, "string->number",  lizard_primitive_str_to_num);
+  install_one(heap, env, "symbol->string",  lizard_primitive_sym_to_str);
+  install_one(heap, env, "string->symbol",  lizard_primitive_str_to_sym);
   /* Exceptions + gensym. */
-  install_one(heap, env, "raise", lizard_primitive_raise);
-  install_one(heap, env, "try", lizard_primitive_try);
-  install_one(heap, env, "error-object?", lizard_primitive_error_objp);
-  install_one(heap, env, "error-value", lizard_primitive_error_value);
-  install_one(heap, env, "gensym", lizard_primitive_gensym);
+  install_one(heap, env, "raise",           lizard_primitive_raise);
+  install_one(heap, env, "try",             lizard_primitive_try);
+  install_one(heap, env, "error-object?",   lizard_primitive_error_objp);
+  install_one(heap, env, "error-value",     lizard_primitive_error_value);
+  install_one(heap, env, "gensym",          lizard_primitive_gensym);
   /* Vectors. */
-  install_one(heap, env, "make-vector", lizard_primitive_make_vector);
-  install_one(heap, env, "vector", lizard_primitive_vector);
-  install_one(heap, env, "vector?", lizard_primitive_vectorp);
-  install_one(heap, env, "vector-length", lizard_primitive_vec_length);
-  install_one(heap, env, "vector-ref", lizard_primitive_vec_ref);
-  install_one(heap, env, "vector-set!", lizard_primitive_vec_set);
-  install_one(heap, env, "vector->list", lizard_primitive_vec_to_list);
-  install_one(heap, env, "list->vector", lizard_primitive_list_to_vec);
+  install_one(heap, env, "make-vector",     lizard_primitive_make_vector);
+  install_one(heap, env, "vector",          lizard_primitive_vector);
+  install_one(heap, env, "vector?",         lizard_primitive_vectorp);
+  install_one(heap, env, "vector-length",   lizard_primitive_vec_length);
+  install_one(heap, env, "vector-ref",      lizard_primitive_vec_ref);
+  install_one(heap, env, "vector-set!",     lizard_primitive_vec_set);
+  install_one(heap, env, "vector->list",    lizard_primitive_vec_to_list);
+  install_one(heap, env, "list->vector",    lizard_primitive_list_to_vec);
   /* Hash tables. */
   install_one(heap, env, "make-hash-table", lizard_primitive_make_hash);
-  install_one(heap, env, "hash?", lizard_primitive_hashp);
-  install_one(heap, env, "hash-set!", lizard_primitive_hash_set);
-  install_one(heap, env, "hash-ref", lizard_primitive_hash_ref);
-  install_one(heap, env, "hash-has-key?", lizard_primitive_hash_has);
-  install_one(heap, env, "hash-size", lizard_primitive_hash_size);
-  install_one(heap, env, "hash-keys", lizard_primitive_hash_keys);
-  install_one(heap, env, "hash-remove!", lizard_primitive_hash_remove);
+  install_one(heap, env, "hash?",           lizard_primitive_hashp);
+  install_one(heap, env, "hash-set!",       lizard_primitive_hash_set);
+  install_one(heap, env, "hash-ref",        lizard_primitive_hash_ref);
+  install_one(heap, env, "hash-has-key?",   lizard_primitive_hash_has);
+  install_one(heap, env, "hash-size",       lizard_primitive_hash_size);
+  install_one(heap, env, "hash-keys",       lizard_primitive_hash_keys);
+  install_one(heap, env, "hash-remove!",    lizard_primitive_hash_remove);
   /* ----- Type-theory notation. NO CHECKING happens here; these are
    * opaque carriers for designing the surface of a foundational
    * system. See the comment above the primitives for the full caveat. */
-  install_one(heap, env, "Pi", lizard_primitive_tt_pi);
-  install_one(heap, env, "Sigma", lizard_primitive_tt_sigma);
-  install_one(heap, env, "@", lizard_primitive_tt_at);
-  install_one(heap, env, "Sum", lizard_primitive_tt_sum);
-  install_one(heap, env, "U", lizard_primitive_tt_universe);
-  install_one(heap, env, "Uco", lizard_primitive_tt_couniverse);
-  install_one(heap, env, "Id", lizard_primitive_tt_id);
-  install_one(heap, env, "refl", lizard_primitive_tt_refl);
-  install_one(heap, env, "Inductive", lizard_primitive_tt_inductive);
-  install_one(heap, env, "Coinductive", lizard_primitive_tt_coinductive);
-  install_one(heap, env, "annot", lizard_primitive_tt_annot);
+  install_one(heap, env, "Pi",            lizard_primitive_tt_pi);
+  install_one(heap, env, "Sigma",         lizard_primitive_tt_sigma);
+  install_one(heap, env, "@",             lizard_primitive_tt_at);
+  install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
+  install_one(heap, env, "U",             lizard_primitive_tt_universe);
+  install_one(heap, env, "Uco",           lizard_primitive_tt_couniverse);
+  install_one(heap, env, "Id",            lizard_primitive_tt_id);
+  install_one(heap, env, "refl",          lizard_primitive_tt_refl);
+  install_one(heap, env, "Inductive",     lizard_primitive_tt_inductive);
+  install_one(heap, env, "Coinductive",   lizard_primitive_tt_coinductive);
+  install_one(heap, env, "annot",         lizard_primitive_tt_annot);
   /* TT predicates */
-  install_one(heap, env, "Pi?", lizard_primitive_tt_pip);
-  install_one(heap, env, "Sigma?", lizard_primitive_tt_sigmap);
-  install_one(heap, env, "@?", lizard_primitive_tt_appp);
-  install_one(heap, env, "app?", lizard_primitive_tt_appp);
-  install_one(heap, env, "Sum?", lizard_primitive_tt_sump);
-  install_one(heap, env, "U?", lizard_primitive_tt_universep);
-  install_one(heap, env, "Uco?", lizard_primitive_tt_couniversep);
-  install_one(heap, env, "Id?", lizard_primitive_tt_idp);
-  install_one(heap, env, "refl?", lizard_primitive_tt_reflp);
-  install_one(heap, env, "Inductive?", lizard_primitive_tt_inductivep);
-  install_one(heap, env, "Coinductive?", lizard_primitive_tt_coinductivep);
-  install_one(heap, env, "annot?", lizard_primitive_tt_annotp);
+  install_one(heap, env, "Pi?",           lizard_primitive_tt_pip);
+  install_one(heap, env, "Sigma?",        lizard_primitive_tt_sigmap);
+  install_one(heap, env, "@?",            lizard_primitive_tt_appp);
+  install_one(heap, env, "app?",          lizard_primitive_tt_appp);
+  install_one(heap, env, "Sum?",          lizard_primitive_tt_sump);
+  install_one(heap, env, "U?",            lizard_primitive_tt_universep);
+  install_one(heap, env, "Uco?",          lizard_primitive_tt_couniversep);
+  install_one(heap, env, "Id?",           lizard_primitive_tt_idp);
+  install_one(heap, env, "refl?",         lizard_primitive_tt_reflp);
+  install_one(heap, env, "Inductive?",    lizard_primitive_tt_inductivep);
+  install_one(heap, env, "Coinductive?",  lizard_primitive_tt_coinductivep);
+  install_one(heap, env, "annot?",        lizard_primitive_tt_annotp);
   /* TT accessors */
-  install_one(heap, env, "Pi-binder", lizard_primitive_tt_pi_binder);
-  install_one(heap, env, "Pi-domain", lizard_primitive_tt_pi_domain);
-  install_one(heap, env, "Pi-codomain", lizard_primitive_tt_pi_codomain);
-  install_one(heap, env, "Sigma-binder", lizard_primitive_tt_sigma_binder);
-  install_one(heap, env, "Sigma-domain", lizard_primitive_tt_sigma_domain);
-  install_one(heap, env, "Sigma-codomain", lizard_primitive_tt_sigma_codomain);
-  install_one(heap, env, "@-fun", lizard_primitive_tt_app_fun);
-  install_one(heap, env, "@-arg", lizard_primitive_tt_app_arg);
-  install_one(heap, env, "app-fun", lizard_primitive_tt_app_fun);
-  install_one(heap, env, "app-arg", lizard_primitive_tt_app_arg);
-  install_one(heap, env, "Sum-left", lizard_primitive_tt_sum_left);
-  install_one(heap, env, "Sum-right", lizard_primitive_tt_sum_right);
-  install_one(heap, env, "U-level", lizard_primitive_tt_universe_level);
-  install_one(heap, env, "Uco-level", lizard_primitive_tt_couniverse_level);
-  install_one(heap, env, "Id-domain", lizard_primitive_tt_id_domain);
-  install_one(heap, env, "Id-a", lizard_primitive_tt_id_a);
-  install_one(heap, env, "Id-b", lizard_primitive_tt_id_b);
-  install_one(heap, env, "refl-value", lizard_primitive_tt_refl_value);
-  install_one(heap, env, "Inductive-name", lizard_primitive_tt_inductive_name);
+  install_one(heap, env, "Pi-binder",     lizard_primitive_tt_pi_binder);
+  install_one(heap, env, "Pi-domain",     lizard_primitive_tt_pi_domain);
+  install_one(heap, env, "Pi-codomain",   lizard_primitive_tt_pi_codomain);
+  install_one(heap, env, "Sigma-binder",  lizard_primitive_tt_sigma_binder);
+  install_one(heap, env, "Sigma-domain",  lizard_primitive_tt_sigma_domain);
+  install_one(heap, env, "Sigma-codomain",lizard_primitive_tt_sigma_codomain);
+  install_one(heap, env, "@-fun",         lizard_primitive_tt_app_fun);
+  install_one(heap, env, "@-arg",         lizard_primitive_tt_app_arg);
+  install_one(heap, env, "app-fun",       lizard_primitive_tt_app_fun);
+  install_one(heap, env, "app-arg",       lizard_primitive_tt_app_arg);
+  install_one(heap, env, "Sum-left",      lizard_primitive_tt_sum_left);
+  install_one(heap, env, "Sum-right",     lizard_primitive_tt_sum_right);
+  install_one(heap, env, "U-level",       lizard_primitive_tt_universe_level);
+  install_one(heap, env, "Uco-level",     lizard_primitive_tt_couniverse_level);
+  install_one(heap, env, "Id-domain",     lizard_primitive_tt_id_domain);
+  install_one(heap, env, "Id-a",          lizard_primitive_tt_id_a);
+  install_one(heap, env, "Id-b",          lizard_primitive_tt_id_b);
+  install_one(heap, env, "refl-value",    lizard_primitive_tt_refl_value);
+  install_one(heap, env, "Inductive-name",
+              lizard_primitive_tt_inductive_name);
   install_one(heap, env, "Inductive-constructors",
               lizard_primitive_tt_inductive_ctors);
   install_one(heap, env, "Coinductive-name",
               lizard_primitive_tt_coinductive_name);
   install_one(heap, env, "Coinductive-destructors",
               lizard_primitive_tt_coinductive_dtors);
-  install_one(heap, env, "annot-term", lizard_primitive_tt_annot_term);
-  install_one(heap, env, "annot-type", lizard_primitive_tt_annot_type);
+  install_one(heap, env, "annot-term",    lizard_primitive_tt_annot_term);
+  install_one(heap, env, "annot-type",    lizard_primitive_tt_annot_type);
   /* Context layer — couniverse-stratified bindings, contexts,
      substitutions, judgments. NO checking. */
-  install_one(heap, env, "variable", lizard_primitive_tt_variable);
-  install_one(heap, env, "context", lizard_primitive_tt_context);
+  install_one(heap, env, "variable",      lizard_primitive_tt_variable);
+  install_one(heap, env, "context",       lizard_primitive_tt_context);
   install_one(heap, env, "empty-context", lizard_primitive_tt_empty_ctx);
-  install_one(heap, env, "context-extend", lizard_primitive_tt_ctx_extend);
-  install_one(heap, env, "context-lookup", lizard_primitive_tt_ctx_lookup);
+  install_one(heap, env, "context-extend",lizard_primitive_tt_ctx_extend);
+  install_one(heap, env, "context-lookup",lizard_primitive_tt_ctx_lookup);
   install_one(heap, env, "context-bindings", lizard_primitive_tt_ctx_bindings);
-  install_one(heap, env, "context-length", lizard_primitive_tt_ctx_length);
-  install_one(heap, env, "substitution", lizard_primitive_tt_substitution);
-  install_one(heap, env, "judgment", lizard_primitive_tt_judgment);
-  install_one(heap, env, "uco-level", lizard_primitive_tt_uco_level);
+  install_one(heap, env, "context-length",lizard_primitive_tt_ctx_length);
+  install_one(heap, env, "substitution",  lizard_primitive_tt_substitution);
+  install_one(heap, env, "judgment",      lizard_primitive_tt_judgment);
+  install_one(heap, env, "uco-level",     lizard_primitive_tt_uco_level);
   /* Context layer predicates */
-  install_one(heap, env, "variable?", lizard_primitive_tt_variablep);
-  install_one(heap, env, "context?", lizard_primitive_tt_contextp);
+  install_one(heap, env, "variable?",     lizard_primitive_tt_variablep);
+  install_one(heap, env, "context?",      lizard_primitive_tt_contextp);
   install_one(heap, env, "substitution?", lizard_primitive_tt_substitutionp);
-  install_one(heap, env, "judgment?", lizard_primitive_tt_judgmentp);
+  install_one(heap, env, "judgment?",     lizard_primitive_tt_judgmentp);
   /* Context layer accessors */
   install_one(heap, env, "variable-name", lizard_primitive_tt_var_name);
   install_one(heap, env, "variable-type", lizard_primitive_tt_var_type);
-  install_one(heap, env, "substitution-source",
-              lizard_primitive_tt_subst_source);
-  install_one(heap, env, "substitution-target",
-              lizard_primitive_tt_subst_target);
+  install_one(heap, env, "substitution-source", lizard_primitive_tt_subst_source);
+  install_one(heap, env, "substitution-target", lizard_primitive_tt_subst_target);
   install_one(heap, env, "judgment-context", lizard_primitive_tt_judg_context);
   install_one(heap, env, "judgment-term", lizard_primitive_tt_judg_term);
   install_one(heap, env, "judgment-type", lizard_primitive_tt_judg_type);
   /* Identity manipulation + equivalence (notation only). */
-  install_one(heap, env, "equivalence", lizard_primitive_tt_equiv);
-  install_one(heap, env, "transport", lizard_primitive_tt_transport);
-  install_one(heap, env, "Id-sym", lizard_primitive_tt_id_sym);
-  install_one(heap, env, "Id-trans", lizard_primitive_tt_id_trans);
-  install_one(heap, env, "equivalence?", lizard_primitive_tt_equivp);
-  install_one(heap, env, "transport?", lizard_primitive_tt_transportp);
-  install_one(heap, env, "Id-sym?", lizard_primitive_tt_id_symp);
-  install_one(heap, env, "Id-trans?", lizard_primitive_tt_id_transp);
-  install_one(heap, env, "equivalence-left", lizard_primitive_tt_equiv_left);
+  install_one(heap, env, "equivalence",   lizard_primitive_tt_equiv);
+  install_one(heap, env, "transport",     lizard_primitive_tt_transport);
+  install_one(heap, env, "Id-sym",        lizard_primitive_tt_id_sym);
+  install_one(heap, env, "Id-trans",      lizard_primitive_tt_id_trans);
+  install_one(heap, env, "equivalence?",  lizard_primitive_tt_equivp);
+  install_one(heap, env, "transport?",    lizard_primitive_tt_transportp);
+  install_one(heap, env, "Id-sym?",       lizard_primitive_tt_id_symp);
+  install_one(heap, env, "Id-trans?",     lizard_primitive_tt_id_transp);
+  install_one(heap, env, "equivalence-left",  lizard_primitive_tt_equiv_left);
   install_one(heap, env, "equivalence-right", lizard_primitive_tt_equiv_right);
-  install_one(heap, env, "equivalence-fwd", lizard_primitive_tt_equiv_fwd);
-  install_one(heap, env, "equivalence-bwd", lizard_primitive_tt_equiv_bwd);
-  install_one(heap, env, "transport-path", lizard_primitive_tt_transport_path);
-  install_one(heap, env, "transport-value",
-              lizard_primitive_tt_transport_value);
-  install_one(heap, env, "Id-sym-path", lizard_primitive_tt_id_sym_path);
-  install_one(heap, env, "Id-trans-p", lizard_primitive_tt_id_trans_p);
-  install_one(heap, env, "Id-trans-q", lizard_primitive_tt_id_trans_q);
+  install_one(heap, env, "equivalence-fwd",   lizard_primitive_tt_equiv_fwd);
+  install_one(heap, env, "equivalence-bwd",   lizard_primitive_tt_equiv_bwd);
+  install_one(heap, env, "transport-path",    lizard_primitive_tt_transport_path);
+  install_one(heap, env, "transport-value",   lizard_primitive_tt_transport_value);
+  install_one(heap, env, "Id-sym-path",       lizard_primitive_tt_id_sym_path);
+  install_one(heap, env, "Id-trans-p",        lizard_primitive_tt_id_trans_p);
+  install_one(heap, env, "Id-trans-q",        lizard_primitive_tt_id_trans_q);
   /* TT-level lambda for pi-beta reduction. */
-  install_one(heap, env, "Lambda", lizard_primitive_tt_lambda);
-  install_one(heap, env, "Lambda?", lizard_primitive_tt_lambdap);
+  install_one(heap, env, "Lambda",      lizard_primitive_tt_lambda);
+  install_one(heap, env, "Lambda?",     lizard_primitive_tt_lambdap);
   install_one(heap, env, "Lambda-binder", lizard_primitive_tt_lambda_binder);
-  install_one(heap, env, "Lambda-body", lizard_primitive_tt_lambda_body);
+  install_one(heap, env, "Lambda-body",   lizard_primitive_tt_lambda_body);
+  /* HOTT-fragment: ap is congruence of identity along a function. */
+  install_one(heap, env, "ap",         lizard_primitive_tt_ap);
+  install_one(heap, env, "ap?",        lizard_primitive_tt_app_p_hott);
+  install_one(heap, env, "ap-fn",      lizard_primitive_tt_ap_fn);
+  install_one(heap, env, "ap-path",    lizard_primitive_tt_ap_path);
+  /* HOTT-fragment: Sigma intro/elim, Sum intro/elim, Unit, Bot, J.
+   * The Sigma-intro/elim names are capitalized (Pair, Pair?) to avoid
+   * collision with Scheme's cons-pair? predicate. */
+  install_one(heap, env, "Pair",       lizard_primitive_tt_pair);
+  install_one(heap, env, "Pair?",      lizard_primitive_tt_pairp);
+  install_one(heap, env, "fst",        lizard_primitive_tt_fst);
+  install_one(heap, env, "fst?",       lizard_primitive_tt_fstp);
+  install_one(heap, env, "fst-target", lizard_primitive_tt_fst_target);
+  install_one(heap, env, "snd",        lizard_primitive_tt_snd);
+  install_one(heap, env, "snd?",       lizard_primitive_tt_sndp);
+  install_one(heap, env, "snd-target", lizard_primitive_tt_snd_target);
+  install_one(heap, env, "Pair-first", lizard_primitive_tt_pair_first);
+  install_one(heap, env, "Pair-second",lizard_primitive_tt_pair_second);
+  install_one(heap, env, "inl",        lizard_primitive_tt_inl);
+  install_one(heap, env, "inl?",       lizard_primitive_tt_inlp);
+  install_one(heap, env, "inl-value",  lizard_primitive_tt_inl_value);
+  install_one(heap, env, "inr",        lizard_primitive_tt_inr);
+  install_one(heap, env, "inr?",       lizard_primitive_tt_inrp);
+  install_one(heap, env, "inr-value",  lizard_primitive_tt_inr_value);
+  install_one(heap, env, "Case",       lizard_primitive_tt_case);
+  install_one(heap, env, "Case?",      lizard_primitive_tt_casep);
+  install_one(heap, env, "Case-scrutinee", lizard_primitive_tt_case_scrutinee);
+  install_one(heap, env, "Case-left",  lizard_primitive_tt_case_left);
+  install_one(heap, env, "Case-right", lizard_primitive_tt_case_right);
+  install_one(heap, env, "Unit",       lizard_primitive_tt_unit);
+  install_one(heap, env, "Unit?",      lizard_primitive_tt_unitp);
+  install_one(heap, env, "tt",         lizard_primitive_tt_tt);
+  install_one(heap, env, "tt?",        lizard_primitive_tt_ttp);
+  install_one(heap, env, "Bot",        lizard_primitive_tt_bot);
+  install_one(heap, env, "Bot?",       lizard_primitive_tt_botp);
+  install_one(heap, env, "J",          lizard_primitive_tt_j);
+  install_one(heap, env, "J?",         lizard_primitive_tt_jp);
+  install_one(heap, env, "J-motive",   lizard_primitive_tt_j_motive);
+  install_one(heap, env, "J-refl-case",lizard_primitive_tt_j_refl_case);
+  install_one(heap, env, "J-path",     lizard_primitive_tt_j_path);
+  install_one(heap, env, "xport",      lizard_primitive_tt_xport);
+  install_one(heap, env, "xport?",     lizard_primitive_tt_xportp);
+  install_one(heap, env, "xport-motive", lizard_primitive_tt_xport_motive);
+  install_one(heap, env, "xport-path",   lizard_primitive_tt_xport_path);
+  install_one(heap, env, "xport-value",  lizard_primitive_tt_xport_value);
+  /* Universe-expression layer for universe polymorphism + cumulativity. */
+  install_one(heap, env, "U-var",      lizard_primitive_tt_u_var);
+  install_one(heap, env, "U-var?",     lizard_primitive_tt_u_varp);
+  install_one(heap, env, "U-suc",      lizard_primitive_tt_u_suc);
+  install_one(heap, env, "U-suc?",     lizard_primitive_tt_u_sucp);
+  install_one(heap, env, "U-suc-operand", lizard_primitive_tt_u_suc_operand);
+  install_one(heap, env, "U-max",      lizard_primitive_tt_u_max);
+  install_one(heap, env, "U-max?",     lizard_primitive_tt_u_maxp);
+  install_one(heap, env, "U-max-left", lizard_primitive_tt_u_max_left);
+  install_one(heap, env, "U-max-right",lizard_primitive_tt_u_max_right);
+  /* Cubical layer: interval, paths, and connection operations.
+   * Foundation for cubical computational univalence. */
+  install_one(heap, env, "I",          lizard_primitive_tt_interval);
+  install_one(heap, env, "I?",         lizard_primitive_tt_intervalp);
+  install_one(heap, env, "i0",         lizard_primitive_tt_i0);
+  install_one(heap, env, "i0?",        lizard_primitive_tt_i0p);
+  install_one(heap, env, "i1",         lizard_primitive_tt_i1);
+  install_one(heap, env, "i1?",        lizard_primitive_tt_i1p);
+  install_one(heap, env, "I-var",      lizard_primitive_tt_i_var);
+  install_one(heap, env, "I-var?",     lizard_primitive_tt_i_varp);
+  install_one(heap, env, "I-and",      lizard_primitive_tt_i_and);
+  install_one(heap, env, "I-and?",     lizard_primitive_tt_i_andp);
+  install_one(heap, env, "I-or",       lizard_primitive_tt_i_or);
+  install_one(heap, env, "I-or?",      lizard_primitive_tt_i_orp);
+  install_one(heap, env, "I-neg",      lizard_primitive_tt_i_neg);
+  install_one(heap, env, "I-neg?",     lizard_primitive_tt_i_negp);
+  install_one(heap, env, "Path",       lizard_primitive_tt_path);
+  install_one(heap, env, "Path?",      lizard_primitive_tt_pathp);
+  install_one(heap, env, "Path-domain",lizard_primitive_tt_path_domain);
+  install_one(heap, env, "Path-a",     lizard_primitive_tt_path_a);
+  install_one(heap, env, "Path-b",     lizard_primitive_tt_path_b);
+  install_one(heap, env, "path-abs",   lizard_primitive_tt_path_abs);
+  install_one(heap, env, "path-abs?",  lizard_primitive_tt_path_absp);
+  install_one(heap, env, "path-abs-binder", lizard_primitive_tt_path_abs_binder);
+  install_one(heap, env, "path-abs-body",   lizard_primitive_tt_path_abs_body);
+  install_one(heap, env, "path-app",   lizard_primitive_tt_path_app);
+  install_one(heap, env, "path-app?",  lizard_primitive_tt_path_appp);
+  install_one(heap, env, "path-app-path",  lizard_primitive_tt_path_app_path);
+  install_one(heap, env, "path-app-point", lizard_primitive_tt_path_app_point);
+  /* Face formulas and partial elements (Turn 7). */
+  install_one(heap, env, "F0",        lizard_primitive_tt_f0);
+  install_one(heap, env, "F0?",       lizard_primitive_tt_f0p);
+  install_one(heap, env, "F1",        lizard_primitive_tt_f1);
+  install_one(heap, env, "F1?",       lizard_primitive_tt_f1p);
+  install_one(heap, env, "F-eq",      lizard_primitive_tt_f_eq);
+  install_one(heap, env, "F-eq?",     lizard_primitive_tt_f_eqp);
+  install_one(heap, env, "F-eq-left", lizard_primitive_tt_f_eq_left);
+  install_one(heap, env, "F-eq-right",lizard_primitive_tt_f_eq_right);
+  install_one(heap, env, "F-and",     lizard_primitive_tt_f_and);
+  install_one(heap, env, "F-and?",    lizard_primitive_tt_f_andp);
+  install_one(heap, env, "F-or",      lizard_primitive_tt_f_or);
+  install_one(heap, env, "F-or?",     lizard_primitive_tt_f_orp);
+  install_one(heap, env, "Partial",   lizard_primitive_tt_partial);
+  install_one(heap, env, "Partial?",  lizard_primitive_tt_partialp);
+  install_one(heap, env, "Partial-face", lizard_primitive_tt_partial_face);
+  install_one(heap, env, "Partial-type", lizard_primitive_tt_partial_type);
+  install_one(heap, env, "Sub",       lizard_primitive_tt_sub);
+  install_one(heap, env, "Sub?",      lizard_primitive_tt_subp);
+  install_one(heap, env, "Sub-type",  lizard_primitive_tt_sub_type);
+  install_one(heap, env, "Sub-face",  lizard_primitive_tt_sub_face);
+  install_one(heap, env, "Sub-partial", lizard_primitive_tt_sub_partial);
+  /* Kan composition (Turn 8). */
+  install_one(heap, env, "comp",       lizard_primitive_tt_comp);
+  install_one(heap, env, "comp?",      lizard_primitive_tt_compp);
+  install_one(heap, env, "hcomp",      lizard_primitive_tt_hcomp);
+  install_one(heap, env, "hcomp?",     lizard_primitive_tt_hcompp);
+  install_one(heap, env, "fill",       lizard_primitive_tt_fill);
+  install_one(heap, env, "fill?",      lizard_primitive_tt_fillp);
+  install_one(heap, env, "comp-type-family", lizard_primitive_tt_comp_type_family);
+  install_one(heap, env, "comp-face",     lizard_primitive_tt_comp_face);
+  install_one(heap, env, "comp-partial",  lizard_primitive_tt_comp_partial);
+  install_one(heap, env, "comp-base",     lizard_primitive_tt_comp_base);
+  install_one(heap, env, "universe-leq?", lizard_primitive_tt_universe_leq);
+  install_one(heap, env, "face-entails?", lizard_primitive_tt_face_entails);
+  /* Bidirectional type checker for the λΠ fragment.
+   *   (infer Γ t)    returns the inferred type of t in context Γ.
+   *   (check Γ t T)  returns #t if t checks against T in Γ.
+   * Currently covers: variables, Pi, Lambda, application, U, annotation. */
+  install_one(heap, env, "infer",      lizard_primitive_tt_infer);
+  install_one(heap, env, "check",      lizard_primitive_tt_check);
   /* Judgmental equality engine + flag system. The engine implements
    * a small confluent rewriting system for the identity-type
    * fragment. Each rule is gated by a flag, all #t by default. */
   lizard_tt_flags_init();
-  install_one(heap, env, "reduce", lizard_primitive_tt_reduce);
-  install_one(heap, env, "equal?", lizard_primitive_tt_equal);
-  install_one(heap, env, "flag-set!", lizard_primitive_flag_set);
-  install_one(heap, env, "flag-get", lizard_primitive_flag_get);
-  install_one(heap, env, "flag-list", lizard_primitive_flag_list);
+  install_one(heap, env, "reduce",        lizard_primitive_tt_reduce);
+  install_one(heap, env, "equal?",        lizard_primitive_tt_equal);
+  install_one(heap, env, "flag-set!",     lizard_primitive_flag_set);
+  install_one(heap, env, "flag-get",      lizard_primitive_flag_get);
+  install_one(heap, env, "flag-list",     lizard_primitive_flag_list);
 }
