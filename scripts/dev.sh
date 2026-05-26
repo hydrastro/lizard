@@ -9,6 +9,7 @@
 #   ./scripts/dev.sh check            # test + examples + benchmark
 #   ./scripts/dev.sh bench            # run the benchmark example with timing
 #   ./scripts/dev.sh stats            # rule and test counts
+#   ./scripts/dev.sh doctor           # diagnose build / runtime / env issues
 #   ./scripts/dev.sh clean            # delegate to clean.sh
 #   ./scripts/dev.sh bundle [path]    # create zip; default /tmp/lizard-pro.zip
 #   ./scripts/dev.sh release          # clean + check + bundle in one shot
@@ -76,12 +77,34 @@ cmd_test() {
 cmd_examples() {
   cmd_build
   say "Running examples"
+  local DIM=$'\033[2m'
+  local OFF=$'\033[0m'
   local failures=0 total=0
+  local first_failure_log=""
   for ex in examples/*.lisp; do
     total=$((total + 1))
-    if ! ./build/lizard < "$ex" > /dev/null 2>&1; then
-      err "FAIL: $ex"
+    local log
+    log=$(mktemp)
+    if ! ./build/lizard < "$ex" > "$log" 2>&1; then
+      local rc=$?
+      err "FAIL: $ex (exit $rc)"
       failures=$((failures + 1))
+      if [[ -z "$first_failure_log" ]]; then
+        first_failure_log=$log
+        echo "${DIM}  --- first failure output ---${OFF}"
+        head -20 "$log" | sed 's/^/    /'
+        if [[ $(wc -l < "$log") -gt 20 ]]; then
+          echo "${DIM}    (output truncated; full log: $log)${OFF}"
+        else
+          rm -f "$log"
+          first_failure_log=""
+        fi
+        echo "${DIM}  --- end of first failure output ---${OFF}"
+      else
+        rm -f "$log"
+      fi
+    else
+      rm -f "$log"
     fi
   done
   if [[ $failures -gt 0 ]]; then
@@ -143,6 +166,126 @@ cmd_clean() {
   exec "$script_dir/clean.sh" "$@"
 }
 
+cmd_doctor() {
+  say "Diagnosing lizard environment"
+  echo
+
+  local SECT=$'\033[1;34m'
+  local OFF=$'\033[0m'
+  local DIM=$'\033[2m'
+  local WARN=$'\033[1;33m'
+  local FAIL=$'\033[1;31m'
+
+  # 1. Working directory + tooling
+  echo "${SECT}[environment]${OFF}"
+  echo "  pwd:    $root"
+  echo "  shell:  ${BASH_VERSION:-unknown bash}"
+  echo "  uname:  $(uname -srm 2>/dev/null || echo unknown)"
+  if command -v cc >/dev/null; then
+    echo "  cc:     $(command -v cc) ($(cc --version 2>/dev/null | head -1))"
+  else
+    echo "  ${FAIL}cc not found${OFF}"
+  fi
+  if command -v make >/dev/null; then
+    echo "  make:   $(command -v make)"
+  else
+    echo "  ${FAIL}make not found${OFF}"
+  fi
+  if command -v zip >/dev/null; then
+    echo "  zip:    $(command -v zip)"
+  else
+    echo "  ${WARN}zip not found (bundle won't work)${OFF}"
+  fi
+  echo
+
+  # 2. CPPFLAGS/LDFLAGS as resolved
+  echo "${SECT}[build flags]${OFF}"
+  echo "  CPPFLAGS=${CPPFLAGS:-<empty>}"
+  echo "  LDFLAGS=${LDFLAGS:-<empty>}"
+  echo
+
+  # 3. Source tree sanity
+  echo "${SECT}[source tree]${OFF}"
+  for d in src include tests examples scripts; do
+    if [[ -d "$d" ]]; then
+      echo "  $d/: $(find "$d" -maxdepth 1 -type f | wc -l) files"
+    else
+      echo "  ${FAIL}$d/ MISSING${OFF}"
+    fi
+  done
+  for f in Makefile README.md examples/prelude.lisp; do
+    if [[ -f "$f" ]]; then
+      echo "  $f: present"
+    else
+      echo "  ${FAIL}$f MISSING${OFF}"
+    fi
+  done
+  echo
+
+  # 4. Try to build
+  echo "${SECT}[build]${OFF}"
+  if make >/tmp/lizard-doctor.log 2>&1; then
+    ok "build succeeded"
+    rm -f /tmp/lizard-doctor.log
+  else
+    err "build failed"
+    echo "  last lines of build output:"
+    tail -10 /tmp/lizard-doctor.log | sed 's/^/    /'
+    echo "  full log at /tmp/lizard-doctor.log"
+    return 1
+  fi
+  echo
+
+  # 5. Binary diagnostics
+  echo "${SECT}[binary]${OFF}"
+  if [[ -x build/lizard ]]; then
+    local sz
+    if sz=$(stat -c %s build/lizard 2>/dev/null); then :; else sz=$(stat -f %z build/lizard 2>/dev/null || echo unknown); fi
+    echo "  build/lizard: present, $sz bytes"
+    if command -v ldd >/dev/null; then
+      echo "  dynamic libraries:"
+      ldd build/lizard 2>&1 | sed 's/^/    /' | head -10
+      if ldd build/lizard 2>&1 | grep -q "not found"; then
+        echo "  ${FAIL}WARNING: missing shared library — this causes runtime failure${OFF}"
+      fi
+    elif command -v otool >/dev/null; then
+      echo "  dynamic libraries (otool -L):"
+      otool -L build/lizard 2>&1 | sed 's/^/    /' | head -10
+    fi
+  else
+    err "build/lizard is missing or not executable"
+    return 1
+  fi
+  echo
+
+  # 6. Smoke test — does the binary actually run?
+  echo "${SECT}[smoke test]${OFF}"
+  local out exit_code
+  out=$(echo '(+ 1 2)' | ./build/lizard 2>&1) || true
+  exit_code=$?
+  echo "  '(+ 1 2)' → '$out' (exit $exit_code)"
+  if [[ $exit_code -ne 0 ]]; then
+    err "binary exits non-zero on trivial input"
+    echo "  This explains why dev.sh examples reports all failures."
+    return 1
+  fi
+
+  # Try one full example
+  if [[ -f examples/01-basics.lisp ]]; then
+    out=$(./build/lizard < examples/01-basics.lisp 2>&1 | head -5)
+    exit_code=$?
+    echo "  examples/01-basics.lisp first 5 lines:"
+    echo "$out" | sed 's/^/    /'
+    echo "  exit code: $exit_code"
+    if [[ $exit_code -ne 0 ]]; then
+      err "example 01 exits non-zero"
+      return 1
+    fi
+  fi
+  echo
+  ok "Doctor: lizard looks healthy"
+}
+
 cmd_bundle() {
   local target=${1:-/tmp/lizard-pro.zip}
   cmd_build
@@ -180,6 +323,7 @@ case "$sub" in
   check)    cmd_check "$@" ;;
   bench)    cmd_bench "$@" ;;
   stats)    cmd_stats "$@" ;;
+  doctor)   cmd_doctor "$@" ;;
   clean)    cmd_clean "$@" ;;
   bundle)   cmd_bundle "$@" ;;
   release)  cmd_release "$@" ;;
