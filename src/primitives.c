@@ -4330,6 +4330,161 @@ TT_ACCESSOR(tt_system_face,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.face)
 TT_ACCESSOR(tt_system_value, AST_TT_SYSTEM_CONS, x->data.tt_system_cons.value)
 TT_ACCESSOR(tt_system_next,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.next)
 
+/* ===== Phase M.1 — Lisp primitives for logic-rule configuration ===== */
+
+/* (logic-rule-register 'name)
+ * Register a new rule (default disabled) if not present. Returns #t. */
+lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_register(name_arg->data.variable, 0);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (logic-rule-enable 'name)
+ * Enable a rule, auto-registering if needed. */
+lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_enable(name_arg->data.variable);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (logic-rule-disable 'name) */
+lizard_ast_node_t *lizard_primitive_logic_rule_disable(lz_list_t *args,
+                                                       lizard_env_t *env,
+                                                       lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_disable(name_arg->data.variable);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (logic-rule-enabled? 'name)
+ * Returns #t / #f / 'unknown (a symbol). */
+lizard_ast_node_t *lizard_primitive_logic_rule_enabledp(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  int r;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  r = lizard_logic_rule_enabled(name_arg->data.variable);
+  if (r == 1) return lizard_make_bool(heap, 1);
+  if (r == 0) return lizard_make_bool(heap, 0);
+  /* Unknown — return the symbol 'unknown. */
+  {
+    char *buf = lizard_heap_alloc(8);
+    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    strcpy(buf, "unknown");
+    n->type = AST_SYMBOL;
+    n->data.variable = buf;
+    return n;
+  }
+}
+
+/* (logic-config)
+ * Returns a list of (name . enabled?) pairs — one cons per registered
+ * rule. The order is registration order, reverse of internal prepend. */
+typedef struct {
+  lizard_heap_t *heap;
+  lizard_ast_node_t *head;  /* growing list, prepended */
+} logic_config_collect_t;
+
+static int logic_config_collect_cb(const char *name, int enabled, void *ud) {
+  logic_config_collect_t *c = (logic_config_collect_t *)ud;
+  lizard_ast_node_t *pair, *sym, *val, *cons;
+  char *namedup;
+  size_t namelen;
+  /* Build (name . enabled?) as a pair. */
+  pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  pair->type = AST_PAIR;
+  namelen = strlen(name) + 1;
+  namedup = lizard_heap_alloc(namelen);
+  memcpy(namedup, name, namelen);
+  sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  sym->type = AST_SYMBOL;
+  sym->data.variable = namedup;
+  val = lizard_make_bool(c->heap, enabled);
+  pair->data.pair.car = sym;
+  pair->data.pair.cdr = val;
+  /* Prepend to head. */
+  cons = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  cons->type = AST_PAIR;
+  cons->data.pair.car = pair;
+  cons->data.pair.cdr = c->head;
+  c->head = cons;
+  return 0;
+}
+
+lizard_ast_node_t *lizard_primitive_logic_config(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  logic_config_collect_t c;
+  lizard_ast_node_t *nil;
+  (void)env; (void)args;
+  /* Build the empty list (nil) as the initial tail. */
+  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  c.heap = heap;
+  c.head = nil;
+  lizard_logic_config_walk(logic_config_collect_cb, &c);
+  return c.head;
+}
+
+/* (logic-config-size) — number of registered rules. */
+lizard_ast_node_t *lizard_primitive_logic_config_size(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_NUMBER;
+  mpz_init(n->data.number);
+  mpz_set_si(n->data.number, lizard_logic_config_size());
+  return n;
+}
+
+/* (logic-config-reset) — clear the registry. */
+lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  (void)env; (void)args;
+  lizard_logic_config_reset();
+  return lizard_make_bool(heap, 1);
+}
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
@@ -4452,6 +4607,14 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "HIT-app",              lizard_primitive_tt_hit_app);
   install_one(heap, env, "HIT-app?",             lizard_primitive_tt_hit_appp);
   install_one(heap, env, "HIT-lookup",           lizard_primitive_tt_hit_lookup);
+  /* Phase M.1 — logic-rule configuration. */
+  install_one(heap, env, "logic-rule-register",  lizard_primitive_logic_rule_register);
+  install_one(heap, env, "logic-rule-enable",    lizard_primitive_logic_rule_enable);
+  install_one(heap, env, "logic-rule-disable",   lizard_primitive_logic_rule_disable);
+  install_one(heap, env, "logic-rule-enabled?",  lizard_primitive_logic_rule_enabledp);
+  install_one(heap, env, "logic-config",         lizard_primitive_logic_config);
+  install_one(heap, env, "logic-config-size",    lizard_primitive_logic_config_size);
+  install_one(heap, env, "logic-config-reset",   lizard_primitive_logic_config_reset);
   install_one(heap, env, "Id",            lizard_primitive_tt_id);
   install_one(heap, env, "refl",          lizard_primitive_tt_refl);
   install_one(heap, env, "Inductive",     lizard_primitive_tt_inductive);

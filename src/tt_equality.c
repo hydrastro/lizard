@@ -5158,6 +5158,179 @@ lizard_ast_node_t *lizard_tt_hit_lookup_constructor_host(const char *cname) {
   return NULL;
 }
 
+/* ===== Phase M.1 — logic-rule configuration registry =====
+ *
+ * Lizard is intended as a configurable type-theory framework: which
+ * inference rules are active determines which logic the kernel
+ * implements. The lambda cube formalism is the inspiration — the
+ * cube's eight corners (STLC, F, F2, Fω, LF, λP, λPω, CoC) are
+ * obtained by toggling three orthogonal axes. Beyond the cube,
+ * modalities, structural rules, lattice features, and HIT support
+ * can all become toggleable axes of a larger configuration space.
+ *
+ * M.1 lands ONLY the infrastructure — the registry, the snapshot/
+ * restore mechanism, and the user-facing primitives. NO rule is
+ * pre-registered, and NO type-checking site yet consults the
+ * registry. M.2 and beyond will wire specific rules to it.
+ *
+ * The registry is per-process, mirroring the precedent set by the
+ * fresh-dim counter (L.3) and the HIT registry (H.1). A snapshot
+ * is a copied linked list, used for "switch logic, do work, switch
+ * back" patterns where the user wants to be sure nothing leaks
+ * between configurations.
+ */
+typedef struct logic_rule_entry {
+  const char *name;
+  int enabled;            /* 0 or 1 */
+  struct logic_rule_entry *next;
+} logic_rule_entry_t;
+
+static logic_rule_entry_t *logic_config_head = NULL;
+
+/* Internal: find a rule by name, return entry or NULL. */
+static logic_rule_entry_t *logic_rule_find(const char *name) {
+  logic_rule_entry_t *e;
+  if (name == NULL) return NULL;
+  for (e = logic_config_head; e != NULL; e = e->next) {
+    if (strcmp(e->name, name) == 0) return e;
+  }
+  return NULL;
+}
+
+/* Register a new rule with a default enabled state. If the rule
+ * already exists, this is a no-op (we don't overwrite). */
+void lizard_logic_rule_register(const char *name, int default_enabled) {
+  logic_rule_entry_t *e;
+  size_t namelen;
+  char *namedup;
+  if (name == NULL) return;
+  if (logic_rule_find(name) != NULL) return;  /* already registered */
+  e = malloc(sizeof(logic_rule_entry_t));
+  if (e == NULL) return;
+  /* Copy the name so callers' strings can be freed without dangling
+   * the registry. We use plain malloc; the registry leaks at process
+   * exit, which is acceptable for M.1. */
+  namelen = strlen(name) + 1;
+  namedup = malloc(namelen);
+  if (namedup == NULL) { free(e); return; }
+  memcpy(namedup, name, namelen);
+  e->name = namedup;
+  e->enabled = default_enabled ? 1 : 0;
+  e->next = logic_config_head;
+  logic_config_head = e;
+}
+
+/* Enable a rule. Auto-registers if not yet present. */
+int lizard_logic_rule_enable(const char *name) {
+  logic_rule_entry_t *e;
+  if (name == NULL) return 0;
+  e = logic_rule_find(name);
+  if (e == NULL) {
+    lizard_logic_rule_register(name, 1);
+    return 1;
+  }
+  e->enabled = 1;
+  return 1;
+}
+
+/* Disable a rule. Auto-registers as disabled if not yet present. */
+int lizard_logic_rule_disable(const char *name) {
+  logic_rule_entry_t *e;
+  if (name == NULL) return 0;
+  e = logic_rule_find(name);
+  if (e == NULL) {
+    lizard_logic_rule_register(name, 0);
+    return 1;
+  }
+  e->enabled = 0;
+  return 1;
+}
+
+/* Query a rule's enabled state. Returns 1 if enabled, 0 if disabled,
+ * -1 if not registered. The -1 case lets callers distinguish "off by
+ * default because configured off" from "unknown rule". */
+int lizard_logic_rule_enabled(const char *name) {
+  logic_rule_entry_t *e;
+  if (name == NULL) return -1;
+  e = logic_rule_find(name);
+  if (e == NULL) return -1;
+  return e->enabled;
+}
+
+long lizard_logic_config_size(void) {
+  logic_rule_entry_t *e;
+  long count = 0;
+  for (e = logic_config_head; e != NULL; e = e->next) count++;
+  return count;
+}
+
+/* Reset the entire configuration. Mostly for tests. */
+void lizard_logic_config_reset(void) {
+  logic_rule_entry_t *e = logic_config_head;
+  while (e != NULL) {
+    logic_rule_entry_t *next = e->next;
+    /* Cast away const for free(); we own the string via the malloc
+     * in register/snapshot. */
+    char *name_mut;
+    memcpy(&name_mut, &e->name, sizeof(char *));
+    free(name_mut);
+    free(e);
+    e = next;
+  }
+  logic_config_head = NULL;
+}
+
+/* Snapshot: take a deep copy of the current configuration and return
+ * an opaque handle. The handle is a pointer to a copy of the linked
+ * list. Callers must restore or free it later. */
+void *lizard_logic_snapshot(void) {
+  logic_rule_entry_t *src, *new_head, *new_tail;
+  new_head = NULL;
+  new_tail = NULL;
+  for (src = logic_config_head; src != NULL; src = src->next) {
+    logic_rule_entry_t *copy;
+    char *namedup;
+    size_t namelen;
+    copy = malloc(sizeof(logic_rule_entry_t));
+    if (copy == NULL) return new_head;  /* partial snapshot; OK */
+    namelen = strlen(src->name) + 1;
+    namedup = malloc(namelen);
+    if (namedup == NULL) { free(copy); return new_head; }
+    memcpy(namedup, src->name, namelen);
+    copy->name = namedup;
+    copy->enabled = src->enabled;
+    copy->next = NULL;
+    if (new_head == NULL) {
+      new_head = copy;
+    } else {
+      new_tail->next = copy;
+    }
+    new_tail = copy;
+  }
+  return new_head;
+}
+
+/* Restore: replace the current configuration with the snapshot. The
+ * snapshot is CONSUMED (becomes the new active config); callers
+ * must not reuse it. To keep a snapshot for multiple restores, take
+ * multiple snapshots. */
+void lizard_logic_restore(void *snapshot) {
+  lizard_logic_config_reset();
+  logic_config_head = (logic_rule_entry_t *)snapshot;
+}
+
+/* Iterator: walk the configuration in registration order (reverse
+ * of insertion, since we prepend). Returns 0 to continue, non-zero
+ * to stop. */
+void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
+                                        void *userdata),
+                              void *userdata) {
+  logic_rule_entry_t *e;
+  for (e = logic_config_head; e != NULL; e = e->next) {
+    if (cb(e->name, e->enabled, userdata)) return;
+  }
+}
+
 int lizard_tt_universe_leq(lizard_ast_node_t *u, lizard_ast_node_t *v) {
   if (u == NULL || v == NULL) return -1;
   /* Both concrete integers */

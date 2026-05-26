@@ -427,6 +427,32 @@ lizard_ast_node_t *lizard_tt_hit_lookup(const char *name);
 lizard_ast_node_t *lizard_tt_hit_lookup_constructor_host(const char *cname);
 void lizard_tt_hit_registry_reset(void);  /* mostly for tests */
 long lizard_tt_hit_registry_size(void);
+
+/* Phase M.1 — logic-rule configuration registry. Per-process.
+ *
+ * A "rule" is a named toggle that future kernel-typing code can
+ * consult to decide whether to apply a given inference rule. M.1
+ * lands the infrastructure only — no rule is yet pre-registered
+ * and no type-checking site consults the registry. */
+void lizard_logic_rule_register(const char *name, int default_enabled);
+int  lizard_logic_rule_enable(const char *name);
+int  lizard_logic_rule_disable(const char *name);
+int  lizard_logic_rule_enabled(const char *name);  /* -1=unknown,0=off,1=on */
+long lizard_logic_config_size(void);
+void lizard_logic_config_reset(void);
+void *lizard_logic_snapshot(void);
+void lizard_logic_restore(void *snapshot);
+void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
+                                         void *userdata),
+                              void *userdata);
+/* Lisp-facing primitive prototypes. */
+lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_rule_disable(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_rule_enabledp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_config(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_config_size(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 int lizard_tt_universe_convertible(lizard_ast_node_t *, lizard_ast_node_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_couniverse_leq(lz_list_t *, lizard_env_t *, lizard_heap_t *);
