@@ -85,6 +85,25 @@ typedef enum {
    */
   AST_TT_PI_FRESH,
   AST_TT_SIGMA_FRESH,
+  /* (co-pi-fresh 'x A B) and (co-sigma-fresh 'x A B) — Phase L.5.
+   *
+   * The dual of pi-fresh / sigma-fresh. Same term shape, but the
+   * typing rule produces a result in the COUNIVERSE lattice rather
+   * than the universe lattice. The thesis claim:
+   *
+   *   "Quantifying over a context/observation generates a new
+   *    couniverse dimension."
+   *
+   *   A : Co_S    B : Co_T (under x:A)
+   *   ───────────────────────────────────────────────────
+   *   (co-pi-fresh x A B) : (Co-max Co_S Co_T) ∨ (Co-set fresh)
+   *
+   * The fresh-dim counter is SHARED with pi-fresh — every binding
+   * event gets a globally unique nat, and the *sort* (U-set vs
+   * Co-set) tells you which lattice the dim belongs to.
+   */
+  AST_TT_CO_PI_FRESH,
+  AST_TT_CO_SIGMA_FRESH,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -484,6 +503,18 @@ struct lizard_ast_node {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *codomain;
     } tt_sigma_fresh;
+    /* Phase L.5: dual co-pi-fresh and co-sigma-fresh. Same shape, but
+     * the typing rule produces a couniverse-set instead. */
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_co_pi_fresh;
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *domain;
+      lizard_ast_node_t *codomain;
+    } tt_co_sigma_fresh;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

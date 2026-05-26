@@ -431,6 +431,24 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_sigma_fresh.domain, name) ||
            contains_free_var(t->data.tt_sigma_fresh.codomain, name);
   }
+  case AST_TT_CO_PI_FRESH: {
+    if (t->data.tt_co_pi_fresh.binder &&
+        t->data.tt_co_pi_fresh.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_co_pi_fresh.binder->data.variable, name) == 0) {
+      return contains_free_var(t->data.tt_co_pi_fresh.domain, name);
+    }
+    return contains_free_var(t->data.tt_co_pi_fresh.domain, name) ||
+           contains_free_var(t->data.tt_co_pi_fresh.codomain, name);
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    if (t->data.tt_co_sigma_fresh.binder &&
+        t->data.tt_co_sigma_fresh.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_co_sigma_fresh.binder->data.variable, name) == 0) {
+      return contains_free_var(t->data.tt_co_sigma_fresh.domain, name);
+    }
+    return contains_free_var(t->data.tt_co_sigma_fresh.domain, name) ||
+           contains_free_var(t->data.tt_co_sigma_fresh.codomain, name);
+  }
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -756,6 +774,44 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       n->data.tt_sigma_fresh.binder = new_binder;
       n->data.tt_sigma_fresh.domain = new_dom;
       n->data.tt_sigma_fresh.codomain = new_cod;
+      return n;
+    }
+  }
+  case AST_TT_CO_PI_FRESH: {
+    lizard_ast_node_t *new_dom = subst_rec(t->data.tt_co_pi_fresh.domain, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_cod = subst_under_binder(
+        t->data.tt_co_pi_fresh.binder, t->data.tt_co_pi_fresh.codomain, x, v, heap,
+        &new_binder);
+    if (new_dom == t->data.tt_co_pi_fresh.domain &&
+        new_cod == t->data.tt_co_pi_fresh.codomain &&
+        new_binder == t->data.tt_co_pi_fresh.binder)
+      return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_PI_FRESH;
+      n->data.tt_co_pi_fresh.binder = new_binder;
+      n->data.tt_co_pi_fresh.domain = new_dom;
+      n->data.tt_co_pi_fresh.codomain = new_cod;
+      return n;
+    }
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    lizard_ast_node_t *new_dom = subst_rec(t->data.tt_co_sigma_fresh.domain, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_cod = subst_under_binder(
+        t->data.tt_co_sigma_fresh.binder, t->data.tt_co_sigma_fresh.codomain, x, v, heap,
+        &new_binder);
+    if (new_dom == t->data.tt_co_sigma_fresh.domain &&
+        new_cod == t->data.tt_co_sigma_fresh.codomain &&
+        new_binder == t->data.tt_co_sigma_fresh.binder)
+      return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_SIGMA_FRESH;
+      n->data.tt_co_sigma_fresh.binder = new_binder;
+      n->data.tt_co_sigma_fresh.domain = new_dom;
+      n->data.tt_co_sigma_fresh.codomain = new_cod;
       return n;
     }
   }
@@ -1424,6 +1480,32 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_CO_PI_FRESH: {
+    lizard_ast_node_t *dom = subst_interval(t->data.tt_co_pi_fresh.domain, x, v, heap);
+    lizard_ast_node_t *cod = subst_interval(t->data.tt_co_pi_fresh.codomain, x, v, heap);
+    if (dom == t->data.tt_co_pi_fresh.domain && cod == t->data.tt_co_pi_fresh.codomain) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_PI_FRESH;
+      n->data.tt_co_pi_fresh.binder = t->data.tt_co_pi_fresh.binder;
+      n->data.tt_co_pi_fresh.domain = dom;
+      n->data.tt_co_pi_fresh.codomain = cod;
+      return n;
+    }
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    lizard_ast_node_t *dom = subst_interval(t->data.tt_co_sigma_fresh.domain, x, v, heap);
+    lizard_ast_node_t *cod = subst_interval(t->data.tt_co_sigma_fresh.codomain, x, v, heap);
+    if (dom == t->data.tt_co_sigma_fresh.domain && cod == t->data.tt_co_sigma_fresh.codomain) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_SIGMA_FRESH;
+      n->data.tt_co_sigma_fresh.binder = t->data.tt_co_sigma_fresh.binder;
+      n->data.tt_co_sigma_fresh.domain = dom;
+      n->data.tt_co_sigma_fresh.codomain = cod;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1595,6 +1677,36 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
                   ? b->data.tt_sigma_fresh.binder->data.variable : NULL;
     nb.next = eb;
     return alpha_equal_rec(a->data.tt_sigma_fresh.codomain, b->data.tt_sigma_fresh.codomain,
+                           &na, &nb);
+  }
+  case AST_TT_CO_PI_FRESH: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_co_pi_fresh.domain, b->data.tt_co_pi_fresh.domain, ea, eb))
+      return 0;
+    na.name = (a->data.tt_co_pi_fresh.binder &&
+               a->data.tt_co_pi_fresh.binder->type == AST_SYMBOL)
+                  ? a->data.tt_co_pi_fresh.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_co_pi_fresh.binder &&
+               b->data.tt_co_pi_fresh.binder->type == AST_SYMBOL)
+                  ? b->data.tt_co_pi_fresh.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_co_pi_fresh.codomain, b->data.tt_co_pi_fresh.codomain,
+                           &na, &nb);
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_co_sigma_fresh.domain, b->data.tt_co_sigma_fresh.domain, ea, eb))
+      return 0;
+    na.name = (a->data.tt_co_sigma_fresh.binder &&
+               a->data.tt_co_sigma_fresh.binder->type == AST_SYMBOL)
+                  ? a->data.tt_co_sigma_fresh.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_co_sigma_fresh.binder &&
+               b->data.tt_co_sigma_fresh.binder->type == AST_SYMBOL)
+                  ? b->data.tt_co_sigma_fresh.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_co_sigma_fresh.codomain, b->data.tt_co_sigma_fresh.codomain,
                            &na, &nb);
   }
   case AST_TT_APP:
@@ -1943,6 +2055,14 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_sigma_fresh.binder, b->data.tt_sigma_fresh.binder) &&
            lizard_tt_structurally_equal(a->data.tt_sigma_fresh.domain, b->data.tt_sigma_fresh.domain) &&
            lizard_tt_structurally_equal(a->data.tt_sigma_fresh.codomain, b->data.tt_sigma_fresh.codomain);
+  case AST_TT_CO_PI_FRESH:
+    return lizard_tt_structurally_equal(a->data.tt_co_pi_fresh.binder, b->data.tt_co_pi_fresh.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_co_pi_fresh.domain, b->data.tt_co_pi_fresh.domain) &&
+           lizard_tt_structurally_equal(a->data.tt_co_pi_fresh.codomain, b->data.tt_co_pi_fresh.codomain);
+  case AST_TT_CO_SIGMA_FRESH:
+    return lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.binder, b->data.tt_co_sigma_fresh.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.domain, b->data.tt_co_sigma_fresh.domain) &&
+           lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.codomain, b->data.tt_co_sigma_fresh.codomain);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3039,6 +3159,36 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
       n->data.tt_sigma_fresh.binder = t->data.tt_sigma_fresh.binder;
       n->data.tt_sigma_fresh.domain = dom;
       n->data.tt_sigma_fresh.codomain = cod;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_CO_PI_FRESH: {
+    lizard_ast_node_t *dom = normalize_rec(t->data.tt_co_pi_fresh.domain, heap, memo);
+    lizard_ast_node_t *cod = normalize_rec(t->data.tt_co_pi_fresh.codomain, heap, memo);
+    if (dom == t->data.tt_co_pi_fresh.domain && cod == t->data.tt_co_pi_fresh.codomain)
+      result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_PI_FRESH;
+      n->data.tt_co_pi_fresh.binder = t->data.tt_co_pi_fresh.binder;
+      n->data.tt_co_pi_fresh.domain = dom;
+      n->data.tt_co_pi_fresh.codomain = cod;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    lizard_ast_node_t *dom = normalize_rec(t->data.tt_co_sigma_fresh.domain, heap, memo);
+    lizard_ast_node_t *cod = normalize_rec(t->data.tt_co_sigma_fresh.codomain, heap, memo);
+    if (dom == t->data.tt_co_sigma_fresh.domain && cod == t->data.tt_co_sigma_fresh.codomain)
+      result = t;
+    else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_CO_SIGMA_FRESH;
+      n->data.tt_co_sigma_fresh.binder = t->data.tt_co_sigma_fresh.binder;
+      n->data.tt_co_sigma_fresh.domain = dom;
+      n->data.tt_co_sigma_fresh.codomain = cod;
       result = n;
     }
     break;

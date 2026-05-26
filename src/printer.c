@@ -328,6 +328,28 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_sigma_fresh.codomain);
     fprintf(fp, ")");
     return;
+  case AST_TT_CO_PI_FRESH:
+    fprintf(fp, "(co-pi-fresh (");
+    if (node->data.tt_co_pi_fresh.binder) {
+      lizard_fprint_value(fp, node->data.tt_co_pi_fresh.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_co_pi_fresh.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_co_pi_fresh.codomain);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_CO_SIGMA_FRESH:
+    fprintf(fp, "(co-sigma-fresh (");
+    if (node->data.tt_co_sigma_fresh.binder) {
+      lizard_fprint_value(fp, node->data.tt_co_sigma_fresh.binder);
+      fprintf(fp, " ");
+    }
+    lizard_fprint_value(fp, node->data.tt_co_sigma_fresh.domain);
+    fprintf(fp, ") ");
+    lizard_fprint_value(fp, node->data.tt_co_sigma_fresh.codomain);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

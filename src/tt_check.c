@@ -177,6 +177,25 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     /* (U n) : (U n+1) */
     return lizard_tt_make_universe(heap, t->data.tt_universe.level + 1);
   }
+  case AST_TT_COUNIVERSE: {
+    /* Phase L.5 supporting rule: (Uco n) : (Uco (n+1)). Couniverses
+     * have a successor too — minimal typing so co-pi-fresh's domain
+     * check sees something it recognizes. */
+    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    n->type = AST_TT_COUNIVERSE;
+    n->data.tt_couniverse.level = t->data.tt_couniverse.level + 1;
+    return n;
+  }
+  case AST_TT_COUNIVERSE_SET: {
+    /* (Co-set ...) is itself a couniverse element. Its "type" is the
+     * couniverse one level up — we represent that as a (Co-set ...)
+     * with a fresh dim, or simpler, just (Uco 0). For L.5 minimal:
+     * say its type is (Uco 0). */
+    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    n->type = AST_TT_COUNIVERSE;
+    n->data.tt_couniverse.level = 0;
+    return n;
+  }
   case AST_TT_PI: {
     /* (Pi x A B) : (U-max univ(A) univ(B[x:=fresh])) — but we don't
      * have unification of universes. For now: check A is a type
@@ -336,6 +355,116 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       combined->type = AST_TT_U_MAX;
       combined->data.tt_u_max.left = base;
       combined->data.tt_u_max.right = fresh_set;
+    }
+    return lizard_tt_reduce(combined, heap);
+  }
+  case AST_TT_CO_PI_FRESH: {
+    /* Phase L.5: dimension-creating Pi in the COUNIVERSE lattice.
+     *
+     *   A : Co_S    B : Co_T (under x:A)
+     *   ───────────────────────────────────────────────────
+     *   (co-pi-fresh x A B) : (Co-max Co_S Co_T) ∨ (Co-set fresh)
+     *
+     * The fresh-dim counter is SHARED with pi-fresh; sort distinction
+     * is in the result lattice (Co-set, not U-set). */
+    lizard_ast_node_t *binder = t->data.tt_co_pi_fresh.binder;
+    lizard_ast_node_t *dom = t->data.tt_co_pi_fresh.domain;
+    lizard_ast_node_t *cod = t->data.tt_co_pi_fresh.codomain;
+    lizard_ast_node_t *dom_univ, *cod_univ;
+    lizard_ast_node_t *new_ctx;
+    lizard_ast_node_t *fresh_set;
+    lizard_ast_node_t *combined;
+    long *dim_ptr;
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "co-pi-fresh binder not a symbol");
+    }
+    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    if (is_error(dom_univ)) return dom_univ;
+    dom_univ = lizard_tt_reduce(dom_univ, heap);
+    /* For co-pi-fresh, we accept couniverse expressions, NOT universe
+     * expressions. The dom must live in a Co-set (or legacy Uco). */
+    if (dom_univ->type != AST_TT_COUNIVERSE &&
+        dom_univ->type != AST_TT_COUNIVERSE_SET &&
+        dom_univ->type != AST_TT_CO_MAX &&
+        dom_univ->type != AST_TT_CO_MIN) {
+      return type_error(heap, "co-pi-fresh domain not a couniverse");
+    }
+    new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
+    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    if (is_error(cod_univ)) return cod_univ;
+    cod_univ = lizard_tt_reduce(cod_univ, heap);
+    if (cod_univ->type != AST_TT_COUNIVERSE &&
+        cod_univ->type != AST_TT_COUNIVERSE_SET &&
+        cod_univ->type != AST_TT_CO_MAX &&
+        cod_univ->type != AST_TT_CO_MIN) {
+      return type_error(heap, "co-pi-fresh codomain not a couniverse");
+    }
+    /* Build singleton (Co-set fresh). */
+    fresh_set = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    dim_ptr = lizard_heap_alloc(sizeof(long));
+    dim_ptr[0] = lizard_tt_next_fresh_dim();
+    fresh_set->type = AST_TT_COUNIVERSE_SET;
+    fresh_set->data.tt_couniverse_set.dims = dim_ptr;
+    fresh_set->data.tt_couniverse_set.count = 1;
+    {
+      lizard_ast_node_t *base = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      base->type = AST_TT_CO_MAX;
+      base->data.tt_co_max.left = dom_univ;
+      base->data.tt_co_max.right = cod_univ;
+      combined = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      combined->type = AST_TT_CO_MAX;
+      combined->data.tt_co_max.left = base;
+      combined->data.tt_co_max.right = fresh_set;
+    }
+    return lizard_tt_reduce(combined, heap);
+  }
+  case AST_TT_CO_SIGMA_FRESH: {
+    /* Same dimension-creating rule for Sigma in the couniverse lattice. */
+    lizard_ast_node_t *binder = t->data.tt_co_sigma_fresh.binder;
+    lizard_ast_node_t *dom = t->data.tt_co_sigma_fresh.domain;
+    lizard_ast_node_t *cod = t->data.tt_co_sigma_fresh.codomain;
+    lizard_ast_node_t *dom_univ, *cod_univ;
+    lizard_ast_node_t *new_ctx;
+    lizard_ast_node_t *fresh_set;
+    lizard_ast_node_t *combined;
+    long *dim_ptr;
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "co-sigma-fresh binder not a symbol");
+    }
+    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    if (is_error(dom_univ)) return dom_univ;
+    dom_univ = lizard_tt_reduce(dom_univ, heap);
+    if (dom_univ->type != AST_TT_COUNIVERSE &&
+        dom_univ->type != AST_TT_COUNIVERSE_SET &&
+        dom_univ->type != AST_TT_CO_MAX &&
+        dom_univ->type != AST_TT_CO_MIN) {
+      return type_error(heap, "co-sigma-fresh domain not a couniverse");
+    }
+    new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
+    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    if (is_error(cod_univ)) return cod_univ;
+    cod_univ = lizard_tt_reduce(cod_univ, heap);
+    if (cod_univ->type != AST_TT_COUNIVERSE &&
+        cod_univ->type != AST_TT_COUNIVERSE_SET &&
+        cod_univ->type != AST_TT_CO_MAX &&
+        cod_univ->type != AST_TT_CO_MIN) {
+      return type_error(heap, "co-sigma-fresh codomain not a couniverse");
+    }
+    fresh_set = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    dim_ptr = lizard_heap_alloc(sizeof(long));
+    dim_ptr[0] = lizard_tt_next_fresh_dim();
+    fresh_set->type = AST_TT_COUNIVERSE_SET;
+    fresh_set->data.tt_couniverse_set.dims = dim_ptr;
+    fresh_set->data.tt_couniverse_set.count = 1;
+    {
+      lizard_ast_node_t *base = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      base->type = AST_TT_CO_MAX;
+      base->data.tt_co_max.left = dom_univ;
+      base->data.tt_co_max.right = cod_univ;
+      combined = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      combined->type = AST_TT_CO_MAX;
+      combined->data.tt_co_max.left = base;
+      combined->data.tt_co_max.right = fresh_set;
     }
     return lizard_tt_reduce(combined, heap);
   }

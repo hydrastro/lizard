@@ -1372,6 +1372,8 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_SIGMA:       name = "Sigma";       break;
   case AST_TT_PI_FRESH:    name = "pi-fresh";    break;
   case AST_TT_SIGMA_FRESH: name = "sigma-fresh"; break;
+  case AST_TT_CO_PI_FRESH:    name = "co-pi-fresh";    break;
+  case AST_TT_CO_SIGMA_FRESH: name = "co-sigma-fresh"; break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2441,6 +2443,40 @@ lizard_ast_node_t *lizard_primitive_tt_sigma_fresh(lz_list_t *args,
   n->data.tt_sigma_fresh.codomain = nth_arg(args, 2);
   return n;
 }
+
+/* (co-pi-fresh 'x A B) — Phase L.5 dual dimension-creating Pi.
+ * Same term shape; typing rule produces a couniverse-set. */
+lizard_ast_node_t *lizard_primitive_tt_co_pi_fresh(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_PI_FRESH;
+  n->data.tt_co_pi_fresh.binder = nth_arg(args, 0);
+  n->data.tt_co_pi_fresh.domain = nth_arg(args, 1);
+  n->data.tt_co_pi_fresh.codomain = nth_arg(args, 2);
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_co_sigma_fresh(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_CO_SIGMA_FRESH;
+  n->data.tt_co_sigma_fresh.binder = nth_arg(args, 0);
+  n->data.tt_co_sigma_fresh.domain = nth_arg(args, 1);
+  n->data.tt_co_sigma_fresh.codomain = nth_arg(args, 2);
+  return n;
+}
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -2919,6 +2955,8 @@ TT_PREDICATE(tt_pip,          AST_TT_PI)
 TT_PREDICATE(tt_sigmap,       AST_TT_SIGMA)
 TT_PREDICATE(tt_pi_freshp,    AST_TT_PI_FRESH)
 TT_PREDICATE(tt_sigma_freshp, AST_TT_SIGMA_FRESH)
+TT_PREDICATE(tt_co_pi_freshp,    AST_TT_CO_PI_FRESH)
+TT_PREDICATE(tt_co_sigma_freshp, AST_TT_CO_SIGMA_FRESH)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -4386,6 +4424,10 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "pi-fresh?",     lizard_primitive_tt_pi_freshp);
   install_one(heap, env, "sigma-fresh",   lizard_primitive_tt_sigma_fresh);
   install_one(heap, env, "sigma-fresh?",  lizard_primitive_tt_sigma_freshp);
+  install_one(heap, env, "co-pi-fresh",     lizard_primitive_tt_co_pi_fresh);
+  install_one(heap, env, "co-pi-fresh?",    lizard_primitive_tt_co_pi_freshp);
+  install_one(heap, env, "co-sigma-fresh",  lizard_primitive_tt_co_sigma_fresh);
+  install_one(heap, env, "co-sigma-fresh?", lizard_primitive_tt_co_sigma_freshp);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);
