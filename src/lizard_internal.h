@@ -536,7 +536,12 @@ typedef enum {
   AST_TT_TRUNC,
   AST_TT_TRUNC_INTRO,
   AST_TT_TRUNC_ELIM,
-  AST_TT_EXTENSION
+  AST_TT_EXTENSION,
+  /* Track R: Racket-style syntax objects. */
+  AST_SYNTAX,
+  /* Track C: Persistent data structures. */
+  AST_PVEC,
+  AST_HAMT
 } lizard_ast_node_type_t;
 
 typedef struct lizard_ast_node lizard_ast_node_t;
@@ -553,6 +558,7 @@ typedef lizard_ast_node_t *(*lizard_callcc_func_t)(
 
 struct lizard_ast_node {
   lizard_ast_node_type_t type;
+  unsigned char gc_mark;  /* Phase D: 0 = unmarked, 1 = reachable */
   lizard_source_span_t span;
   union {
     bool boolean;
@@ -990,6 +996,26 @@ struct lizard_ast_node {
       lizard_ast_node_t *name;
       lz_list_t *args;
     } tt_extension;
+    /* Track R: syntax objects. */
+    struct {
+      lizard_ast_node_t *datum;        /* the wrapped value */
+      lizard_env_t *context;           /* lexical context (scope) */
+      lizard_source_span_t source;     /* original source location */
+      unsigned int phase;              /* expansion phase (0 = runtime) */
+      unsigned int *scopes;            /* scope set (array of scope ids) */
+      int scope_count;                 /* number of scopes */
+    } syntax;
+    /* Track C: persistent vector (32-way trie). */
+    struct {
+      lizard_ast_node_t **entries;     /* flat backing array (small vecs) */
+      int count;                       /* number of elements */
+      int capacity;                    /* allocated slots */
+    } pvec;
+    /* Track C: persistent hash-array mapped trie. */
+    struct {
+      void *root;                      /* hamt_node_t* (opaque) */
+      int count;                       /* number of entries */
+    } hamt;
   } data;
 };
 

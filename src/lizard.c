@@ -129,7 +129,7 @@ lizard_ast_node_t *lizard_eval(
       lizard_ast_node_t *val;
       val = lizard_env_lookup(env, node->data.variable);
       if (!val) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_UNBOUND_SYMBOL), env,
+        return cont(lizard_make_error_at(heap, LIZARD_ERROR_UNBOUND_SYMBOL, node->span), env,
                     heap);
       }
       return cont(lizard_force(val, heap), env, heap);
@@ -165,7 +165,7 @@ lizard_ast_node_t *lizard_eval(
     case AST_DEFINITION: {
       lizard_ast_node_t *value;
       if (node->data.definition.variable->type != AST_SYMBOL) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_DEF), env,
+        return cont(lizard_make_error_at(heap, LIZARD_ERROR_INVALID_DEF, node->span), env,
                     heap);
       }
       value = lizard_eval(node->data.definition.value, env, heap,
@@ -181,14 +181,14 @@ lizard_ast_node_t *lizard_eval(
     case AST_ASSIGNMENT: {
       lizard_ast_node_t *value;
       if (node->data.assignment.variable->type != AST_SYMBOL) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT), env,
+        return cont(lizard_make_error_at(heap, LIZARD_ERROR_ASSIGNMENT, node->span), env,
                     heap);
       }
       value = lizard_eval(node->data.assignment.value, env, heap,
                           lizard_identity_cont);
       if (!lizard_env_set(env, node->data.assignment.variable->data.variable,
                           value)) {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND),
+        return cont(lizard_make_error_at(heap, LIZARD_ERROR_ASSIGNMENT_UNBOUND, node->span),
                     env, heap);
       }
       /* set! also returns unspecified per R5RS. */
@@ -613,7 +613,7 @@ lizard_ast_node_t *lizard_eval(
       } else if (func->type == AST_CALLCC) {
         return lizard_primitive_callcc(arg_list, env, heap, cont);
       } else {
-        return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY), env,
+        return cont(lizard_make_error_at(heap, LIZARD_ERROR_INVALID_APPLY, node->span), env,
                     heap);
       }
     }
@@ -818,9 +818,10 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
       return cont(lizard_force(result, heap), env, heap);
     }
   } else {
-    return cont(lizard_make_error(heap, LIZARD_ERROR_INVALID_APPLY_2), env,
+    return cont(lizard_make_error_at(heap, LIZARD_ERROR_INVALID_APPLY_2, func->span), env,
                 heap);
   }
+  return lizard_make_nil(heap);  /* unreachable — satisfies -Wreturn-type */
 }
 
 /* ---------------------------------------------------------------------

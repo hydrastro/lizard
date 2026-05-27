@@ -21,6 +21,8 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,
                                          lizard_ast_node_t *transformer);
 lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code);
+lizard_ast_node_t *lizard_make_error_at(lizard_heap_t *heap, int error_code,
+                                         lizard_source_span_t span);
 lizard_ast_node_t *lizard_make_continuation(
     lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
                                        lizard_heap_t *),

@@ -111,6 +111,7 @@ void *lizard_heap_alloc(size_t size) {
   }
   ptr = seg->top;
   seg->top += size;
+  memset(ptr, 0, size);  /* Phase D: ensure gc_mark and other fields start zeroed */
   return ptr;
 }
 
@@ -175,6 +176,14 @@ lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
       lizard_error_messages[LIZARD_LANG_EN][error_code];
   list_append(node->data.error.data, &msg_node->node);
 
+  return node;
+}
+
+/* Phase F: structured diagnostics — error with source location. */
+lizard_ast_node_t *lizard_make_error_at(lizard_heap_t *heap, int error_code,
+                                         lizard_source_span_t span) {
+  lizard_ast_node_t *node = lizard_make_error(heap, error_code);
+  node->span = span;
   return node;
 }
 

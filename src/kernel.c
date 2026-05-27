@@ -1,0 +1,434 @@
+/* src/kernel.c — Trusted kernel implementation (Track K).
+ *
+ * This is the code that must be correct for soundness. It is
+ * intentionally kept small and simple.
+ */
+#include "kernel.h"
+#include "mem.h"
+#include <stdio.h>
+#include <string.h>
+
+/* ---- constructors ---- */
+
+static kterm_t *kt_alloc(lizard_heap_t *heap, kterm_tag_t tag) {
+  kterm_t *t = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+  memset(t, 0, sizeof(kterm_t));
+  t->tag = tag;
+  return t;
+}
+
+kterm_t *kt_var(lizard_heap_t *heap, int index) {
+  kterm_t *t = kt_alloc(heap, KT_VAR);
+  t->data.var.index = index;
+  return t;
+}
+
+kterm_t *kt_sort(lizard_heap_t *heap, int level) {
+  kterm_t *t = kt_alloc(heap, KT_SORT);
+  t->data.sort.level = level;
+  return t;
+}
+
+kterm_t *kt_pi(lizard_heap_t *heap, const char *name,
+               kterm_t *domain, kterm_t *codomain) {
+  kterm_t *t = kt_alloc(heap, KT_PI);
+  t->data.pi.name = name;
+  t->data.pi.domain = domain;
+  t->data.pi.codomain = codomain;
+  return t;
+}
+
+kterm_t *kt_lam(lizard_heap_t *heap, const char *name,
+                kterm_t *domain, kterm_t *body) {
+  kterm_t *t = kt_alloc(heap, KT_LAM);
+  t->data.lam.name = name;
+  t->data.lam.domain = domain;
+  t->data.lam.body = body;
+  return t;
+}
+
+kterm_t *kt_app(lizard_heap_t *heap, kterm_t *fun, kterm_t *arg) {
+  kterm_t *t = kt_alloc(heap, KT_APP);
+  t->data.app.fun = fun;
+  t->data.app.arg = arg;
+  return t;
+}
+
+kterm_t *kt_nat(lizard_heap_t *heap) {
+  return kt_alloc(heap, KT_NAT);
+}
+
+kterm_t *kt_zero(lizard_heap_t *heap) {
+  return kt_alloc(heap, KT_ZERO);
+}
+
+kterm_t *kt_succ(lizard_heap_t *heap, kterm_t *pred) {
+  kterm_t *t = kt_alloc(heap, KT_SUCC);
+  t->data.succ.pred = pred;
+  return t;
+}
+
+kterm_t *kt_id(lizard_heap_t *heap, kterm_t *type, kterm_t *a, kterm_t *b) {
+  kterm_t *t = kt_alloc(heap, KT_ID);
+  t->data.id.type = type;
+  t->data.id.a = a;
+  t->data.id.b = b;
+  return t;
+}
+
+kterm_t *kt_refl(lizard_heap_t *heap, kterm_t *value) {
+  kterm_t *t = kt_alloc(heap, KT_REFL);
+  t->data.refl.value = value;
+  return t;
+}
+
+/* ---- context ---- */
+
+kctx_t *kctx_create(lizard_heap_t *heap) {
+  kctx_t *ctx = (kctx_t *)lizard_heap_alloc(sizeof(kctx_t));
+  ctx->entries = NULL;
+  ctx->depth = 0;
+  ctx->heap = heap;
+  return ctx;
+}
+
+kctx_t *kctx_extend(lizard_heap_t *heap, kctx_t *ctx,
+                     const char *name, kterm_t *type, kterm_t *value) {
+  kctx_t *new_ctx = (kctx_t *)lizard_heap_alloc(sizeof(kctx_t));
+  kctx_entry_t *entry = (kctx_entry_t *)lizard_heap_alloc(sizeof(kctx_entry_t));
+  entry->name = name;
+  entry->type = type;
+  entry->value = value;
+  entry->next = ctx->entries;
+  new_ctx->entries = entry;
+  new_ctx->depth = ctx->depth + 1;
+  new_ctx->heap = heap;
+  return new_ctx;
+}
+
+kctx_entry_t *kctx_lookup(kctx_t *ctx, int index) {
+  kctx_entry_t *e = ctx->entries;
+  int i;
+  for (i = 0; i < index && e != NULL; i++) {
+    e = e->next;
+  }
+  return e;
+}
+
+/* ---- substitution ---- */
+
+/* Shift de Bruijn indices >= cutoff by delta. */
+static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
+  if (t == NULL) return NULL;
+  switch (t->tag) {
+  case KT_VAR:
+    if (t->data.var.index >= cutoff) {
+      return kt_var(heap, t->data.var.index + delta);
+    }
+    return t;
+  case KT_SORT: case KT_NAT: case KT_ZERO:
+    return t;
+  case KT_SUCC:
+    return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
+  case KT_PI:
+    return kt_pi(heap, t->data.pi.name,
+                 kt_shift(heap, t->data.pi.domain, cutoff, delta),
+                 kt_shift(heap, t->data.pi.codomain, cutoff + 1, delta));
+  case KT_LAM:
+    return kt_lam(heap, t->data.lam.name,
+                  kt_shift(heap, t->data.lam.domain, cutoff, delta),
+                  kt_shift(heap, t->data.lam.body, cutoff + 1, delta));
+  case KT_APP:
+    return kt_app(heap, kt_shift(heap, t->data.app.fun, cutoff, delta),
+                        kt_shift(heap, t->data.app.arg, cutoff, delta));
+  case KT_ID:
+    return kt_id(heap, kt_shift(heap, t->data.id.type, cutoff, delta),
+                       kt_shift(heap, t->data.id.a, cutoff, delta),
+                       kt_shift(heap, t->data.id.b, cutoff, delta));
+  case KT_REFL:
+    return kt_refl(heap, kt_shift(heap, t->data.refl.value, cutoff, delta));
+  default:
+    return t;  /* conservative: unhandled terms pass through */
+  }
+}
+
+kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
+  if (t == NULL) return NULL;
+  switch (t->tag) {
+  case KT_VAR:
+    if (t->data.var.index == n) return s;
+    if (t->data.var.index > n) return kt_var(heap, t->data.var.index - 1);
+    return t;
+  case KT_SORT: case KT_NAT: case KT_ZERO:
+    return t;
+  case KT_SUCC:
+    return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
+  case KT_PI:
+    return kt_pi(heap, t->data.pi.name,
+                 kt_subst(heap, t->data.pi.domain, n, s),
+                 kt_subst(heap, t->data.pi.codomain, n + 1,
+                           kt_shift(heap, s, 0, 1)));
+  case KT_LAM:
+    return kt_lam(heap, t->data.lam.name,
+                  kt_subst(heap, t->data.lam.domain, n, s),
+                  kt_subst(heap, t->data.lam.body, n + 1,
+                            kt_shift(heap, s, 0, 1)));
+  case KT_APP:
+    return kt_app(heap, kt_subst(heap, t->data.app.fun, n, s),
+                        kt_subst(heap, t->data.app.arg, n, s));
+  case KT_ID:
+    return kt_id(heap, kt_subst(heap, t->data.id.type, n, s),
+                       kt_subst(heap, t->data.id.a, n, s),
+                       kt_subst(heap, t->data.id.b, n, s));
+  case KT_REFL:
+    return kt_refl(heap, kt_subst(heap, t->data.refl.value, n, s));
+  default:
+    return t;
+  }
+}
+
+/* ---- weak head normal form ---- */
+
+kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
+  if (t == NULL) return NULL;
+  switch (t->tag) {
+  case KT_VAR: {
+    kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
+    if (e != NULL && e->value != NULL) {
+      return kt_whnf(heap, ctx, e->value);
+    }
+    return t;
+  }
+  case KT_APP: {
+    kterm_t *fn = kt_whnf(heap, ctx, t->data.app.fun);
+    if (fn->tag == KT_LAM) {
+      /* Beta reduction: (λ x. body) arg → body[arg/x] */
+      kterm_t *result = kt_subst(heap, fn->data.lam.body, 0,
+                                  t->data.app.arg);
+      return kt_whnf(heap, ctx, result);
+    }
+    if (fn != t->data.app.fun) {
+      return kt_app(heap, fn, t->data.app.arg);
+    }
+    return t;
+  }
+  case KT_LET: {
+    kterm_t *result = kt_subst(heap, t->data.let.body, 0, t->data.let.value);
+    return kt_whnf(heap, ctx, result);
+  }
+  case KT_ANNOT:
+    return kt_whnf(heap, ctx, t->data.annot.term);
+  case KT_NAT_REC: {
+    kterm_t *scrut = kt_whnf(heap, ctx, t->data.nat_rec.scrutinee);
+    if (scrut->tag == KT_ZERO) {
+      return kt_whnf(heap, ctx, t->data.nat_rec.zero_case);
+    }
+    if (scrut->tag == KT_SUCC) {
+      /* natrec C z s (succ n) → s n (natrec C z s n) */
+      kterm_t *rec = kt_alloc(heap, KT_NAT_REC);
+      kterm_t *step;
+      rec->data.nat_rec.motive = t->data.nat_rec.motive;
+      rec->data.nat_rec.zero_case = t->data.nat_rec.zero_case;
+      rec->data.nat_rec.succ_case = t->data.nat_rec.succ_case;
+      rec->data.nat_rec.scrutinee = scrut->data.succ.pred;
+      step = kt_app(heap, kt_app(heap, t->data.nat_rec.succ_case,
+                                   scrut->data.succ.pred), rec);
+      return kt_whnf(heap, ctx, step);
+    }
+    return t;
+  }
+  default:
+    return t;
+  }
+}
+
+/* ---- definitional equality ---- */
+
+int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
+  kterm_t *na, *nb;
+  if (a == b) return 1;
+  if (a == NULL || b == NULL) return 0;
+  na = kt_whnf(heap, ctx, a);
+  nb = kt_whnf(heap, ctx, b);
+  if (na->tag != nb->tag) return 0;
+  switch (na->tag) {
+  case KT_VAR:
+    return na->data.var.index == nb->data.var.index;
+  case KT_SORT:
+    return na->data.sort.level == nb->data.sort.level;
+  case KT_NAT: case KT_ZERO:
+    return 1;
+  case KT_SUCC:
+    return kt_equal(heap, ctx, na->data.succ.pred, nb->data.succ.pred);
+  case KT_PI:
+    return kt_equal(heap, ctx, na->data.pi.domain, nb->data.pi.domain) &&
+           kt_equal(heap, ctx, na->data.pi.codomain, nb->data.pi.codomain);
+  case KT_LAM:
+    /* Eta-expand or compare bodies under extended context. */
+    return kt_equal(heap, ctx, na->data.lam.body, nb->data.lam.body);
+  case KT_APP:
+    return kt_equal(heap, ctx, na->data.app.fun, nb->data.app.fun) &&
+           kt_equal(heap, ctx, na->data.app.arg, nb->data.app.arg);
+  case KT_ID:
+    return kt_equal(heap, ctx, na->data.id.type, nb->data.id.type) &&
+           kt_equal(heap, ctx, na->data.id.a, nb->data.id.a) &&
+           kt_equal(heap, ctx, na->data.id.b, nb->data.id.b);
+  case KT_REFL:
+    return kt_equal(heap, ctx, na->data.refl.value, nb->data.refl.value);
+  default:
+    return 0;
+  }
+}
+
+/* ---- type inference ---- */
+
+kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
+  if (t == NULL) return NULL;
+  switch (t->tag) {
+  case KT_VAR: {
+    kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
+    if (e == NULL) return NULL;
+    return e->type;
+  }
+  case KT_SORT:
+    /* Sort(i) : Sort(i+1) */
+    return kt_sort(heap, t->data.sort.level + 1);
+  case KT_NAT:
+    return kt_sort(heap, 0);
+  case KT_ZERO:
+    return kt_nat(heap);
+  case KT_SUCC: {
+    kterm_t *pt = kt_infer(heap, ctx, t->data.succ.pred);
+    if (pt == NULL) return NULL;
+    pt = kt_whnf(heap, ctx, pt);
+    if (pt->tag != KT_NAT) return NULL;
+    return kt_nat(heap);
+  }
+  case KT_PI: {
+    /* Check domain is a sort, codomain is a sort under extension. */
+    kterm_t *dt = kt_infer(heap, ctx, t->data.pi.domain);
+    kterm_t *ct2;
+    kctx_t *ext;
+    if (dt == NULL) return NULL;
+    dt = kt_whnf(heap, ctx, dt);
+    if (dt->tag != KT_SORT) return NULL;
+    ext = kctx_extend(heap, ctx, t->data.pi.name, t->data.pi.domain, NULL);
+    ct2 = kt_infer(heap, ext, t->data.pi.codomain);
+    if (ct2 == NULL) return NULL;
+    ct2 = kt_whnf(heap, ext, ct2);
+    if (ct2->tag != KT_SORT) return NULL;
+    /* max of the two levels */
+    {
+      int l = dt->data.sort.level;
+      int r = ct2->data.sort.level;
+      return kt_sort(heap, l > r ? l : r);
+    }
+  }
+  case KT_LAM: {
+    kctx_t *ext = kctx_extend(heap, ctx, t->data.lam.name,
+                               t->data.lam.domain, NULL);
+    kterm_t *body_type = kt_infer(heap, ext, t->data.lam.body);
+    if (body_type == NULL) return NULL;
+    return kt_pi(heap, t->data.lam.name, t->data.lam.domain, body_type);
+  }
+  case KT_APP: {
+    kterm_t *fn_type = kt_infer(heap, ctx, t->data.app.fun);
+    if (fn_type == NULL) return NULL;
+    fn_type = kt_whnf(heap, ctx, fn_type);
+    if (fn_type->tag != KT_PI) return NULL;
+    /* Check argument type matches domain. */
+    {
+      kterm_t *arg_type = kt_infer(heap, ctx, t->data.app.arg);
+      if (arg_type == NULL) return NULL;
+      if (!kt_equal(heap, ctx, arg_type, fn_type->data.pi.domain)) return NULL;
+    }
+    /* Result type: codomain with argument substituted. */
+    return kt_subst(heap, fn_type->data.pi.codomain, 0, t->data.app.arg);
+  }
+  case KT_ID: {
+    kterm_t *tt = kt_infer(heap, ctx, t->data.id.type);
+    if (tt == NULL) return NULL;
+    tt = kt_whnf(heap, ctx, tt);
+    if (tt->tag != KT_SORT) return NULL;
+    return kt_sort(heap, tt->data.sort.level);
+  }
+  case KT_REFL: {
+    kterm_t *vt = kt_infer(heap, ctx, t->data.refl.value);
+    if (vt == NULL) return NULL;
+    return kt_id(heap, vt, t->data.refl.value, t->data.refl.value);
+  }
+  case KT_ANNOT: {
+    kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
+                                  t->data.annot.type);
+    if (r != KERNEL_OK) return NULL;
+    return t->data.annot.type;
+  }
+  default:
+    return NULL;
+  }
+}
+
+kernel_result_t kt_check(lizard_heap_t *heap, kctx_t *ctx,
+                          kterm_t *term, kterm_t *expected_type) {
+  kterm_t *inferred = kt_infer(heap, ctx, term);
+  if (inferred == NULL) return KERNEL_TYPE_ERROR;
+  if (!kt_equal(heap, ctx, inferred, expected_type)) {
+    return KERNEL_TYPE_ERROR;
+  }
+  return KERNEL_OK;
+}
+
+/* ---- printing ---- */
+
+void kt_fprint(FILE *fp, kterm_t *t) {
+  if (t == NULL) { fprintf(fp, "?"); return; }
+  switch (t->tag) {
+  case KT_VAR: fprintf(fp, "#%d", t->data.var.index); break;
+  case KT_SORT: fprintf(fp, "Sort(%d)", t->data.sort.level); break;
+  case KT_NAT: fprintf(fp, "Nat"); break;
+  case KT_ZERO: fprintf(fp, "0"); break;
+  case KT_SUCC:
+    fprintf(fp, "(succ ");
+    kt_fprint(fp, t->data.succ.pred);
+    fprintf(fp, ")");
+    break;
+  case KT_PI:
+    fprintf(fp, "(Pi (%s : ", t->data.pi.name ? t->data.pi.name : "_");
+    kt_fprint(fp, t->data.pi.domain);
+    fprintf(fp, ") ");
+    kt_fprint(fp, t->data.pi.codomain);
+    fprintf(fp, ")");
+    break;
+  case KT_LAM:
+    fprintf(fp, "(lam (%s : ", t->data.lam.name ? t->data.lam.name : "_");
+    kt_fprint(fp, t->data.lam.domain);
+    fprintf(fp, ") ");
+    kt_fprint(fp, t->data.lam.body);
+    fprintf(fp, ")");
+    break;
+  case KT_APP:
+    fprintf(fp, "(");
+    kt_fprint(fp, t->data.app.fun);
+    fprintf(fp, " ");
+    kt_fprint(fp, t->data.app.arg);
+    fprintf(fp, ")");
+    break;
+  case KT_ID:
+    fprintf(fp, "(Id ");
+    kt_fprint(fp, t->data.id.type);
+    fprintf(fp, " ");
+    kt_fprint(fp, t->data.id.a);
+    fprintf(fp, " ");
+    kt_fprint(fp, t->data.id.b);
+    fprintf(fp, ")");
+    break;
+  case KT_REFL:
+    fprintf(fp, "(refl ");
+    kt_fprint(fp, t->data.refl.value);
+    fprintf(fp, ")");
+    break;
+  default:
+    fprintf(fp, "<kterm:%d>", t->tag);
+    break;
+  }
+}

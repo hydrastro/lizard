@@ -81,7 +81,7 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check
+LIB_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------

@@ -1,3 +1,72 @@
+# Lizard v5 — engineering infrastructure (in progress)
+
+This section logs the major infrastructure work built on top of the v4
+type-theory + diagnostics baseline.
+
+## Phase 0: Runtime refactor (B.1–B.2)
+
+- Added `lizard_runtime_t *runtime` back-pointer on `lizard_heap_t`, so
+  any function holding the heap can reach runtime state via `heap->runtime`.
+- Moved 9 process-global variables into `lizard_runtime_t`:
+  `gensym_counter`, `sr_counter`, `callcc_buf/active/value`,
+  `logic_config_head`, `logic_last_set_bundle`, `hit_registry_head`,
+  `flag_list`.
+- Accessor functions (`logic_config_ptr()`, etc.) with static fallbacks
+  for backward compat with standalone heaps.
+- Sequential multi-instance now works: two runtimes in the same process
+  have independent logic configs, HIT registries, and counters.
+
+## Phase C: Module loader
+
+- `(import "path.lisp")` — load once with caching, resolved via search path.
+- `(module-loaded? "path")`, `(module-search-path)`, `(add-module-path! "dir")`.
+- Default search path includes `lib/`. Module cache keyed by both raw
+  and resolved paths.
+
+## Phase D: Garbage collector (D.1–D.3)
+
+- `gc_mark` bit on every `lizard_ast_node_t`. `lizard_heap_alloc` zeroes
+  memory to ensure marks start at 0.
+- `lizard_gc_mark_node` — recursive mark traversal covering 80+ AST types.
+- `lizard_gc_mark_env` — walks environment chains and closure captures.
+- Segment-level sweep: `lizard_gc_collect` frees heap segments with zero
+  live objects. No pointer updating needed.
+- `(gc)` — run mark + sweep, report freed bytes and before/after stats.
+- `(gc-stats)` — report segments, bytes, total/live/garbage node counts.
+
+## Phase E: Bytecode compiler + VM (E.1–E.2)
+
+- 30-opcode stack-based VM (`src/bytecode.h`, `src/bytecode.c`).
+- Compiler handles: constants, variables, arithmetic, comparisons,
+  if/else, define/set!, lambda with closures, general function calls,
+  begin, cons/car/cdr, display/newline.
+- **Tail-call optimization**: `OP_TAIL_CALL` replaces the current frame
+  (chunk, env, ip, sp) and restarts the dispatch loop. Zero C stack growth.
+- `(vm-eval expr)`, `(disassemble expr)`, `(vm-time expr)`, `(time-eval expr)`.
+
+## Profiler
+
+- `(profile expr)` — compile + execute with full instruction counting.
+  Reports: elapsed time, total instructions, call/tail-call counts,
+  MIPS, and per-opcode breakdown.
+
+## Structured diagnostics (Phase F)
+
+- `lizard_make_error_at(heap, code, span)` — error with source location.
+- Six key eval error paths carry spans (unbound symbol, invalid apply,
+  bad define, bad assignment).
+- Error printer prepends `line:col:` when span is available.
+- `(error-location err)` — programmatic access to error span.
+
+## Documentation
+
+- `docs/HIT.md` — comprehensive HIT layer reference (~350 lines).
+- `docs/MODAL.md` — updated with full M.5.* coverage.
+- `DESIGN.md` — added "Further documentation" index.
+- `docs/CLAIMS_MATRIX.md` — updated throughout.
+
+---
+
 # Lizard v4 — type-theory expansion + diagnostics/scaffolds (in progress)
 
 This section logs the changes from v3 (post-restructure baseline) to the current

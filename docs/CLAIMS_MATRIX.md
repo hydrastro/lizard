@@ -9,11 +9,11 @@ feature changes from notation, to scaffold, to checked kernel feature.
 | Runtime/context C API | scaffold/usable | Public opaque API exists; some legacy process-global state remains. |
 | Public/internal header split | partial | `lizard_api.h` is public; internals are moved behind `src/lizard_internal.h`; compatibility `lizard.h` remains. |
 | Source positions | partial | Tokens and many parsed AST nodes carry line/column/offset metadata. |
-| Structured diagnostics | partial | API exposes last diagnostic; parser still has some legacy fatal paths. |
+| Structured diagnostics | basic | Errors from the evaluator carry source spans (line:column). The printer prepends location when available. `(error-location err)` returns the span as an alist. Six key eval error paths (unbound symbol, invalid apply, bad define, bad assignment) carry spans. |
 | Hygienic macros | partial | `syntax-rules` exists; full syntax objects/ellipsis/source-aware expansion are future work. |
 | Module system | basic | `(import "path")` with caching, search-path resolution, `(module-loaded?)`, `(add-module-path!)`. No namespacing/exports — imported definitions go into the current environment. |
-| Garbage collector | not implemented | Arena allocation remains the runtime memory model. |
-| Bytecode compiler/VM | not implemented | Planned after runtime/context and syntax pipeline hardening. |
+| Garbage collector | segment-level collection | `(gc)` runs mark-from-roots then frees heap segments with zero live objects. `(gc-stats)` reports live/garbage/total counts. Environment chains and closure captures are fully traversed. **Limitation:** only entire dead segments are freed (no per-object sweep). A segment with even one live object is kept whole. Effective when large computations are discarded between `(gc)` calls. |
+| Bytecode compiler/VM | basic | `(vm-eval expr)` compiles Scheme to bytecode and executes on a stack-based VM. `(disassemble expr)` prints the bytecode. Covers: constants, arithmetic, comparisons, variables, if/else, define/set!, lambda with closures, general function calls, begin, cons/car/cdr, display/newline. Complex forms (macros, call/cc, type theory) fall back to constants. |
 | Profiler/coverage/debugger | build-tool level | Make targets exist; language-frame debugger/profiler are future work. |
 | MLTT/λΠ type checking | experimental | Useful checker exists, but no proof of soundness/normalization/canonicity. |
 | Cubical interval/faces/systems | experimental | Useful CCHM-inspired fragments exist. |

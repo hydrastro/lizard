@@ -196,7 +196,13 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
     }
     break;
   case AST_ERROR:
-    fprintf(fp, "Error (code %d):\n", node->data.error.code);
+    if (node->span.start_line > 0) {
+      fprintf(fp, "Error at %d:%d (code %d):\n",
+              node->span.start_line, node->span.start_column,
+              node->data.error.code);
+    } else {
+      fprintf(fp, "Error (code %d):\n", node->data.error.code);
+    }
     {
       lz_list_node_t *iter = node->data.error.data->head;
       while (iter != node->data.error.data->nil) {
@@ -1047,8 +1053,31 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
       fprintf(fp, "<promise>");
     }
     return;
+  case AST_SYNTAX:
+    fprintf(fp, "#<syntax ");
+    lizard_fprint_value(fp, node->data.syntax.datum);
+    fprintf(fp, ">");
+    return;
+  case AST_PVEC: {
+    int pi;
+    fprintf(fp, "#pvec(");
+    for (pi = 0; pi < node->data.pvec.count; pi++) {
+      if (pi > 0) fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.pvec.entries[pi]);
+    }
+    fprintf(fp, ")");
+    return;
+  }
+  case AST_HAMT:
+    fprintf(fp, "#hamt(%d)", node->data.hamt.count);
+    return;
   case AST_ERROR: {
-    lz_list_node_t *iter = node->data.error.data->head;
+    lz_list_node_t *iter;
+    /* Phase F: prepend source location when available. */
+    if (node->span.start_line > 0) {
+      fprintf(fp, "%d:%d: ", node->span.start_line, node->span.start_column);
+    }
+    iter = node->data.error.data->head;
     if (iter != node->data.error.data->nil) {
       lizard_ast_node_t *msg = ((lizard_ast_list_node_t *)iter)->ast;
       if (msg->type == AST_STRING) {

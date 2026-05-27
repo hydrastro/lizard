@@ -1376,6 +1376,1251 @@ lizard_ast_node_t *lizard_primitive_add_module_path(lz_list_t *args,
    Called by both the REPL and the test harness so the set of
    primitives stays in one place. */
 
+/* Phase D: GC stats primitive. */
+#include "gc.h"
+
+/* Helper: build an alist pair (key . value) where value is an unsigned long. */
+static lizard_ast_node_t *gc_make_stat(lizard_heap_t *heap,
+                                        const char *key,
+                                        unsigned long val) {
+  lizard_ast_node_t *k = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *v = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *p = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  k->type = AST_SYMBOL;
+  k->data.variable = key;
+  v->type = AST_NUMBER;
+  mpz_init_set_ui(v->data.number, val);
+  p->type = AST_PAIR;
+  p->data.pair.car = k;
+  p->data.pair.cdr = v;
+  return p;
+}
+
+static lizard_ast_node_t *gc_cons(lizard_heap_t *heap,
+                                   lizard_ast_node_t *car,
+                                   lizard_ast_node_t *cdr) {
+  lizard_ast_node_t *c = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  c->type = AST_PAIR;
+  c->data.pair.car = car;
+  c->data.pair.cdr = cdr;
+  return c;
+}
+
+lizard_ast_node_t *lizard_primitive_gc_stats(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_gc_stats_t stats;
+  lizard_ast_node_t *result;
+  (void)args;
+
+  lizard_gc_collect_stats(heap, env, 1, &stats);
+
+  /* Build alist: ((segments . N) (bytes . N) (total . N) (live . N) (garbage . N)) */
+  result = lizard_make_nil(heap);
+  result = gc_cons(heap, gc_make_stat(heap, "garbage",  (unsigned long)stats.nodes_garbage), result);
+  result = gc_cons(heap, gc_make_stat(heap, "live",     (unsigned long)stats.nodes_marked),  result);
+  result = gc_cons(heap, gc_make_stat(heap, "total",    (unsigned long)stats.nodes_total),   result);
+  result = gc_cons(heap, gc_make_stat(heap, "bytes",    (unsigned long)stats.total_bytes_allocated), result);
+  result = gc_cons(heap, gc_make_stat(heap, "segments", (unsigned long)stats.total_segments), result);
+  return result;
+}
+
+/* (gc) — run a full GC cycle: mark from roots, free dead segments.
+ * Returns an alist with before/after stats and bytes freed. */
+lizard_ast_node_t *lizard_primitive_gc(lz_list_t *args,
+                                        lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  lizard_gc_stats_t before, after;
+  size_t freed;
+  lizard_ast_node_t *result;
+  (void)args;
+
+  /* Stats before collection. */
+  lizard_gc_collect_stats(heap, env, 1, &before);
+
+  /* Collect — frees dead segments. */
+  freed = lizard_gc_collect(heap, env);
+
+  /* Stats after. */
+  lizard_gc_collect_stats(heap, env, 1, &after);
+
+  /* Build result alist. */
+  result = lizard_make_nil(heap);
+  result = gc_cons(heap, gc_make_stat(heap, "freed-bytes",      (unsigned long)freed),                result);
+  result = gc_cons(heap, gc_make_stat(heap, "segments-after",   (unsigned long)after.total_segments), result);
+  result = gc_cons(heap, gc_make_stat(heap, "segments-before",  (unsigned long)before.total_segments),result);
+  result = gc_cons(heap, gc_make_stat(heap, "garbage",          (unsigned long)before.nodes_garbage), result);
+  result = gc_cons(heap, gc_make_stat(heap, "live",             (unsigned long)before.nodes_marked),  result);
+  return result;
+}
+
+/* Phase E: bytecode VM primitives. */
+#include "bytecode.h"
+
+static const char *opcode_name(lizard_opcode_t op) {
+  switch (op) {
+  case OP_CONST: return "CONST";
+  case OP_NIL: return "NIL";
+  case OP_TRUE: return "TRUE";
+  case OP_FALSE: return "FALSE";
+  case OP_LOAD: return "LOAD";
+  case OP_STORE: return "STORE";
+  case OP_SET: return "SET";
+  case OP_POP: return "POP";
+  case OP_ADD: return "ADD";
+  case OP_SUB: return "SUB";
+  case OP_MUL: return "MUL";
+  case OP_DIV: return "DIV";
+  case OP_MOD: return "MOD";
+  case OP_EQ: return "EQ";
+  case OP_LT: return "LT";
+  case OP_GT: return "GT";
+  case OP_NOT: return "NOT";
+  case OP_CONS: return "CONS";
+  case OP_CAR: return "CAR";
+  case OP_CDR: return "CDR";
+  case OP_JUMP: return "JUMP";
+  case OP_JUMP_IF_FALSE: return "JIF";
+  case OP_CALL: return "CALL";
+  case OP_TAIL_CALL: return "TCALL";
+  case OP_RETURN: return "RET";
+  case OP_CLOSURE: return "CLOSURE";
+  case OP_DISPLAY: return "DISPLAY";
+  case OP_NEWLINE: return "NEWLINE";
+  case OP_HALT: return "HALT";
+  }
+  return "???";
+}
+
+/* (vm-eval expr) — compile expr to bytecode and execute on the VM. */
+lizard_ast_node_t *lizard_primitive_vm_eval(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  lizard_bc_chunk_t *chunk;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  chunk = lizard_compile(expr, heap);
+  if (chunk == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  return lizard_vm_exec(chunk, env, heap);
+}
+
+/* (disassemble expr) — compile expr and print the bytecode. */
+lizard_ast_node_t *lizard_primitive_disassemble(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  lizard_bc_chunk_t *chunk;
+  int i;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  chunk = lizard_compile(expr, heap);
+  if (chunk == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  printf("--- bytecode: %d instructions, %d constants ---\n",
+         chunk->code_count, chunk->const_count);
+  for (i = 0; i < chunk->code_count; i++) {
+    printf("  %04d  %-8s %d", i, opcode_name(chunk->code[i].op),
+           chunk->code[i].arg);
+    /* Show constant value for CONST/LOAD/STORE instructions. */
+    if ((chunk->code[i].op == OP_CONST ||
+         chunk->code[i].op == OP_LOAD ||
+         chunk->code[i].op == OP_STORE) &&
+        chunk->code[i].arg < chunk->const_count) {
+      printf("  ; ");
+      lizard_fprint_value(stdout, chunk->constants[chunk->code[i].arg]);
+    }
+    printf("\n");
+  }
+  printf("---\n");
+  return lizard_make_bool(heap, 1);
+}
+
+#include <time.h>
+
+/* (vm-time expr) — compile + execute via bytecode VM, print elapsed time. */
+lizard_ast_node_t *lizard_primitive_vm_time(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  lizard_ast_node_t *result;
+  lizard_bc_chunk_t *chunk;
+  clock_t start, end;
+  double elapsed;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  chunk = lizard_compile(expr, heap);
+  if (chunk == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  start = clock();
+  result = lizard_vm_exec(chunk, env, heap);
+  end = clock();
+  elapsed = (double)(end - start) / (double)CLOCKS_PER_SEC;
+  printf("; vm-time: %.6f s\n", elapsed);
+  return result;
+}
+
+/* (time-eval expr) — evaluate via tree-walker, print elapsed time. */
+lizard_ast_node_t *lizard_primitive_time_eval(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  lizard_ast_node_t *result;
+  clock_t start, end;
+  double elapsed;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  start = clock();
+  result = lizard_eval(expr, env, heap, lizard_identity_cont);
+  end = clock();
+  elapsed = (double)(end - start) / (double)CLOCKS_PER_SEC;
+  printf("; time-eval: %.6f s\n", elapsed);
+  return result;
+}
+
+/* (profile expr) — compile + execute with full instruction profiling. */
+lizard_ast_node_t *lizard_primitive_profile(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  lizard_ast_node_t *result;
+  lizard_bc_chunk_t *chunk;
+  lizard_vm_profile_t prof;
+  clock_t start, end;
+  int i;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  chunk = lizard_compile(expr, heap);
+  if (chunk == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  memset(&prof, 0, sizeof(prof));
+  start = clock();
+  result = lizard_vm_exec_profiled(chunk, env, heap, &prof);
+  end = clock();
+  prof.elapsed_seconds = (double)(end - start) / (double)CLOCKS_PER_SEC;
+
+  printf("--- profile ---\n");
+  printf("  elapsed:      %.6f s\n", prof.elapsed_seconds);
+  printf("  instructions: %lu\n", (unsigned long)prof.total_instructions);
+  printf("  calls:        %lu\n", (unsigned long)prof.total_calls);
+  printf("  tail calls:   %lu\n", (unsigned long)prof.tail_calls);
+  if (prof.total_instructions > 0) {
+    printf("  MIPS:         %.1f\n",
+           (double)prof.total_instructions / prof.elapsed_seconds / 1e6);
+  }
+  printf("  top opcodes:\n");
+  for (i = 0; i < LIZARD_OPCODE_COUNT; i++) {
+    if (prof.opcode_counts[i] > 0) {
+      printf("    %-8s %lu\n", opcode_name((lizard_opcode_t)i),
+             (unsigned long)prof.opcode_counts[i]);
+    }
+  }
+  printf("---\n");
+  return result;
+}
+
+/* (error-location err) — return source location of an error as an alist,
+ * or '() if no location is available. */
+lizard_ast_node_t *lizard_primitive_error_location(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *err;
+  lizard_ast_node_t *result;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  err = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (err == NULL || err->type != AST_ERROR) {
+    return lizard_make_nil(heap);
+  }
+  if (err->span.start_line == 0) {
+    return lizard_make_nil(heap);
+  }
+  /* Build alist: ((line . N) (column . N)) */
+  result = lizard_make_nil(heap);
+  result = gc_cons(heap, gc_make_stat(heap, "column", (unsigned long)err->span.start_column), result);
+  result = gc_cons(heap, gc_make_stat(heap, "line",   (unsigned long)err->span.start_line),   result);
+  return result;
+}
+
+/* ============================================================
+ * Practical list operations — essential R5RS subset.
+ * ============================================================ */
+
+/* (length lst) — number of elements in a proper list. */
+lizard_ast_node_t *lizard_primitive_length(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *lst;
+  lizard_ast_node_t *r;
+  long count = 0;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  lst = ((lizard_ast_list_node_t *)args->head)->ast;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    count++;
+    lst = lst->data.pair.cdr;
+  }
+  r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  r->type = AST_NUMBER;
+  mpz_init_set_si(r->data.number, count);
+  return r;
+}
+
+/* (append lst1 lst2) — concatenate two lists. */
+lizard_ast_node_t *lizard_primitive_append(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *b, *result, *tail, *node;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  b = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (a == NULL || a->type == AST_NIL) return b;
+  /* Copy the first list. */
+  result = NULL;
+  tail = NULL;
+  while (a != NULL && a->type == AST_PAIR) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = a->data.pair.car;
+    node->data.pair.cdr = lizard_make_nil(heap);
+    if (tail != NULL) {
+      tail->data.pair.cdr = node;
+    } else {
+      result = node;
+    }
+    tail = node;
+    a = a->data.pair.cdr;
+  }
+  if (tail != NULL) {
+    tail->data.pair.cdr = b;
+  } else {
+    result = b;
+  }
+  return result;
+}
+
+/* (reverse lst) — reverse a list. */
+lizard_ast_node_t *lizard_primitive_reverse(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *lst, *result, *node;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  lst = ((lizard_ast_list_node_t *)args->head)->ast;
+  result = lizard_make_nil(heap);
+  while (lst != NULL && lst->type == AST_PAIR) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = lst->data.pair.car;
+    node->data.pair.cdr = result;
+    result = node;
+    lst = lst->data.pair.cdr;
+  }
+  return result;
+}
+
+/* (list? x) — #t if x is a proper list (nil-terminated chain of pairs). */
+lizard_ast_node_t *lizard_primitive_listp(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  x = ((lizard_ast_list_node_t *)args->head)->ast;
+  while (x != NULL && x->type == AST_PAIR) {
+    x = x->data.pair.cdr;
+  }
+  return lizard_make_bool(heap, x != NULL && x->type == AST_NIL);
+}
+
+/* (apply f args-list) — apply function to a list of arguments. */
+lizard_ast_node_t *lizard_primitive_apply(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *fn, *arg_list, *cur;
+  lz_list_t *call_args;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  fn = ((lizard_ast_list_node_t *)args->head)->ast;
+  arg_list = ((lizard_ast_list_node_t *)args->head->next)->ast;
+
+  /* Build the lz_list_t from the Scheme list. */
+  call_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  cur = arg_list;
+  while (cur != NULL && cur->type == AST_PAIR) {
+    lizard_ast_list_node_t *n;
+    n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n->ast = cur->data.pair.car;
+    list_append(call_args, &n->node);
+    cur = cur->data.pair.cdr;
+  }
+
+  return lizard_apply(fn, call_args, env, heap, lizard_identity_cont);
+}
+
+/* (map f lst) — apply f to each element, return list of results. */
+lizard_ast_node_t *lizard_primitive_map(lz_list_t *args,
+                                         lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *fn, *lst, *result, *tail;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  fn = ((lizard_ast_list_node_t *)args->head)->ast;
+  lst = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  result = lizard_make_nil(heap);
+  tail = NULL;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    lizard_ast_node_t *val, *node;
+    lz_list_t *one_arg;
+    lizard_ast_list_node_t *n;
+    one_arg = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n->ast = lst->data.pair.car;
+    list_append(one_arg, &n->node);
+    val = lizard_apply(fn, one_arg, env, heap, lizard_identity_cont);
+    if (val && val->type == AST_ERROR) return val;
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = val;
+    node->data.pair.cdr = lizard_make_nil(heap);
+    if (tail != NULL) {
+      tail->data.pair.cdr = node;
+    } else {
+      result = node;
+    }
+    tail = node;
+    lst = lst->data.pair.cdr;
+  }
+  return result;
+}
+
+/* (filter pred lst) — keep elements where (pred elem) is truthy. */
+lizard_ast_node_t *lizard_primitive_filter(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *fn, *lst, *result, *tail;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  fn = ((lizard_ast_list_node_t *)args->head)->ast;
+  lst = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  result = lizard_make_nil(heap);
+  tail = NULL;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    lizard_ast_node_t *test, *node;
+    lz_list_t *one_arg;
+    lizard_ast_list_node_t *n;
+    one_arg = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n->ast = lst->data.pair.car;
+    list_append(one_arg, &n->node);
+    test = lizard_apply(fn, one_arg, env, heap, lizard_identity_cont);
+    if (test && test->type == AST_ERROR) return test;
+    /* Keep if truthy (not #f and not nil). */
+    if (!(test->type == AST_BOOL && !test->data.boolean) &&
+        test->type != AST_NIL) {
+      node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      node->type = AST_PAIR;
+      node->data.pair.car = lst->data.pair.car;
+      node->data.pair.cdr = lizard_make_nil(heap);
+      if (tail != NULL) {
+        tail->data.pair.cdr = node;
+      } else {
+        result = node;
+      }
+      tail = node;
+    }
+    lst = lst->data.pair.cdr;
+  }
+  return result;
+}
+
+/* (for-each f lst) — apply f to each element for side effects. */
+lizard_ast_node_t *lizard_primitive_for_each(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *fn, *lst, *val;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  fn = ((lizard_ast_list_node_t *)args->head)->ast;
+  lst = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    lz_list_t *one_arg;
+    lizard_ast_list_node_t *n;
+    one_arg = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n->ast = lst->data.pair.car;
+    list_append(one_arg, &n->node);
+    val = lizard_apply(fn, one_arg, env, heap, lizard_identity_cont);
+    if (val && val->type == AST_ERROR) return val;
+    lst = lst->data.pair.cdr;
+  }
+  return lizard_make_nil(heap);
+}
+
+/* (fold-left f init lst) — left fold: (f (f (f init e0) e1) e2) ... */
+lizard_ast_node_t *lizard_primitive_fold_left(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *fn, *acc, *lst;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  fn  = ((lizard_ast_list_node_t *)args->head)->ast;
+  acc = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  lst = ((lizard_ast_list_node_t *)args->head->next->next)->ast;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    lz_list_t *call_args;
+    lizard_ast_list_node_t *n1, *n2;
+    call_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    n1 = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n1->ast = acc;
+    list_append(call_args, &n1->node);
+    n2 = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n2->ast = lst->data.pair.car;
+    list_append(call_args, &n2->node);
+    acc = lizard_apply(fn, call_args, env, heap, lizard_identity_cont);
+    if (acc && acc->type == AST_ERROR) return acc;
+    lst = lst->data.pair.cdr;
+  }
+  return acc;
+}
+
+/* (assoc key alist) — find pair with matching car (using equal?). */
+lizard_ast_node_t *lizard_primitive_assoc(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *key, *alist, *pair;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  key   = ((lizard_ast_list_node_t *)args->head)->ast;
+  alist = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  while (alist != NULL && alist->type == AST_PAIR) {
+    pair = alist->data.pair.car;
+    if (pair != NULL && pair->type == AST_PAIR) {
+      lizard_ast_node_t *k = pair->data.pair.car;
+      /* Simple equality: same type + same value. */
+      if (k->type == key->type) {
+        int eq = 0;
+        if (k->type == AST_NUMBER) {
+          eq = (mpz_cmp(k->data.number, key->data.number) == 0);
+        } else if (k->type == AST_SYMBOL) {
+          eq = (strcmp(k->data.variable, key->data.variable) == 0);
+        } else if (k->type == AST_STRING) {
+          eq = (strcmp(k->data.string, key->data.string) == 0);
+        } else if (k->type == AST_BOOL) {
+          eq = (k->data.boolean == key->data.boolean);
+        } else if (k->type == AST_NIL) {
+          eq = 1;
+        }
+        if (eq) return pair;
+      }
+    }
+    alist = alist->data.pair.cdr;
+  }
+  return lizard_make_bool(heap, 0);  /* #f if not found */
+}
+
+/* (member x lst) — find first sublist starting with x, or #f. */
+lizard_ast_node_t *lizard_primitive_member(lz_list_t *args,
+                                            lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *key, *lst, *elem;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  key = ((lizard_ast_list_node_t *)args->head)->ast;
+  lst = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    elem = lst->data.pair.car;
+    if (elem->type == key->type) {
+      int eq = 0;
+      if (elem->type == AST_NUMBER) {
+        eq = (mpz_cmp(elem->data.number, key->data.number) == 0);
+      } else if (elem->type == AST_SYMBOL) {
+        eq = (strcmp(elem->data.variable, key->data.variable) == 0);
+      } else if (elem->type == AST_STRING) {
+        eq = (strcmp(elem->data.string, key->data.string) == 0);
+      } else if (elem->type == AST_BOOL) {
+        eq = (elem->data.boolean == key->data.boolean);
+      } else if (elem->type == AST_NIL) {
+        eq = 1;
+      }
+      if (eq) return lst;
+    }
+    lst = lst->data.pair.cdr;
+  }
+  return lizard_make_bool(heap, 0);
+}
+
+/* (list-ref lst n) — 0-indexed element access. */
+lizard_ast_node_t *lizard_primitive_list_ref(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *lst, *idx;
+  long n, i;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  lst = ((lizard_ast_list_node_t *)args->head)->ast;
+  idx = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (idx->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  n = mpz_get_si(idx->data.number);
+  i = 0;
+  while (lst != NULL && lst->type == AST_PAIR) {
+    if (i == n) return lst->data.pair.car;
+    i++;
+    lst = lst->data.pair.cdr;
+  }
+  return lizard_make_error(heap, LIZARD_ERROR_USER);
+}
+
+/* (iota n) — list of integers 0..n-1. (iota n start) — start..start+n-1. */
+lizard_ast_node_t *lizard_primitive_iota(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *count_node, *start_node;
+  lizard_ast_node_t *result, *node;
+  long count, start, i;
+  (void)env;
+  count_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (count_node->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  count = mpz_get_si(count_node->data.number);
+  start = 0;
+  if (args->head->next != args->nil) {
+    start_node = ((lizard_ast_list_node_t *)args->head->next)->ast;
+    if (start_node->type == AST_NUMBER) {
+      start = mpz_get_si(start_node->data.number);
+    }
+  }
+  result = lizard_make_nil(heap);
+  for (i = count - 1 + start; i >= start; i--) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.cdr = result;
+    node->data.pair.car = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->data.pair.car->type = AST_NUMBER;
+    mpz_init_set_si(node->data.pair.car->data.number, i);
+    result = node;
+  }
+  return result;
+}
+
+/* ============================================================
+ * Track R: Syntax object primitives.
+ * ============================================================ */
+
+/* (datum->syntax context datum) — wrap datum with lexical context. */
+lizard_ast_node_t *lizard_primitive_datum_to_syntax(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *ctx_node, *datum, *stx;
+  lizard_env_t *ctx;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  ctx_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  datum = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  /* If context is a syntax object, use its context; otherwise use current env. */
+  ctx = (ctx_node->type == AST_SYNTAX) ? ctx_node->data.syntax.context : env;
+  stx = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  stx->type = AST_SYNTAX;
+  stx->data.syntax.datum = datum;
+  stx->data.syntax.context = ctx;
+  stx->data.syntax.source = datum->span;
+  stx->data.syntax.phase = 0;
+  stx->data.syntax.scopes = NULL;
+  stx->data.syntax.scope_count = 0;
+  return stx;
+}
+
+/* (syntax->datum stx) / (syntax-e stx) — unwrap syntax object. */
+lizard_ast_node_t *lizard_primitive_syntax_to_datum(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *stx;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  stx = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (stx->type != AST_SYNTAX) {
+    return stx;  /* non-syntax passes through */
+  }
+  return stx->data.syntax.datum;
+}
+
+/* (syntax-source stx) — return source location as alist. */
+lizard_ast_node_t *lizard_primitive_syntax_source(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *stx, *result;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  stx = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (stx->type != AST_SYNTAX || stx->data.syntax.source.start_line == 0) {
+    return lizard_make_nil(heap);
+  }
+  result = lizard_make_nil(heap);
+  result = gc_cons(heap, gc_make_stat(heap, "column", (unsigned long)stx->data.syntax.source.start_column), result);
+  result = gc_cons(heap, gc_make_stat(heap, "line",   (unsigned long)stx->data.syntax.source.start_line),   result);
+  return result;
+}
+
+/* (syntax? x) — predicate. */
+lizard_ast_node_t *lizard_primitive_syntaxp(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_SYNTAX);
+}
+
+/* ============================================================
+ * Track C: Persistent vector primitives.
+ *
+ * Initial implementation: copy-on-write flat array. Will be
+ * upgraded to a 32-way trie in Track C Phase 2 for O(log32 n)
+ * updates on large vectors.
+ * ============================================================ */
+
+/* (pvec e1 e2 ...) — create a persistent vector from elements. */
+lizard_ast_node_t *lizard_primitive_pvec(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *v;
+  lz_list_node_t *iter;
+  int count, i;
+  (void)env;
+  count = 0;
+  for (iter = args->head; iter != args->nil; iter = iter->next) count++;
+  v = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  v->type = AST_PVEC;
+  v->data.pvec.count = count;
+  v->data.pvec.capacity = count > 0 ? count : 4;
+  v->data.pvec.entries = (lizard_ast_node_t **)lizard_heap_alloc(
+      (size_t)v->data.pvec.capacity * sizeof(lizard_ast_node_t *));
+  i = 0;
+  for (iter = args->head; iter != args->nil; iter = iter->next) {
+    v->data.pvec.entries[i++] = ((lizard_ast_list_node_t *)iter)->ast;
+  }
+  return v;
+}
+
+/* (pvec-ref v i) — 0-indexed access. */
+lizard_ast_node_t *lizard_primitive_pvec_ref(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *v, *idx;
+  long i;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  v = ((lizard_ast_list_node_t *)args->head)->ast;
+  idx = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (v->type != AST_PVEC || idx->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  i = mpz_get_si(idx->data.number);
+  if (i < 0 || i >= v->data.pvec.count) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  return v->data.pvec.entries[i];
+}
+
+/* (pvec-set v i val) — functional update, returns new vector. */
+lizard_ast_node_t *lizard_primitive_pvec_set(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *v, *idx, *val, *nv;
+  long i;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  v   = ((lizard_ast_list_node_t *)args->head)->ast;
+  idx = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  val = ((lizard_ast_list_node_t *)args->head->next->next)->ast;
+  if (v->type != AST_PVEC || idx->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  i = mpz_get_si(idx->data.number);
+  if (i < 0 || i >= v->data.pvec.count) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  /* Copy-on-write: allocate a new vector with the updated element. */
+  nv = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nv->type = AST_PVEC;
+  nv->data.pvec.count = v->data.pvec.count;
+  nv->data.pvec.capacity = v->data.pvec.count;
+  nv->data.pvec.entries = (lizard_ast_node_t **)lizard_heap_alloc(
+      (size_t)nv->data.pvec.count * sizeof(lizard_ast_node_t *));
+  memcpy(nv->data.pvec.entries, v->data.pvec.entries,
+         (size_t)nv->data.pvec.count * sizeof(lizard_ast_node_t *));
+  nv->data.pvec.entries[i] = val;
+  return nv;
+}
+
+/* (pvec-push v val) — append, returns new vector. */
+lizard_ast_node_t *lizard_primitive_pvec_push(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *v, *val, *nv;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  v   = ((lizard_ast_list_node_t *)args->head)->ast;
+  val = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (v->type != AST_PVEC) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  nv = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nv->type = AST_PVEC;
+  nv->data.pvec.count = v->data.pvec.count + 1;
+  nv->data.pvec.capacity = nv->data.pvec.count;
+  nv->data.pvec.entries = (lizard_ast_node_t **)lizard_heap_alloc(
+      (size_t)nv->data.pvec.count * sizeof(lizard_ast_node_t *));
+  if (v->data.pvec.count > 0) {
+    memcpy(nv->data.pvec.entries, v->data.pvec.entries,
+           (size_t)v->data.pvec.count * sizeof(lizard_ast_node_t *));
+  }
+  nv->data.pvec.entries[v->data.pvec.count] = val;
+  return nv;
+}
+
+/* (pvec-count v) — number of elements. */
+lizard_ast_node_t *lizard_primitive_pvec_count(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *v, *r;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  v = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (v->type != AST_PVEC) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  r->type = AST_NUMBER;
+  mpz_init_set_si(r->data.number, v->data.pvec.count);
+  return r;
+}
+
+/* (pvec->list v) — convert to a Scheme list. */
+lizard_ast_node_t *lizard_primitive_pvec_to_list(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *v, *result, *node;
+  int i;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  v = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (v->type != AST_PVEC) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  result = lizard_make_nil(heap);
+  for (i = v->data.pvec.count - 1; i >= 0; i--) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = v->data.pvec.entries[i];
+    node->data.pair.cdr = result;
+    result = node;
+  }
+  return result;
+}
+
+/* (pvec? x) — predicate. */
+lizard_ast_node_t *lizard_primitive_pvecp(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_PVEC);
+}
+
+/* ============================================================
+ * Track C.2: Persistent hash map (initial flat-array impl).
+ *
+ * Stored as AST_HAMT with root pointing to a flat array of
+ * key-value pair nodes. Will be upgraded to a proper 32-way
+ * HAMT trie for large maps.
+ * ============================================================ */
+
+typedef struct {
+  lizard_ast_node_t *key;
+  lizard_ast_node_t *val;
+} hamt_entry_t;
+
+typedef struct {
+  hamt_entry_t *entries;
+  int count;
+  int capacity;
+} hamt_flat_t;
+
+static int hamt_key_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
+  if (a->type != b->type) return 0;
+  switch (a->type) {
+  case AST_NUMBER:  return mpz_cmp(a->data.number, b->data.number) == 0;
+  case AST_SYMBOL:  return strcmp(a->data.variable, b->data.variable) == 0;
+  case AST_STRING:  return strcmp(a->data.string, b->data.string) == 0;
+  case AST_BOOL:    return a->data.boolean == b->data.boolean;
+  case AST_NIL:     return 1;
+  default:          return a == b;
+  }
+}
+
+/* (hash-map k1 v1 k2 v2 ...) — create from alternating key-value pairs. */
+lizard_ast_node_t *lizard_primitive_phash_map(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *node;
+  hamt_flat_t *h;
+  lz_list_node_t *iter;
+  int count;
+  (void)env;
+  count = 0;
+  for (iter = args->head; iter != args->nil; iter = iter->next) count++;
+  h = (hamt_flat_t *)lizard_heap_alloc(sizeof(hamt_flat_t));
+  h->count = 0;
+  h->capacity = (count / 2) + 4;
+  h->entries = (hamt_entry_t *)lizard_heap_alloc(
+      (size_t)h->capacity * sizeof(hamt_entry_t));
+  /* Parse alternating key-value pairs. */
+  iter = args->head;
+  while (iter != args->nil && iter->next != args->nil) {
+    h->entries[h->count].key = ((lizard_ast_list_node_t *)iter)->ast;
+    iter = iter->next;
+    h->entries[h->count].val = ((lizard_ast_list_node_t *)iter)->ast;
+    iter = iter->next;
+    h->count++;
+  }
+  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node->type = AST_HAMT;
+  node->data.hamt.root = h;
+  node->data.hamt.count = h->count;
+  return node;
+}
+
+/* (hash-get m key [default]) — lookup key, return value or default/#f. */
+lizard_ast_node_t *lizard_primitive_phash_get(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *key, *dflt;
+  hamt_flat_t *h;
+  int i;
+  (void)env;
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  key = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  dflt = (args->head->next->next != args->nil)
+           ? ((lizard_ast_list_node_t *)args->head->next->next)->ast
+           : lizard_make_bool(heap, 0);
+  if (map_node->type != AST_HAMT) return dflt;
+  h = (hamt_flat_t *)map_node->data.hamt.root;
+  for (i = 0; i < h->count; i++) {
+    if (hamt_key_equal(h->entries[i].key, key)) {
+      return h->entries[i].val;
+    }
+  }
+  return dflt;
+}
+
+/* (hash-set m key val) — functional update, returns new map. */
+lizard_ast_node_t *lizard_primitive_phash_set(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *key, *val, *result;
+  hamt_flat_t *h, *nh;
+  int i, found;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  key = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  val = ((lizard_ast_list_node_t *)args->head->next->next)->ast;
+  if (map_node->type != AST_HAMT) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  h = (hamt_flat_t *)map_node->data.hamt.root;
+  /* Copy-on-write. */
+  nh = (hamt_flat_t *)lizard_heap_alloc(sizeof(hamt_flat_t));
+  nh->capacity = h->count + 2;
+  nh->entries = (hamt_entry_t *)lizard_heap_alloc(
+      (size_t)nh->capacity * sizeof(hamt_entry_t));
+  found = 0;
+  for (i = 0; i < h->count; i++) {
+    if (hamt_key_equal(h->entries[i].key, key)) {
+      nh->entries[i].key = key;
+      nh->entries[i].val = val;
+      found = 1;
+    } else {
+      nh->entries[i] = h->entries[i];
+    }
+  }
+  if (!found) {
+    nh->entries[h->count].key = key;
+    nh->entries[h->count].val = val;
+    nh->count = h->count + 1;
+  } else {
+    nh->count = h->count;
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_HAMT;
+  result->data.hamt.root = nh;
+  result->data.hamt.count = nh->count;
+  return result;
+}
+
+/* (hash-keys m) — list of keys. */
+lizard_ast_node_t *lizard_primitive_phash_keys(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *result, *node;
+  hamt_flat_t *h;
+  int i;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (map_node->type != AST_HAMT) return lizard_make_nil(heap);
+  h = (hamt_flat_t *)map_node->data.hamt.root;
+  result = lizard_make_nil(heap);
+  for (i = h->count - 1; i >= 0; i--) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = h->entries[i].key;
+    node->data.pair.cdr = result;
+    result = node;
+  }
+  return result;
+}
+
+/* (hash-count m) — number of entries. */
+lizard_ast_node_t *lizard_primitive_phash_count(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *r;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  r->type = AST_NUMBER;
+  mpz_init_set_si(r->data.number,
+      (map_node->type == AST_HAMT) ? map_node->data.hamt.count : 0);
+  return r;
+}
+
+/* (hash-map? x) — predicate. */
+lizard_ast_node_t *lizard_primitive_phash_mapp(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_HAMT);
+}
+
+/* ============================================================
+ * Track K: Kernel type-checker primitives.
+ * ============================================================ */
+#include "kernel.h"
+
+/* Helper: convert Lisp S-expression to kernel term. */
+static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
+  if (e == NULL) return NULL;
+  if (e->type == AST_NUMBER) {
+    /* Build a Nat literal: 0 → kt_zero, n → succ^n(zero) */
+    long n = mpz_get_si(e->data.number);
+    kterm_t *t = kt_zero(heap);
+    long i;
+    for (i = 0; i < n; i++) t = kt_succ(heap, t);
+    return t;
+  }
+  if (e->type == AST_SYMBOL) {
+    const char *s = e->data.variable;
+    if (strcmp(s, "Nat") == 0) return kt_nat(heap);
+    if (strcmp(s, "zero") == 0) return kt_zero(heap);
+    /* de Bruijn variable: #0, #1, etc. */
+    if (s[0] == '#' && s[1] >= '0' && s[1] <= '9') {
+      return kt_var(heap, s[1] - '0');
+    }
+    return NULL;
+  }
+  if (e->type == AST_PAIR || e->type == AST_APPLICATION) {
+    /* Parse (Sort n), (succ e), (Pi (x A) B), (lam (x A) body),
+     * (app f a), (Id A a b), (refl a) */
+    lz_list_t *parts;
+    lizard_ast_node_t *head;
+    if (e->type == AST_APPLICATION) {
+      parts = e->data.application_arguments;
+      if (parts == NULL || parts->head == parts->nil) return NULL;
+      head = ((lizard_ast_list_node_t *)parts->head)->ast;
+    } else {
+      head = e->data.pair.car;
+      parts = NULL;
+    }
+    if (head->type == AST_SYMBOL) {
+      const char *name = head->data.variable;
+      if (strcmp(name, "Sort") == 0 && parts != NULL) {
+        lizard_ast_node_t *lvl = ((lizard_ast_list_node_t *)parts->head->next)->ast;
+        if (lvl->type == AST_NUMBER) {
+          return kt_sort(heap, (int)mpz_get_si(lvl->data.number));
+        }
+      }
+      if (strcmp(name, "succ") == 0 && parts != NULL) {
+        kterm_t *inner = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        return inner ? kt_succ(heap, inner) : NULL;
+      }
+      if (strcmp(name, "refl") == 0 && parts != NULL) {
+        kterm_t *inner = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        return inner ? kt_refl(heap, inner) : NULL;
+      }
+    }
+  }
+  return NULL;
+}
+
+/* (kernel-infer expr) — parse S-exp as kernel term, infer type. */
+lizard_ast_node_t *lizard_primitive_kernel_infer(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *expr, *result;
+  kterm_t *term, *type;
+  kctx_t *ctx;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  term = sexp_to_kterm(heap, expr);
+  if (term == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  ctx = kctx_create(heap);
+  type = kt_infer(heap, ctx, term);
+  if (type == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  /* Print the inferred type to a string. */
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  {
+    /* Use tmpfile since fmemopen is not C89. */
+    char buf[256];
+    FILE *fp = tmpfile();
+    long pos;
+    size_t got;
+    if (fp != NULL) {
+      kt_fprint(fp, type);
+      fflush(fp);
+      pos = ftell(fp);
+      if (pos > 0 && (size_t)pos < sizeof(buf)) {
+        rewind(fp);
+        got = fread(buf, 1, (size_t)pos, fp);
+        buf[got] = '\0';
+      } else {
+        buf[0] = '\0';
+      }
+      fclose(fp);
+      {
+        char *sbuf = (char *)lizard_heap_alloc(strlen(buf) + 1);
+        strcpy(sbuf, buf);
+        result->data.string = sbuf;
+      }
+    } else {
+      result->data.string = "<type>";
+    }
+  }
+  return result;
+}
+
+/* (kernel-check expr type-expr) — check term has the given type. */
+lizard_ast_node_t *lizard_primitive_kernel_check(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *term_expr, *type_expr;
+  kterm_t *term, *type;
+  kctx_t *ctx;
+  kernel_result_t result;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  term_expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  type_expr = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  term = sexp_to_kterm(heap, term_expr);
+  type = sexp_to_kterm(heap, type_expr);
+  if (term == NULL || type == NULL) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  ctx = kctx_create(heap);
+  result = kt_check(heap, ctx, term, type);
+  return lizard_make_bool(heap, result == KERNEL_OK);
+}
+
 static void install_one(lizard_heap_t *heap, lizard_env_t *env,
                         const char *name, lizard_primitive_func_t func) {
   lizard_env_define(heap, env, name, lizard_make_primitive(heap, func));
@@ -5429,6 +6674,55 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "module-loaded?",    lizard_primitive_module_loadedp);
   install_one(heap, env, "module-search-path",lizard_primitive_module_search_path);
   install_one(heap, env, "add-module-path!",  lizard_primitive_add_module_path);
+  /* Phase D: GC. */
+  install_one(heap, env, "gc-stats",          lizard_primitive_gc_stats);
+  install_one(heap, env, "gc",               lizard_primitive_gc);
+  /* Phase E: bytecode VM. */
+  install_one(heap, env, "vm-eval",          lizard_primitive_vm_eval);
+  install_one(heap, env, "disassemble",      lizard_primitive_disassemble);
+  install_one(heap, env, "vm-time",          lizard_primitive_vm_time);
+  install_one(heap, env, "time-eval",        lizard_primitive_time_eval);
+  install_one(heap, env, "profile",          lizard_primitive_profile);
+  install_one(heap, env, "error-location",   lizard_primitive_error_location);
+  /* List operations. */
+  install_one(heap, env, "length",           lizard_primitive_length);
+  install_one(heap, env, "append",           lizard_primitive_append);
+  install_one(heap, env, "reverse",          lizard_primitive_reverse);
+  install_one(heap, env, "list?",            lizard_primitive_listp);
+  install_one(heap, env, "apply",            lizard_primitive_apply);
+  install_one(heap, env, "map",              lizard_primitive_map);
+  install_one(heap, env, "filter",           lizard_primitive_filter);
+  install_one(heap, env, "for-each",         lizard_primitive_for_each);
+  /* More list utilities. */
+  install_one(heap, env, "fold-left",        lizard_primitive_fold_left);
+  install_one(heap, env, "assoc",            lizard_primitive_assoc);
+  install_one(heap, env, "member",           lizard_primitive_member);
+  install_one(heap, env, "list-ref",         lizard_primitive_list_ref);
+  install_one(heap, env, "iota",             lizard_primitive_iota);
+  /* Track R: syntax objects. */
+  install_one(heap, env, "datum->syntax",    lizard_primitive_datum_to_syntax);
+  install_one(heap, env, "syntax->datum",    lizard_primitive_syntax_to_datum);
+  install_one(heap, env, "syntax-e",         lizard_primitive_syntax_to_datum);
+  install_one(heap, env, "syntax-source",    lizard_primitive_syntax_source);
+  install_one(heap, env, "syntax?",          lizard_primitive_syntaxp);
+  /* Track C: persistent vectors. */
+  install_one(heap, env, "pvec",             lizard_primitive_pvec);
+  install_one(heap, env, "pvec-ref",         lizard_primitive_pvec_ref);
+  install_one(heap, env, "pvec-set",         lizard_primitive_pvec_set);
+  install_one(heap, env, "pvec-push",        lizard_primitive_pvec_push);
+  install_one(heap, env, "pvec-count",       lizard_primitive_pvec_count);
+  install_one(heap, env, "pvec->list",       lizard_primitive_pvec_to_list);
+  install_one(heap, env, "pvec?",            lizard_primitive_pvecp);
+  /* Track C: persistent hash maps. */
+  install_one(heap, env, "phash-map",        lizard_primitive_phash_map);
+  install_one(heap, env, "phash-get",        lizard_primitive_phash_get);
+  install_one(heap, env, "phash-set",        lizard_primitive_phash_set);
+  install_one(heap, env, "phash-keys",       lizard_primitive_phash_keys);
+  install_one(heap, env, "phash-count",      lizard_primitive_phash_count);
+  install_one(heap, env, "phash-map?",       lizard_primitive_phash_mapp);
+  /* Track K: kernel primitives. */
+  install_one(heap, env, "kernel-check",     lizard_primitive_kernel_check);
+  install_one(heap, env, "kernel-infer",     lizard_primitive_kernel_infer);
   install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
   install_one(heap, env, "expt",            lizard_primitive_expt);
   install_one(heap, env, "gcd",             lizard_primitive_gcd);
