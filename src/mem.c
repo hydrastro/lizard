@@ -52,6 +52,7 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   heap->max_segment_size = max_segment_size;
   heap->head = lizard_create_heap_segment(initial_size);
   heap->current = heap->head;
+  heap->runtime = NULL;  /* Phase 0: set by lizard_runtime_create */
   return heap;
 }
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {

@@ -1010,6 +1010,10 @@ struct lizard_heap {
   lizard_heap_segment_t *current;
   size_t initial_size;
   size_t max_segment_size;
+  /* Phase 0: back-pointer to the owning runtime. NULL for standalone
+   * heaps created directly via lizard_heap_create. Functions that need
+   * runtime state check heap->runtime != NULL before accessing it. */
+  lizard_runtime_t *runtime;
 };
 
 typedef struct lizard_env_entry {

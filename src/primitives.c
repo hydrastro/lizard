@@ -5,12 +5,15 @@
 #include "mem.h"
 #include "parser.h"
 #include "printer.h"
+#include "runtime.h"
 #include "tokenizer.h"
 #include <setjmp.h>
 #include <stdint.h>
-extern jmp_buf callcc_buf;
-extern int callcc_active;
-extern lizard_ast_node_t *callcc_value;
+/* Phase 0: callcc state accessed via heap->runtime. Fallback
+ * globals defined in lizard.c for standalone-heap compat. */
+extern jmp_buf callcc_buf_fallback;
+extern int callcc_active_fallback;
+extern lizard_ast_node_t *callcc_value_fallback;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -720,11 +723,21 @@ lizard_ast_node_t *lizard_primitive_callcc(
   if (proc->type != AST_LAMBDA && proc->type != AST_PRIMITIVE) {
     return lizard_make_error(heap, LIZARD_ERROR_CALLCC_APPLY);
   }
-  if (!callcc_active) {
-    callcc_active = 1;
-    if (setjmp(callcc_buf) != 0) {
-      callcc_active = 0;
-      return callcc_value;
+  if (heap->runtime != NULL) {
+    if (!heap->runtime->callcc_active) {
+      heap->runtime->callcc_active = 1;
+      if (setjmp(heap->runtime->callcc_buf) != 0) {
+        heap->runtime->callcc_active = 0;
+        return heap->runtime->callcc_value;
+      }
+    }
+  } else {
+    if (!callcc_active_fallback) {
+      callcc_active_fallback = 1;
+      if (setjmp(callcc_buf_fallback) != 0) {
+        callcc_active_fallback = 0;
+        return callcc_value_fallback;
+      }
     }
   }
   cont_obj = lizard_make_continuation(current_cont, heap);
@@ -1855,8 +1868,11 @@ lizard_ast_node_t *lizard_primitive_error_value(lz_list_t *args,
 }
 
 /* (gensym [prefix]) — produce a fresh unique symbol on each call.
- * Useful for hand-written hygienic macros until we have syntax-rules. */
-static unsigned long lizard_gensym_counter = 0;
+ * Useful for hand-written hygienic macros until we have syntax-rules.
+ *
+ * Phase 0: counter lives in the runtime (heap->runtime->gensym_counter).
+ * Falls back to a static counter for standalone heaps without a runtime. */
+static unsigned long lizard_gensym_counter_fallback = 0;
 
 lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
@@ -1864,7 +1880,11 @@ lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
   char counter_buf[32];
   char *buf;
   size_t len;
+  unsigned long *counter;
   (void)env;
+  counter = (heap->runtime != NULL)
+              ? &heap->runtime->gensym_counter
+              : &lizard_gensym_counter_fallback;
   if (args->head != args->nil) {
     lizard_ast_node_t *p = ((lizard_ast_list_node_t *)args->head)->ast;
     if (p->type == AST_STRING) {
@@ -1875,8 +1895,8 @@ lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
       return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
     }
   }
-  lizard_gensym_counter++;
-  sprintf(counter_buf, "%lu", lizard_gensym_counter);
+  (*counter)++;
+  sprintf(counter_buf, "%lu", *counter);
   len = strlen(prefix) + strlen(counter_buf) + 1U;
   buf = lizard_heap_alloc(len);
   strcpy(buf, prefix);

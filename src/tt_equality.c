@@ -102,6 +102,7 @@
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
+#include "runtime.h"
 #include <string.h>
 #include <stdlib.h>  /* malloc/free for H.1 HIT registry */
 
@@ -118,7 +119,15 @@ typedef struct lizard_tt_flag {
   struct lizard_tt_flag *next;
 } lizard_tt_flag_t;
 
-static lizard_tt_flag_t *flag_list = NULL;
+/* Phase 0 B.2: formerly process-global state. Fallback globals for
+ * standalone heaps without a runtime. Accessor functions return a
+ * pointer-to-pointer so callers can both read and write through them. */
+static lizard_tt_flag_t *flag_list_fallback = NULL;
+static lizard_tt_flag_t **flag_list_ptr(void) {
+  return (heap != NULL && heap->runtime != NULL)
+           ? (lizard_tt_flag_t **)&heap->runtime->flag_list
+           : &flag_list_fallback;
+}
 
 static char *host_strdup(const char *src) {
   char *dst;
@@ -132,7 +141,7 @@ static char *host_strdup(const char *src) {
 
 static lizard_tt_flag_t *flag_find_or_create(const char *name) {
   lizard_tt_flag_t *f;
-  for (f = flag_list; f != NULL; f = f->next) {
+  for (f = *flag_list_ptr(); f != NULL; f = f->next) {
     if (strcmp(f->name, name) == 0) return f;
   }
   /* Not found; create with default value 1. Persisted across calls;
@@ -140,8 +149,8 @@ static lizard_tt_flag_t *flag_find_or_create(const char *name) {
   f = (lizard_tt_flag_t *)malloc(sizeof(lizard_tt_flag_t));
   f->name = host_strdup(name);
   f->value = 1;
-  f->next = flag_list;
-  flag_list = f;
+  f->next = *flag_list_ptr();
+  *flag_list_ptr() = f;
   return f;
 }
 
@@ -5869,7 +5878,12 @@ typedef struct hit_registry_entry {
   struct hit_registry_entry *next;
 } hit_registry_entry_t;
 
-static hit_registry_entry_t *hit_registry_head = NULL;
+static hit_registry_entry_t *hit_registry_head_fallback = NULL;
+static hit_registry_entry_t **hit_registry_ptr(void) {
+  return (heap != NULL && heap->runtime != NULL)
+           ? (hit_registry_entry_t **)&heap->runtime->hit_registry_head
+           : &hit_registry_head_fallback;
+}
 
 void lizard_tt_hit_register(lizard_ast_node_t *decl) {
   hit_registry_entry_t *entry;
@@ -5879,7 +5893,7 @@ void lizard_tt_hit_register(lizard_ast_node_t *decl) {
       decl->data.tt_hit_decl.name->type != AST_SYMBOL) return;
   name = decl->data.tt_hit_decl.name->data.variable;
   /* Overwrite if already exists. */
-  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+  for (entry = *hit_registry_ptr(); entry != NULL; entry = entry->next) {
     if (strcmp(entry->name, name) == 0) {
       entry->decl = decl;
       return;
@@ -5896,14 +5910,14 @@ void lizard_tt_hit_register(lizard_ast_node_t *decl) {
   if (entry == NULL) return;
   entry->name = name;
   entry->decl = decl;
-  entry->next = hit_registry_head;
-  hit_registry_head = entry;
+  entry->next = *hit_registry_ptr();
+  *hit_registry_ptr() = entry;
 }
 
 lizard_ast_node_t *lizard_tt_hit_lookup(const char *name) {
   hit_registry_entry_t *entry;
   if (name == NULL) return NULL;
-  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+  for (entry = *hit_registry_ptr(); entry != NULL; entry = entry->next) {
     if (strcmp(entry->name, name) == 0) {
       return entry->decl;
     }
@@ -5912,19 +5926,19 @@ lizard_ast_node_t *lizard_tt_hit_lookup(const char *name) {
 }
 
 void lizard_tt_hit_registry_reset(void) {
-  hit_registry_entry_t *entry = hit_registry_head;
+  hit_registry_entry_t *entry = *hit_registry_ptr();
   while (entry != NULL) {
     hit_registry_entry_t *next = entry->next;
     free(entry);
     entry = next;
   }
-  hit_registry_head = NULL;
+  *hit_registry_ptr() = NULL;
 }
 
 long lizard_tt_hit_registry_size(void) {
   hit_registry_entry_t *entry;
   long count = 0;
-  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+  for (entry = *hit_registry_ptr(); entry != NULL; entry = entry->next) {
     count++;
   }
   return count;
@@ -5936,7 +5950,7 @@ long lizard_tt_hit_registry_size(void) {
 lizard_ast_node_t *lizard_tt_hit_lookup_constructor_host(const char *cname) {
   hit_registry_entry_t *entry;
   if (cname == NULL) return NULL;
-  for (entry = hit_registry_head; entry != NULL; entry = entry->next) {
+  for (entry = *hit_registry_ptr(); entry != NULL; entry = entry->next) {
     lz_list_node_t *p;
     lz_list_t *ctors = entry->decl->data.tt_hit_decl.constructors;
     for (p = ctors->head; p != ctors->nil; p = p->next) {
@@ -5979,7 +5993,12 @@ typedef struct logic_rule_entry {
   struct logic_rule_entry *next;
 } logic_rule_entry_t;
 
-static logic_rule_entry_t *logic_config_head = NULL;
+static logic_rule_entry_t *logic_config_head_fallback = NULL;
+static logic_rule_entry_t **logic_config_ptr(void) {
+  return (heap != NULL && heap->runtime != NULL)
+           ? (logic_rule_entry_t **)&heap->runtime->logic_config_head
+           : &logic_config_head_fallback;
+}
 /* Phase M.5.7 — last explicitly-set bundle name, for current_bundle
  * reverse lookup. If a user calls (set-logic 'X) and X still matches
  * the active state, current-logic returns "X". Otherwise (e.g. after
@@ -5990,13 +6009,18 @@ static logic_rule_entry_t *logic_config_head = NULL;
  * state alone is ambiguous in some cases — "all modal toggles on"
  * could be CoC-with-extras or S5. set-logic's explicit name resolves
  * the ambiguity. */
-static const char *logic_last_set_bundle = NULL;
+static const char *logic_last_set_bundle_fallback = NULL;
+static const char **logic_last_bundle_ptr(void) {
+  return (heap != NULL && heap->runtime != NULL)
+           ? (const char **)&heap->runtime->logic_last_set_bundle
+           : &logic_last_set_bundle_fallback;
+}
 
 /* Internal: find a rule by name, return entry or NULL. */
 static logic_rule_entry_t *logic_rule_find(const char *name) {
   logic_rule_entry_t *e;
   if (name == NULL) return NULL;
-  for (e = logic_config_head; e != NULL; e = e->next) {
+  for (e = *logic_config_ptr(); e != NULL; e = e->next) {
     if (strcmp(e->name, name) == 0) return e;
   }
   return NULL;
@@ -6021,8 +6045,8 @@ void lizard_logic_rule_register(const char *name, int default_enabled) {
   memcpy(namedup, name, namelen);
   e->name = namedup;
   e->enabled = default_enabled ? 1 : 0;
-  e->next = logic_config_head;
-  logic_config_head = e;
+  e->next = *logic_config_ptr();
+  *logic_config_ptr() = e;
 }
 
 /* Enable a rule. Auto-registers if not yet present. */
@@ -6065,13 +6089,13 @@ int lizard_logic_rule_enabled(const char *name) {
 long lizard_logic_config_size(void) {
   logic_rule_entry_t *e;
   long count = 0;
-  for (e = logic_config_head; e != NULL; e = e->next) count++;
+  for (e = *logic_config_ptr(); e != NULL; e = e->next) count++;
   return count;
 }
 
 /* Reset the entire configuration. Mostly for tests. */
 void lizard_logic_config_reset(void) {
-  logic_rule_entry_t *e = logic_config_head;
+  logic_rule_entry_t *e = *logic_config_ptr();
   while (e != NULL) {
     logic_rule_entry_t *next = e->next;
     /* Cast away const for free(); we own the string via the malloc
@@ -6082,9 +6106,9 @@ void lizard_logic_config_reset(void) {
     free(e);
     e = next;
   }
-  logic_config_head = NULL;
+  *logic_config_ptr() = NULL;
   /* M.5.7 — clear remembered set-logic name. */
-  logic_last_set_bundle = NULL;
+  *logic_last_bundle_ptr() = NULL;
 }
 
 /* Snapshot: take a deep copy of the current configuration and return
@@ -6102,7 +6126,7 @@ void *lizard_logic_snapshot(void) {
   logic_snapshot_t *snap;
   new_head = NULL;
   new_tail = NULL;
-  for (src = logic_config_head; src != NULL; src = src->next) {
+  for (src = *logic_config_ptr(); src != NULL; src = src->next) {
     logic_rule_entry_t *copy;
     char *namedup;
     size_t namelen;
@@ -6130,7 +6154,7 @@ void *lizard_logic_snapshot(void) {
     return new_head;
   }
   snap->config_head = new_head;
-  snap->last_set_bundle = logic_last_set_bundle;  /* Points into static table; no dup needed. */
+  snap->last_set_bundle = *logic_last_bundle_ptr();  /* Points into static table; no dup needed. */
   return snap;
 }
 
@@ -6142,8 +6166,8 @@ void lizard_logic_restore(void *snapshot) {
   logic_snapshot_t *snap = (logic_snapshot_t *)snapshot;
   lizard_logic_config_reset();
   if (snap != NULL) {
-    logic_config_head = snap->config_head;
-    logic_last_set_bundle = snap->last_set_bundle;
+    *logic_config_ptr() = snap->config_head;
+    *logic_last_bundle_ptr() = snap->last_set_bundle;
     free(snap);
   }
 }
@@ -6155,7 +6179,7 @@ void lizard_logic_config_walk(int (*cb)(const char *name, int enabled,
                                         void *userdata),
                               void *userdata) {
   logic_rule_entry_t *e;
-  for (e = logic_config_head; e != NULL; e = e->next) {
+  for (e = *logic_config_ptr(); e != NULL; e = e->next) {
     if (cb(e->name, e->enabled, userdata)) return;
   }
 }
@@ -6381,7 +6405,7 @@ int lizard_logic_set_bundle(const char *name) {
       /* M.5.7 — remember the explicit name so current_bundle can
        * disambiguate when multiple bundles match the same toggle
        * state. Points into the static table; no allocation. */
-      logic_last_set_bundle = b->name;
+      *logic_last_bundle_ptr() = b->name;
       return 1;
     }
   }
@@ -6507,9 +6531,9 @@ static int bundle_matches_active(logic_bundle_t *b) {
 const char *lizard_logic_current_bundle(void) {
   logic_bundle_t *b;
   /* Fast path: try the remembered name first. */
-  if (logic_last_set_bundle != NULL) {
+  if (*logic_last_bundle_ptr() != NULL) {
     for (b = logic_bundles; b->name != NULL; b++) {
-      if (strcmp(b->name, logic_last_set_bundle) == 0) {
+      if (strcmp(b->name, *logic_last_bundle_ptr()) == 0) {
         if (bundle_matches_active(b)) return b->name;
         break;  /* Found the bundle but it no longer matches; fall through. */
       }
@@ -6932,7 +6956,7 @@ lizard_ast_node_t *lizard_primitive_flag_list(lz_list_t *args,
   (void)env;
   (void)args;
   result = lizard_make_nil(heap);
-  for (f = flag_list; f != NULL; f = f->next) {
+  for (f = *flag_list_ptr(); f != NULL; f = f->next) {
     char *buf = lizard_heap_alloc(strlen(f->name) + 1);
     lizard_ast_node_t *sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     lizard_ast_node_t *pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));

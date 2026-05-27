@@ -3,6 +3,7 @@
 #include "lang.h"
 #include "mem.h"
 #include "primitives.h"
+#include "runtime.h"
 #include <ctype.h>
 #include <ds.h>
 #include <gmp.h>
@@ -12,9 +13,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-jmp_buf callcc_buf;
-int callcc_active = 0;
-lizard_ast_node_t *callcc_value = NULL;
+/* Phase 0: callcc state moved to runtime (heap->runtime->callcc_*).
+ * Fallback globals for standalone heaps without a runtime. These are
+ * non-static because primitives.c also needs them until all callers
+ * go through a runtime. Will be removed when the heap always has
+ * a runtime (Phase 0 Turn 2). */
+jmp_buf callcc_buf_fallback;
+int callcc_active_fallback = 0;
+lizard_ast_node_t *callcc_value_fallback = NULL;
 
 int lizard_continuation_jumped = 0;
 lizard_ast_node_t *lizard_jump_value = NULL;
@@ -355,9 +361,16 @@ lizard_ast_node_t *lizard_eval(
         value = (arg != arg_list->nil)
                     ? lizard_force(((lizard_ast_list_node_t *)arg)->ast, heap)
                     : lizard_make_nil(heap);
-        if (callcc_active) {
-          callcc_value = value;
-          longjmp(callcc_buf, 1);
+        if (heap->runtime != NULL
+              ? heap->runtime->callcc_active
+              : callcc_active_fallback) {
+          if (heap->runtime != NULL) {
+            heap->runtime->callcc_value = value;
+            longjmp(heap->runtime->callcc_buf, 1);
+          } else {
+            callcc_value_fallback = value;
+            longjmp(callcc_buf_fallback, 1);
+          }
         }
         return func->data.continuation.captured_cont(value, env, heap);
       }
@@ -920,12 +933,18 @@ typedef struct lizard_sr_rename {
   struct lizard_sr_rename *next;
 } lizard_sr_rename_t;
 
-static unsigned long lizard_sr_counter = 0;
+/* Phase 0: counter lives in runtime (heap->runtime->sr_counter).
+ * Falls back to a static counter for standalone heaps. */
+static unsigned long lizard_sr_counter_fallback = 0;
 
 static const char *lizard_sr_fresh(const char *base, lizard_heap_t *heap) {
+  unsigned long *counter;
   char *buf = lizard_heap_alloc(strlen(base) + 24);
-  lizard_sr_counter++;
-  sprintf(buf, "%s.h%lu", base, lizard_sr_counter);
+  counter = (heap->runtime != NULL)
+              ? &heap->runtime->sr_counter
+              : &lizard_sr_counter_fallback;
+  (*counter)++;
+  sprintf(buf, "%s.h%lu", base, *counter);
   return buf;
 }
 

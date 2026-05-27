@@ -103,6 +103,19 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
     free(runtime);
     return NULL;
   }
+  /* Phase 0: wire the back-pointer so any function holding the heap
+   * can reach runtime state via heap->runtime. */
+  runtime->heap->runtime = runtime;
+  /* Phase 0: initialize formerly-global state. */
+  runtime->gensym_counter = 0;
+  runtime->sr_counter = 0;
+  runtime->callcc_active = 0;
+  runtime->callcc_value = NULL;
+  /* Phase 0 B.2: logic config, HIT registry, flags start empty. */
+  runtime->logic_config_head = NULL;
+  runtime->logic_last_set_bundle = NULL;
+  runtime->hit_registry_head = NULL;
+  runtime->flag_list = NULL;
   heap = runtime->heap;
   return runtime;
 }
