@@ -12,6 +12,18 @@ struct logic_rule_entry;
 struct hit_registry_entry;
 struct lizard_tt_flag;
 
+/* Phase C: module loader. */
+typedef struct lizard_module_entry {
+  char *canonical_path;         /* absolute or normalized path */
+  lizard_ast_node_t *result;    /* last value from evaluating the module */
+  struct lizard_module_entry *next;
+} lizard_module_entry_t;
+
+typedef struct lizard_search_path {
+  char *directory;
+  struct lizard_search_path *next;
+} lizard_search_path_t;
+
 struct lizard_runtime {
   lizard_heap_t *heap;
   size_t initial_heap_size;
@@ -29,6 +41,9 @@ struct lizard_runtime {
   const char *logic_last_set_bundle;
   struct hit_registry_entry *hit_registry_head;
   struct lizard_tt_flag *flag_list;
+  /* Phase C: module loader. */
+  lizard_module_entry_t *modules_head;
+  lizard_search_path_t *search_path_head;
 };
 
 struct lizard_context {

@@ -80,6 +80,18 @@ lizard_ast_node_t *lizard_primitive_newline(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap);
+/* Phase C: module loader. */
+lizard_ast_node_t *lizard_primitive_import(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_module_loadedp(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_module_search_path(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_add_module_path(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap);
 
 lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
                                                 lizard_env_t *env,

@@ -11,7 +11,7 @@ feature changes from notation, to scaffold, to checked kernel feature.
 | Source positions | partial | Tokens and many parsed AST nodes carry line/column/offset metadata. |
 | Structured diagnostics | partial | API exposes last diagnostic; parser still has some legacy fatal paths. |
 | Hygienic macros | partial | `syntax-rules` exists; full syntax objects/ellipsis/source-aware expansion are future work. |
-| Module system | not implemented | Needs import/export and library loading semantics. |
+| Module system | basic | `(import "path")` with caching, search-path resolution, `(module-loaded?)`, `(add-module-path!)`. No namespacing/exports — imported definitions go into the current environment. |
 | Garbage collector | not implemented | Arena allocation remains the runtime memory model. |
 | Bytecode compiler/VM | not implemented | Planned after runtime/context and syntax pipeline hardening. |
 | Profiler/coverage/debugger | build-tool level | Make targets exist; language-frame debugger/profiler are future work. |

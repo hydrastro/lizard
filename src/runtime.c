@@ -116,6 +116,22 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->logic_last_set_bundle = NULL;
   runtime->hit_registry_head = NULL;
   runtime->flag_list = NULL;
+  /* Phase C: module loader starts with "lib/" on the search path. */
+  runtime->modules_head = NULL;
+  {
+    lizard_search_path_t *lib_path;
+    lib_path = (lizard_search_path_t *)malloc(sizeof(lizard_search_path_t));
+    if (lib_path != NULL) {
+      lib_path->directory = (char *)malloc(5);
+      if (lib_path->directory != NULL) {
+        strcpy(lib_path->directory, "lib/");
+      }
+      lib_path->next = NULL;
+      runtime->search_path_head = lib_path;
+    } else {
+      runtime->search_path_head = NULL;
+    }
+  }
   heap = runtime->heap;
   return runtime;
 }
