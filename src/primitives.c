@@ -1382,6 +1382,8 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_DIAMOND_ELIM:   name = "let-diamond";    break;
   case AST_TT_BOX_APP:        name = "box-app";        break;
   case AST_TT_DIAMOND_BIND:   name = "diamond-bind";   break;
+  case AST_TT_DIAMOND_INTRO_SYM: name = "dia";         break;
+  case AST_TT_POSS_COERCE:    name = "poss-coerce";    break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2612,6 +2614,36 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *args,
   return n;
 }
 
+/* (dia e) — Phase M.5.9 symmetric Diamond introduction. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym(lz_list_t *args,
+                                                          lizard_env_t *env,
+                                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_DIAMOND_INTRO_SYM;
+  n->data.tt_diamond_intro_sym.body = nth_arg(args, 0);
+  return n;
+}
+
+/* (poss-coerce e) — Phase M.5.9 shift from true to poss. */
+lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_POSS_COERCE;
+  n->data.tt_poss_coerce.body = nth_arg(args, 0);
+  return n;
+}
+
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -3100,6 +3132,8 @@ TT_PREDICATE(tt_diamond_introp, AST_TT_DIAMOND_INTRO)
 TT_PREDICATE(tt_diamond_elimp,  AST_TT_DIAMOND_ELIM)
 TT_PREDICATE(tt_box_appp,       AST_TT_BOX_APP)
 TT_PREDICATE(tt_diamond_bindp,  AST_TT_DIAMOND_BIND)
+TT_PREDICATE(tt_diamond_intro_symp, AST_TT_DIAMOND_INTRO_SYM)
+TT_PREDICATE(tt_poss_coercep,       AST_TT_POSS_COERCE)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3161,6 +3195,8 @@ TT_ACCESSOR(tt_box_app_fun, AST_TT_BOX_APP, x->data.tt_box_app.fun)
 TT_ACCESSOR(tt_box_app_arg, AST_TT_BOX_APP, x->data.tt_box_app.arg)
 TT_ACCESSOR(tt_diamond_bind_fun, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.fun)
 TT_ACCESSOR(tt_diamond_bind_arg, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.arg)
+TT_ACCESSOR(tt_diamond_intro_sym_body, AST_TT_DIAMOND_INTRO_SYM, x->data.tt_diamond_intro_sym.body)
+TT_ACCESSOR(tt_poss_coerce_body,       AST_TT_POSS_COERCE,       x->data.tt_poss_coerce.body)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4858,6 +4894,13 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "diamond-bind?",     lizard_primitive_tt_diamond_bindp);
   install_one(heap, env, "diamond-bind-fun",  lizard_primitive_tt_diamond_bind_fun);
   install_one(heap, env, "diamond-bind-arg",  lizard_primitive_tt_diamond_bind_arg);
+  /* Phase M.5.9 — symmetric S5 forms. */
+  install_one(heap, env, "dia",               lizard_primitive_tt_diamond_intro_sym);
+  install_one(heap, env, "dia?",              lizard_primitive_tt_diamond_intro_symp);
+  install_one(heap, env, "dia-body",          lizard_primitive_tt_diamond_intro_sym_body);
+  install_one(heap, env, "poss-coerce",       lizard_primitive_tt_poss_coerce);
+  install_one(heap, env, "poss-coerce?",      lizard_primitive_tt_poss_coercep);
+  install_one(heap, env, "poss-coerce-body",  lizard_primitive_tt_poss_coerce_body);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);

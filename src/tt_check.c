@@ -2099,6 +2099,11 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
   case AST_TT_HIT_PATH:
     /* These are declaration metadata, not term-level entities. */
     return type_error(heap, "HIT declaration/record is not a term");
+  case AST_TT_DIAMOND_INTRO_SYM:
+  case AST_TT_POSS_COERCE:
+    /* Phase M.5.9 Turn 1 — AST nodes added with descents but no
+     * typing rule yet. Turn 2 will wire the symmetric-S5 rules. */
+    return type_error(heap, "symmetric-S5 typing rule not yet implemented (M.5.9 Turn 2)");
   default:
     return type_error(heap, "no inference rule for this term");
   }
@@ -2399,4 +2404,28 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
   lizard_ast_node_t *nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   nil->type = AST_NIL;
   return lizard_tt_check2(nil, ctx, t, T, heap);
+}
+
+/* Phase M.5.9 Turn 1 — three-context wrappers. Turn 1 ignores the
+ * poss_ctx and forwards to the two-context implementation. The
+ * symmetric typing rules in Turn 2 will consult poss_ctx for
+ * Diamond-intro (which requires its body to be poss-typed) and
+ * Diamond-elim (which places its witness in Ω). */
+lizard_ast_node_t *lizard_tt_infer3(lizard_ast_node_t *valid_ctx,
+                                    lizard_ast_node_t *truth_ctx,
+                                    lizard_ast_node_t *poss_ctx,
+                                    lizard_ast_node_t *t,
+                                    lizard_heap_t *heap) {
+  (void)poss_ctx;  /* Turn 1: unused. Turn 2 will thread this. */
+  return lizard_tt_infer2(valid_ctx, truth_ctx, t, heap);
+}
+
+int lizard_tt_check3(lizard_ast_node_t *valid_ctx,
+                     lizard_ast_node_t *truth_ctx,
+                     lizard_ast_node_t *poss_ctx,
+                     lizard_ast_node_t *t,
+                     lizard_ast_node_t *T,
+                     lizard_heap_t *heap) {
+  (void)poss_ctx;
+  return lizard_tt_check2(valid_ctx, truth_ctx, t, T, heap);
 }

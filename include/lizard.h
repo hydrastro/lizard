@@ -203,6 +203,38 @@ typedef enum {
    *
    * Gated on `modalities-enabled`. */
   AST_TT_DIAMOND_BIND,
+  /* (dia e) — Phase M.5.9. Symmetric Diamond introduction.
+   *
+   * The Pfenning-Davies symmetric S5 rule:
+   *
+   *   Δ; Γ; · ⊢ e : A poss
+   *   ────────────────────
+   *   Δ; Γ; · ⊢ dia e : Diamond A true
+   *
+   * The body must be a POSS judgment. This is the dual of box-intro:
+   * where box requires Δ-only with truth dropped, dia requires the
+   * body to be a poss-judgment (which itself requires the Ω context
+   * to be empty at the dia boundary).
+   *
+   * Different from the asymmetric (diamond e) — that wraps any true
+   * judgment loosely. The symmetric (dia e) enforces the proper
+   * scoping discipline.
+   *
+   * Gated on `modalities-enabled` AND `modal-symmetric`. */
+  AST_TT_DIAMOND_INTRO_SYM,
+  /* (poss-coerce e) — Phase M.5.9. Explicit shift from "true" to
+   * "poss" judgments. In the symmetric calculus, any true judgment
+   * can be coerced to a poss judgment by this form:
+   *
+   *   Δ; Γ; · ⊢ e : A true
+   *   ────────────────────
+   *   Δ; Γ; · ⊢ (poss-coerce e) : A poss
+   *
+   * Operationally a no-op (reduces to e). Semantically marks the
+   * judgment kind shift for the symmetric typing rules.
+   *
+   * Gated on `modal-symmetric`. */
+  AST_TT_POSS_COERCE,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -654,6 +686,13 @@ struct lizard_ast_node {
       lizard_ast_node_t *fun;   /* Pi x A (Diamond B) */
       lizard_ast_node_t *arg;   /* Diamond A */
     } tt_diamond_bind;
+    /* Phase M.5.9: Symmetric Diamond intro and poss coercion. */
+    struct {
+      lizard_ast_node_t *body;  /* must be poss-typed */
+    } tt_diamond_intro_sym;
+    struct {
+      lizard_ast_node_t *body;  /* must be true-typed */
+    } tt_poss_coerce;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

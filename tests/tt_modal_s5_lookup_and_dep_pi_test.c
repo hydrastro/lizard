@@ -46,12 +46,22 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "S5");
 
   /* If we manually toggle and break the match, the remembered name
-   * stops applying and we fall back to the table walk. */
+   * stops applying and we fall back to the table walk. After M.5.9,
+   * S5 requires both modal-5-axiom AND modal-symmetric. Disabling
+   * just one makes the state a hybrid that doesn't match any bundle
+   * — it's S5-with-asymmetric-Diamond, which lizard doesn't name.
+   * The honest result is "custom". */
   lizard_test_eval(&e, "(set-logic 'S5)");
   lizard_test_eval(&e, "(logic-rule-disable 'modal-5-axiom)");
   r = lizard_test_eval(&e, "(current-logic)");
-  /* S5 requires modal-5-axiom on; now off. Falls back. State now
-   * matches S4 (4-axiom on, 5-axiom off, everything else default). */
+  TEST_ASSERT_STR(lizard_test_format(r), "custom");
+
+  /* To get S4 by manual toggle, disable both modal-5-axiom and
+   * modal-symmetric. */
+  lizard_test_eval(&e, "(set-logic 'S5)");
+  lizard_test_eval(&e, "(logic-rule-disable 'modal-5-axiom)");
+  lizard_test_eval(&e, "(logic-rule-disable 'modal-symmetric)");
+  r = lizard_test_eval(&e, "(current-logic)");
   TEST_ASSERT_STR(lizard_test_format(r), "S4");
 
   /* Reset clears the remembered name and the toggle state. */

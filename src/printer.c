@@ -402,6 +402,16 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_diamond_bind.arg);
     fprintf(fp, ")");
     return;
+  case AST_TT_DIAMOND_INTRO_SYM:
+    fprintf(fp, "(dia ");
+    lizard_fprint_value(fp, node->data.tt_diamond_intro_sym.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_POSS_COERCE:
+    fprintf(fp, "(poss-coerce ");
+    lizard_fprint_value(fp, node->data.tt_poss_coerce.body);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

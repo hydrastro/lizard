@@ -261,6 +261,13 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *, lizard_env_t *,
 lizard_ast_node_t *lizard_primitive_tt_diamond_bindp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_diamond_bind_fun(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_diamond_bind_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase M.5.9 — symmetric S5 forms. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro_symp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_poss_coercep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_poss_coerce_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -536,6 +543,41 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
                                     lizard_heap_t *heap);
 int lizard_tt_check2(lizard_ast_node_t *valid_ctx,
                      lizard_ast_node_t *truth_ctx,
+                     lizard_ast_node_t *t,
+                     lizard_ast_node_t *T,
+                     lizard_heap_t *heap);
+/* Phase M.5.9 — symmetric S5 three-context kernel API.
+ *
+ * Pfenning-Davies symmetric modal logic uses three judgment forms:
+ *   A valid    — necessarily true (under all worlds)
+ *   A true     — true (in the current world)
+ *   A poss     — possibly true (in some world)
+ *
+ * Correspondingly, three contexts:
+ *   Δ (valid)  — list of valid hypotheses
+ *   Γ (truth)  — list of truth hypotheses
+ *   Ω (poss)   — at most ONE poss hypothesis ("current focus")
+ *
+ * Box and Diamond rules use these contexts symmetrically:
+ *   - Box-intro:   Δ; ·; · ⊢ e : A true  →  Δ; Γ; · ⊢ box e : Box A true
+ *   - Diamond-intro: Δ; Γ; · ⊢ e : A poss  →  Δ; Γ; · ⊢ dia e : Diamond A true
+ *   - Box-elim:    extends Δ with the unboxed witness
+ *   - Diamond-elim: places the witness in Ω as a poss hypothesis
+ *
+ * Phase M.5.9 Turn 1 adds the API as wrappers that pass NIL for
+ * poss_ctx and forward to the existing two-context implementation.
+ * The symmetric typing rules are wired in Turn 2.
+ *
+ * Gated on `modal-symmetric` (default off). Existing modal code
+ * keeps the M.5.7/M.5.8 asymmetric behavior. */
+lizard_ast_node_t *lizard_tt_infer3(lizard_ast_node_t *valid_ctx,
+                                    lizard_ast_node_t *truth_ctx,
+                                    lizard_ast_node_t *poss_ctx,
+                                    lizard_ast_node_t *t,
+                                    lizard_heap_t *heap);
+int lizard_tt_check3(lizard_ast_node_t *valid_ctx,
+                     lizard_ast_node_t *truth_ctx,
+                     lizard_ast_node_t *poss_ctx,
                      lizard_ast_node_t *t,
                      lizard_ast_node_t *T,
                      lizard_heap_t *heap);

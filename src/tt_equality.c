@@ -483,6 +483,10 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
   case AST_TT_DIAMOND_BIND:
     return contains_free_var(t->data.tt_diamond_bind.fun, name) ||
            contains_free_var(t->data.tt_diamond_bind.arg, name);
+  case AST_TT_DIAMOND_INTRO_SYM:
+    return contains_free_var(t->data.tt_diamond_intro_sym.body, name);
+  case AST_TT_POSS_COERCE:
+    return contains_free_var(t->data.tt_poss_coerce.body, name);
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -952,6 +956,26 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       n->type = AST_TT_DIAMOND_BIND;
       n->data.tt_diamond_bind.fun = new_fun;
       n->data.tt_diamond_bind.arg = new_arg;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND_INTRO_SYM: {
+    lizard_ast_node_t *new_body = subst_rec(t->data.tt_diamond_intro_sym.body, x, v, heap);
+    if (new_body == t->data.tt_diamond_intro_sym.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO_SYM;
+      n->data.tt_diamond_intro_sym.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_POSS_COERCE: {
+    lizard_ast_node_t *new_body = subst_rec(t->data.tt_poss_coerce.body, x, v, heap);
+    if (new_body == t->data.tt_poss_coerce.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_POSS_COERCE;
+      n->data.tt_poss_coerce.body = new_body;
       return n;
     }
   }
@@ -1738,6 +1762,26 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_DIAMOND_INTRO_SYM: {
+    lizard_ast_node_t *body = subst_interval(t->data.tt_diamond_intro_sym.body, x, v, heap);
+    if (body == t->data.tt_diamond_intro_sym.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO_SYM;
+      n->data.tt_diamond_intro_sym.body = body;
+      return n;
+    }
+  }
+  case AST_TT_POSS_COERCE: {
+    lizard_ast_node_t *body = subst_interval(t->data.tt_poss_coerce.body, x, v, heap);
+    if (body == t->data.tt_poss_coerce.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_POSS_COERCE;
+      n->data.tt_poss_coerce.body = body;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1985,6 +2029,10 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
   case AST_TT_DIAMOND_BIND:
     return alpha_equal_rec(a->data.tt_diamond_bind.fun, b->data.tt_diamond_bind.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_diamond_bind.arg, b->data.tt_diamond_bind.arg, ea, eb);
+  case AST_TT_DIAMOND_INTRO_SYM:
+    return alpha_equal_rec(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body, ea, eb);
+  case AST_TT_POSS_COERCE:
+    return alpha_equal_rec(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body, ea, eb);
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2361,6 +2409,10 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   case AST_TT_DIAMOND_BIND:
     return lizard_tt_structurally_equal(a->data.tt_diamond_bind.fun, b->data.tt_diamond_bind.fun) &&
            lizard_tt_structurally_equal(a->data.tt_diamond_bind.arg, b->data.tt_diamond_bind.arg);
+  case AST_TT_DIAMOND_INTRO_SYM:
+    return lizard_tt_structurally_equal(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body);
+  case AST_TT_POSS_COERCE:
+    return lizard_tt_structurally_equal(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3656,6 +3708,27 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
       n->data.tt_diamond_bind.arg = arg;
       result = n;
     }
+    break;
+  }
+  case AST_TT_DIAMOND_INTRO_SYM: {
+    /* Phase M.5.9 — symmetric diamond intro. Reduces its body.
+     * No beta rule of its own; the elimination form (let-diamond /
+     * diamond-bind) handles destruction. */
+    lizard_ast_node_t *body = normalize_rec(t->data.tt_diamond_intro_sym.body, heap, memo);
+    if (body == t->data.tt_diamond_intro_sym.body) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO_SYM;
+      n->data.tt_diamond_intro_sym.body = body;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_POSS_COERCE: {
+    /* Phase M.5.9 — poss-coerce is a judgment-shift, no operational
+     * content. Reduces to its body. */
+    result = normalize_rec(t->data.tt_poss_coerce.body, heap, memo);
     break;
   }
   case AST_TT_ID: {
@@ -5886,6 +5959,17 @@ typedef struct logic_bundle {
    * When OFF, unbox requires body to be Box-typed — no extraction.
    * When ON (default), unbox is full S4-style extraction. */
   int t_axiom;
+  /* Phase M.5.9: Symmetric S5 (Pfenning-Davies three-judgment form).
+   * -1 = "don't care".
+   *
+   * When ON, the new symmetric AST forms (dia, let-dia, poss-coerce)
+   * typecheck under the three-context discipline. When OFF, those
+   * forms reject; the existing asymmetric forms (diamond, let-diamond)
+   * are unaffected either way.
+   *
+   * Bundle settings track modal_5_axiom: K/T/S4 have it off, S5 has
+   * it on. */
+  int modal_symmetric;
 } logic_bundle_t;
 
 /* Table of predefined logics. The order matters for reverse lookup:
@@ -5914,36 +5998,36 @@ typedef struct logic_bundle {
  * they declare intent and reserve the names for future axiom work.
  */
 static logic_bundle_t logic_bundles[] = {
-  /* name           cube           structural     features          modal     4ax  5ax  tax */
-  /*                tot ton too    wk ct ex       pf cpf H lat colat me ms   4    5    T  */
-  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  /* name           cube           structural     features          modal     4ax  5ax  tax sym */
+  /*                tot ton too    wk ct ex       pf cpf H lat colat me ms   4    5    T   S  */
+  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
   /* M.4 substructural variants */
-  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
-  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
   /* M.6 feature-matrix variants */
-  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1,    -1,  -1,  -1},
-  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1,    -1,  -1,  -1},
+  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1,    -1,  -1,  -1, -1},
+  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1,    -1,  -1,  -1, -1},
   /* M.5.3+ modal-logic bundles. T differs from S4 by the 4-axiom
    * (modal_4_axiom). S5 differs from S4 by the 5-axiom (modal_5_axiom,
    * M.5.5 Turn 2). K differs from T by the T-axiom (t_axiom, M.5.6):
    * K disables extraction-via-unbox, forcing unbox to keep results
    * boxed. All four modal logics are now operationally distinct. */
-  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  0},
-  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  1},
-  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1},
-  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   1,  1},
+  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  0, 0},
+  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  1, 0},
+  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0},
+  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   1,  1, 1},
   /* Composite: STLC base with modalities (S4-flavored: no 5-axiom). */
-  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1},
-  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0},
+  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 int lizard_logic_set_bundle(const char *name) {
@@ -6014,6 +6098,11 @@ int lizard_logic_set_bundle(const char *name) {
         if (b->t_axiom) lizard_logic_rule_enable("t-axiom-enabled");
         else            lizard_logic_rule_disable("t-axiom-enabled");
       }
+      /* M.5.9 symmetric S5. */
+      if (b->modal_symmetric != -1) {
+        if (b->modal_symmetric) lizard_logic_rule_enable("modal-symmetric");
+        else                    lizard_logic_rule_disable("modal-symmetric");
+      }
       /* M.5.7 — remember the explicit name so current_bundle can
        * disambiguate when multiple bundles match the same toggle
        * state. Points into the static table; no allocation. */
@@ -6031,7 +6120,7 @@ static int bundle_matches_active(logic_bundle_t *b) {
   int term_on, type_on_term, type_on_type;
   int weakening, contraction, exchange;
   int pi_fresh, co_pi_fresh, hit_en, lat_u, lat_co;
-  int modalities_en, modal_strict, modal_4, modal_5, t_ax;
+  int modalities_en, modal_strict, modal_4, modal_5, t_ax, modal_sym;
   int match = 1;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
@@ -6049,6 +6138,7 @@ static int bundle_matches_active(logic_bundle_t *b) {
   modal_4 = lizard_logic_rule_enabled("modal-4-axiom");
   modal_5 = lizard_logic_rule_enabled("modal-5-axiom");
   t_ax    = lizard_logic_rule_enabled("t-axiom-enabled");
+  modal_sym = lizard_logic_rule_enabled("modal-symmetric");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
@@ -6065,6 +6155,7 @@ static int bundle_matches_active(logic_bundle_t *b) {
   if (modal_4 == -1)       modal_4 = 1;
   if (modal_5 == -1)       modal_5 = 1;
   if (t_ax == -1)          t_ax = 1;
+  if (modal_sym == -1)     modal_sym = 1;
   if (b->term_on_type != term_on) return 0;
   if (b->type_on_term != type_on_term) return 0;
   if (b->type_on_type != type_on_type) return 0;
@@ -6107,6 +6198,9 @@ static int bundle_matches_active(logic_bundle_t *b) {
   if (b->t_axiom != -1) {
     if (b->t_axiom != t_ax) match = 0;
   } else if (t_ax != 1) match = 0;
+  if (b->modal_symmetric != -1) {
+    if (b->modal_symmetric != modal_sym) match = 0;
+  } else if (modal_sym != 1) match = 0;
   return match;
 }
 
