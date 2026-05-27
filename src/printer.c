@@ -395,6 +395,13 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_box_app.arg);
     fprintf(fp, ")");
     return;
+  case AST_TT_DIAMOND_BIND:
+    fprintf(fp, "(diamond-bind ");
+    lizard_fprint_value(fp, node->data.tt_diamond_bind.fun);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_diamond_bind.arg);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

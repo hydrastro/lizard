@@ -256,6 +256,11 @@ lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *, lizard_env_t *, liza
 lizard_ast_node_t *lizard_primitive_tt_box_appp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_box_app_fun(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_box_app_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase M.5.8 — Diamond Kleisli composition. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_bindp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_bind_fun(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_bind_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);

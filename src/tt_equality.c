@@ -480,6 +480,9 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
   case AST_TT_BOX_APP:
     return contains_free_var(t->data.tt_box_app.fun, name) ||
            contains_free_var(t->data.tt_box_app.arg, name);
+  case AST_TT_DIAMOND_BIND:
+    return contains_free_var(t->data.tt_diamond_bind.fun, name) ||
+           contains_free_var(t->data.tt_diamond_bind.arg, name);
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -937,6 +940,18 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       n->type = AST_TT_BOX_APP;
       n->data.tt_box_app.fun = new_fun;
       n->data.tt_box_app.arg = new_arg;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND_BIND: {
+    lizard_ast_node_t *new_fun = subst_rec(t->data.tt_diamond_bind.fun, x, v, heap);
+    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_diamond_bind.arg, x, v, heap);
+    if (new_fun == t->data.tt_diamond_bind.fun && new_arg == t->data.tt_diamond_bind.arg) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_BIND;
+      n->data.tt_diamond_bind.fun = new_fun;
+      n->data.tt_diamond_bind.arg = new_arg;
       return n;
     }
   }
@@ -1711,6 +1726,18 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_DIAMOND_BIND: {
+    lizard_ast_node_t *fun = subst_interval(t->data.tt_diamond_bind.fun, x, v, heap);
+    lizard_ast_node_t *arg = subst_interval(t->data.tt_diamond_bind.arg, x, v, heap);
+    if (fun == t->data.tt_diamond_bind.fun && arg == t->data.tt_diamond_bind.arg) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_BIND;
+      n->data.tt_diamond_bind.fun = fun;
+      n->data.tt_diamond_bind.arg = arg;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1955,6 +1982,9 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
   case AST_TT_BOX_APP:
     return alpha_equal_rec(a->data.tt_box_app.fun, b->data.tt_box_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_box_app.arg, b->data.tt_box_app.arg, ea, eb);
+  case AST_TT_DIAMOND_BIND:
+    return alpha_equal_rec(a->data.tt_diamond_bind.fun, b->data.tt_diamond_bind.fun, ea, eb) &&
+           alpha_equal_rec(a->data.tt_diamond_bind.arg, b->data.tt_diamond_bind.arg, ea, eb);
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2328,6 +2358,9 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   case AST_TT_BOX_APP:
     return lizard_tt_structurally_equal(a->data.tt_box_app.fun, b->data.tt_box_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_box_app.arg, b->data.tt_box_app.arg);
+  case AST_TT_DIAMOND_BIND:
+    return lizard_tt_structurally_equal(a->data.tt_diamond_bind.fun, b->data.tt_diamond_bind.fun) &&
+           lizard_tt_structurally_equal(a->data.tt_diamond_bind.arg, b->data.tt_diamond_bind.arg);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3592,6 +3625,35 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
       n->type = AST_TT_BOX_APP;
       n->data.tt_box_app.fun = fun;
       n->data.tt_box_app.arg = arg;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_DIAMOND_BIND: {
+    /* Phase M.5.8 Diamond bind reduction:
+     *   (diamond-bind f (diamond a)) → (@ f a)
+     *
+     * The function f : A → Diamond B, when applied to the unboxed a,
+     * yields a Diamond B directly. No re-wrapping needed (unlike box-
+     * app, whose result is Box B and must be re-boxed).
+     *
+     * Otherwise, normalize subterms. */
+    lizard_ast_node_t *fun = normalize_rec(t->data.tt_diamond_bind.fun, heap, memo);
+    lizard_ast_node_t *arg = normalize_rec(t->data.tt_diamond_bind.arg, heap, memo);
+    if (arg->type == AST_TT_DIAMOND_INTRO) {
+      /* Construct (@ f a). */
+      lizard_ast_node_t *app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      app->type = AST_TT_APP;
+      app->data.tt_app.fun = fun;
+      app->data.tt_app.arg = arg->data.tt_diamond_intro.body;
+      result = normalize_rec(app, heap, memo);
+    } else if (fun == t->data.tt_diamond_bind.fun && arg == t->data.tt_diamond_bind.arg) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_BIND;
+      n->data.tt_diamond_bind.fun = fun;
+      n->data.tt_diamond_bind.arg = arg;
       result = n;
     }
     break;

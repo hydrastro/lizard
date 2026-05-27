@@ -978,14 +978,30 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
       char fresh_name[32];
       lizard_ast_node_t *y_sym, *unbox_term;
       lizard_ast_node_t *new_b;
+      int max_retries;
       if (lizard_logic_rule_enabled("t-axiom-enabled") == 0) {
         return type_error(heap,
           "box-app on dependent Pi rejected: t-axiom-enabled disabled");
       }
-      /* Construct a fresh variable name. The format uses the dim
-       * counter for uniqueness across calls. */
-      snprintf(fresh_name, sizeof(fresh_name), "__boxapp_%ld",
-               lizard_tt_next_fresh_dim());
+      /* M.5.8 — Hygiene: pick a fresh name that is FREE in both
+       * arg and inner_b. The dim counter gives uniqueness across
+       * calls but doesn't a priori prevent collision with whatever
+       * names the user wrote. We retry up to 100 times bumping the
+       * counter; in practice the first try always works because
+       * users don't write __boxapp_N names. */
+      max_retries = 100;
+      while (max_retries-- > 0) {
+        snprintf(fresh_name, sizeof(fresh_name), "__boxapp_%ld",
+                 lizard_tt_next_fresh_dim());
+        if (!contains_free_var_public(arg, fresh_name) &&
+            !contains_free_var_public(inner_b, fresh_name)) {
+          break;  /* Free in both — safe to use. */
+        }
+      }
+      if (max_retries <= 0) {
+        return type_error(heap,
+          "box-app fresh name allocation failed (collision retry exhausted)");
+      }
       /* Allocate the symbol node for y. Strings live in heap. */
       y_sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       y_sym->type = AST_SYMBOL;
@@ -1012,6 +1028,108 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     result->type = AST_TT_BOX;
     result->data.tt_box.argument = inner_b;
+    return result;
+  }
+  case AST_TT_DIAMOND_BIND: {
+    /* Phase M.5.8 — Diamond Kleisli composition / monadic bind:
+     *
+     *   Δ; Γ ⊢ f : Pi x A (Diamond B)    Δ; Γ ⊢ d : Diamond A
+     *   ─────────────────────────────────────────────────────
+     *   Δ; Γ ⊢ (diamond-bind f d) : Diamond B
+     *
+     * For DEPENDENT B (mentions x), the result is Diamond B[a/x]
+     * where a is extracted from d. Like box-app, we use the let-
+     * diamond elim form to "extract" — but Diamond extraction is
+     * always available (it's the basic Diamond elim rule), so we
+     * don't need a t-axiom-style gate here. Diamond-extraction
+     * is unconditional.
+     *
+     * Substitution for the dependent case uses (let-diamond y d y)
+     * — the dual of box's (unbox y a y).
+     *
+     * Gated on `modalities-enabled`. */
+    lizard_ast_node_t *fun = t->data.tt_diamond_bind.fun;
+    lizard_ast_node_t *arg = t->data.tt_diamond_bind.arg;
+    lizard_ast_node_t *fun_type, *arg_type;
+    lizard_ast_node_t *inner_a, *inner_b_diamond, *inner_b;
+    const char *inner_binder;
+    lizard_ast_node_t *result;
+    int is_dependent;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "diamond-bind rejected: modalities-enabled disabled");
+    }
+    fun_type = lizard_tt_infer2(valid_ctx, ctx, fun, heap);
+    if (is_error(fun_type)) return fun_type;
+    fun_type = lizard_tt_reduce(fun_type, heap);
+    if (fun_type->type != AST_TT_PI) {
+      return type_error(heap, "diamond-bind fun not of Pi type");
+    }
+    inner_a = fun_type->data.tt_pi.domain;
+    inner_b_diamond = fun_type->data.tt_pi.codomain;
+    inner_b_diamond = lizard_tt_reduce(inner_b_diamond, heap);
+    if (inner_b_diamond->type != AST_TT_DIAMOND) {
+      return type_error(heap, "diamond-bind fun's codomain not Diamond-typed");
+    }
+    inner_b = inner_b_diamond->data.tt_diamond.argument;
+    inner_binder = (fun_type->data.tt_pi.binder &&
+                    fun_type->data.tt_pi.binder->type == AST_SYMBOL)
+                       ? fun_type->data.tt_pi.binder->data.variable
+                       : NULL;
+    /* arg must have type Diamond (inner_a). */
+    arg_type = lizard_tt_infer2(valid_ctx, ctx, arg, heap);
+    if (is_error(arg_type)) return arg_type;
+    arg_type = lizard_tt_reduce(arg_type, heap);
+    if (arg_type->type != AST_TT_DIAMOND) {
+      return type_error(heap, "diamond-bind arg not of Diamond type");
+    }
+    if (!lizard_tt_structurally_equal(arg_type->data.tt_diamond.argument, inner_a)) {
+      return type_error(heap, "diamond-bind arg/fun domain mismatch");
+    }
+    /* Note: the codomain (Diamond B) can mention x; B itself is the
+     * relevant question for "dependent". Check if B mentions x. */
+    is_dependent = (inner_binder != NULL && inner_b != NULL &&
+                    contains_free_var_public(inner_b, inner_binder));
+    if (is_dependent) {
+      /* Dependent: substitute (let-diamond y arg y) for x in B. */
+      char fresh_name[32];
+      lizard_ast_node_t *y_sym, *letd_term;
+      lizard_ast_node_t *new_b;
+      int max_retries = 100;
+      while (max_retries-- > 0) {
+        snprintf(fresh_name, sizeof(fresh_name), "__dbind_%ld",
+                 lizard_tt_next_fresh_dim());
+        if (!contains_free_var_public(arg, fresh_name) &&
+            !contains_free_var_public(inner_b, fresh_name)) {
+          break;
+        }
+      }
+      if (max_retries <= 0) {
+        return type_error(heap,
+          "diamond-bind fresh name allocation failed (collision retry exhausted)");
+      }
+      y_sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      y_sym->type = AST_SYMBOL;
+      {
+        size_t len = strlen(fresh_name) + 1;
+        char *namebuf = lizard_heap_alloc(len);
+        memcpy(namebuf, fresh_name, len);
+        y_sym->data.variable = namebuf;
+      }
+      letd_term = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      letd_term->type = AST_TT_DIAMOND_ELIM;
+      letd_term->data.tt_diamond_elim.binder = y_sym;
+      letd_term->data.tt_diamond_elim.scrutinee = arg;
+      letd_term->data.tt_diamond_elim.body = y_sym;
+      new_b = lizard_tt_subst(inner_b, inner_binder, letd_term, heap);
+      result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      result->type = AST_TT_DIAMOND;
+      result->data.tt_diamond.argument = new_b;
+      return result;
+    }
+    /* Non-dependent: just wrap inner_b in Diamond. */
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_DIAMOND;
+    result->data.tt_diamond.argument = inner_b;
     return result;
   }
   case AST_TT_APP: {

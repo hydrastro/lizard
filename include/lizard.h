@@ -183,6 +183,26 @@ typedef enum {
    *
    * Gated on `modalities-enabled` (same toggle as Box). */
   AST_TT_BOX_APP,
+  /* (diamond-bind f d) — Phase M.5.8. The Kleisli composition for
+   * Diamond, dual to box-app:
+   *
+   *   Δ; Γ ⊢ f : Pi x A (Diamond B)    Δ; Γ ⊢ d : Diamond A
+   *   ─────────────────────────────────────────────────────
+   *   Δ; Γ ⊢ (diamond-bind f d) : Diamond B
+   *
+   * This is the "monadic bind" for Diamond: given a function that
+   * lifts A into Diamond B, and a Diamond A value, produce Diamond B.
+   *
+   * Computation: (diamond-bind (Lambda x body) (diamond a))
+   *              → body[a/x]   (where body : Diamond B)
+   *
+   * Like box-app, this is admissible in all S4+ logics — derivable
+   * from let-diamond and Pi. We add it as a first-class form to
+   * make the Diamond monad structure explicit and symmetric with
+   * box-app's K-axiom realization.
+   *
+   * Gated on `modalities-enabled`. */
+  AST_TT_DIAMOND_BIND,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -629,6 +649,11 @@ struct lizard_ast_node {
       lizard_ast_node_t *fun;   /* Box (Pi x A B) */
       lizard_ast_node_t *arg;   /* Box A */
     } tt_box_app;
+    /* Phase M.5.8: Diamond bind (Kleisli composition). */
+    struct {
+      lizard_ast_node_t *fun;   /* Pi x A (Diamond B) */
+      lizard_ast_node_t *arg;   /* Diamond A */
+    } tt_diamond_bind;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

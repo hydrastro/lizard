@@ -1381,6 +1381,7 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_DIAMOND_INTRO:  name = "diamond";        break;
   case AST_TT_DIAMOND_ELIM:   name = "let-diamond";    break;
   case AST_TT_BOX_APP:        name = "box-app";        break;
+  case AST_TT_DIAMOND_BIND:   name = "diamond-bind";   break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2595,6 +2596,22 @@ lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *args,
   return n;
 }
 
+/* (diamond-bind f d) — Phase M.5.8 Diamond Kleisli composition. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_DIAMOND_BIND;
+  n->data.tt_diamond_bind.fun = nth_arg(args, 0);
+  n->data.tt_diamond_bind.arg = nth_arg(args, 1);
+  return n;
+}
+
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -3082,6 +3099,7 @@ TT_PREDICATE(tt_box_elimp,  AST_TT_BOX_ELIM)
 TT_PREDICATE(tt_diamond_introp, AST_TT_DIAMOND_INTRO)
 TT_PREDICATE(tt_diamond_elimp,  AST_TT_DIAMOND_ELIM)
 TT_PREDICATE(tt_box_appp,       AST_TT_BOX_APP)
+TT_PREDICATE(tt_diamond_bindp,  AST_TT_DIAMOND_BIND)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3141,6 +3159,8 @@ TT_ACCESSOR(tt_diamond_elim_scrutinee, AST_TT_DIAMOND_ELIM, x->data.tt_diamond_e
 TT_ACCESSOR(tt_diamond_elim_body,      AST_TT_DIAMOND_ELIM, x->data.tt_diamond_elim.body)
 TT_ACCESSOR(tt_box_app_fun, AST_TT_BOX_APP, x->data.tt_box_app.fun)
 TT_ACCESSOR(tt_box_app_arg, AST_TT_BOX_APP, x->data.tt_box_app.arg)
+TT_ACCESSOR(tt_diamond_bind_fun, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.fun)
+TT_ACCESSOR(tt_diamond_bind_arg, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.arg)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4833,6 +4853,11 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "box-app?",  lizard_primitive_tt_box_appp);
   install_one(heap, env, "box-app-fun", lizard_primitive_tt_box_app_fun);
   install_one(heap, env, "box-app-arg", lizard_primitive_tt_box_app_arg);
+  /* Phase M.5.8 — Diamond Kleisli composition. */
+  install_one(heap, env, "diamond-bind",      lizard_primitive_tt_diamond_bind);
+  install_one(heap, env, "diamond-bind?",     lizard_primitive_tt_diamond_bindp);
+  install_one(heap, env, "diamond-bind-fun",  lizard_primitive_tt_diamond_bind_fun);
+  install_one(heap, env, "diamond-bind-arg",  lizard_primitive_tt_diamond_bind_arg);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);
