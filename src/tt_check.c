@@ -250,10 +250,26 @@ static const char *lambda_cube_required_axis(long dom_level, long cod_level,
 
 /* ----- The checker --------------------------------------------------- */
 
-lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
-                                    lizard_ast_node_t *ctx,
-                                   lizard_ast_node_t *t,
-                                   lizard_heap_t *heap) {
+/* Phase M.5.9 Turn 2a — infer2_kind_impl is the unified implementation
+ * for both infer2 (no kind output) and infer2_kind (kind output).
+ *
+ * Every existing case sets *out_kind = LIZARD_KIND_TRUE at function
+ * entry (done once below). Cases that produce other kinds (Turn 2b:
+ * dia, poss-coerce, et al.) will override this. Internal recursive
+ * calls use lizard_tt_infer2 (the no-kind wrapper) unless they
+ * specifically need the subterm's kind.
+ *
+ * The behavior is IDENTICAL to the pre-M.5.9 infer2 — Turn 2a is a
+ * pure mechanical refactor with no semantic change. */
+static lizard_ast_node_t *infer2_kind_impl(
+    lizard_ast_node_t *valid_ctx,
+    lizard_ast_node_t *ctx,
+    lizard_ast_node_t *t,
+    lizard_heap_t *heap,
+    lizard_judgment_kind_t *out_kind) {
+  /* Default kind for all existing rules: TRUE. Turn 2b cases override
+   * this for the new symmetric forms. */
+  if (out_kind != NULL) *out_kind = LIZARD_KIND_TRUE;
   if (t == NULL) return type_error(heap, "null term");
   switch (t->type) {
   case AST_SYMBOL: {
@@ -2109,6 +2125,25 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
   }
 }
 
+/* Phase M.5.9 Turn 2a — public entry points. The no-kind version
+ * (infer2) is the old API: callers that don't care about kinds keep
+ * working unchanged. The with-kind version (infer2_kind) is for new
+ * symmetric-aware code. Both delegate to infer2_kind_impl. */
+lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
+                                    lizard_ast_node_t *ctx,
+                                    lizard_ast_node_t *t,
+                                    lizard_heap_t *heap) {
+  return infer2_kind_impl(valid_ctx, ctx, t, heap, NULL);
+}
+
+lizard_ast_node_t *lizard_tt_infer2_kind(lizard_ast_node_t *valid_ctx,
+                                          lizard_ast_node_t *ctx,
+                                          lizard_ast_node_t *t,
+                                          lizard_heap_t *heap,
+                                          lizard_judgment_kind_t *out_kind) {
+  return infer2_kind_impl(valid_ctx, ctx, t, heap, out_kind);
+}
+
 int lizard_tt_check2(lizard_ast_node_t *valid_ctx,
                      lizard_ast_node_t *ctx,
                     lizard_ast_node_t *t,
@@ -2428,4 +2463,16 @@ int lizard_tt_check3(lizard_ast_node_t *valid_ctx,
                      lizard_heap_t *heap) {
   (void)poss_ctx;
   return lizard_tt_check2(valid_ctx, truth_ctx, t, T, heap);
+}
+
+/* Phase M.5.9 Turn 2a — infer3_kind. Forwards to infer2_kind ignoring
+ * poss_ctx for now. Turn 2b will provide a real implementation. */
+lizard_ast_node_t *lizard_tt_infer3_kind(lizard_ast_node_t *valid_ctx,
+                                          lizard_ast_node_t *truth_ctx,
+                                          lizard_ast_node_t *poss_ctx,
+                                          lizard_ast_node_t *t,
+                                          lizard_heap_t *heap,
+                                          lizard_judgment_kind_t *out_kind) {
+  (void)poss_ctx;
+  return lizard_tt_infer2_kind(valid_ctx, truth_ctx, t, heap, out_kind);
 }

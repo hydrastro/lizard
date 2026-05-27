@@ -546,6 +546,40 @@ int lizard_tt_check2(lizard_ast_node_t *valid_ctx,
                      lizard_ast_node_t *t,
                      lizard_ast_node_t *T,
                      lizard_heap_t *heap);
+
+/* Phase M.5.9 Turn 2a — judgment-kind tracking infrastructure.
+ *
+ * In symmetric S5 (Pfenning-Davies), each typing judgment carries a
+ * KIND in addition to a type:
+ *
+ *   LIZARD_KIND_TRUE   — A true       (in the current world)
+ *   LIZARD_KIND_VALID  — A valid      (under all worlds)
+ *   LIZARD_KIND_POSS   — A poss       (in some world)
+ *
+ * Existing code that doesn't care about kinds keeps calling infer2 /
+ * infer3, which under the hood produce LIZARD_KIND_TRUE — matching
+ * the implicit assumption of all pre-M.5.9 code.
+ *
+ * Turn 2a adds the infrastructure: every existing rule produces
+ * TRUE-kind. Turn 2b will introduce rules that produce other kinds
+ * (notably dia → TRUE from POSS body, poss-coerce → POSS from TRUE
+ * body) and consumers that check the kind.
+ *
+ * The `out_kind` parameter is OPTIONAL: pass NULL if you don't care.
+ * When non-NULL, the function writes the judgment kind of the
+ * inferred result. */
+typedef enum {
+  LIZARD_KIND_TRUE  = 0,
+  LIZARD_KIND_VALID = 1,
+  LIZARD_KIND_POSS  = 2
+} lizard_judgment_kind_t;
+
+lizard_ast_node_t *lizard_tt_infer2_kind(lizard_ast_node_t *valid_ctx,
+                                          lizard_ast_node_t *truth_ctx,
+                                          lizard_ast_node_t *t,
+                                          lizard_heap_t *heap,
+                                          lizard_judgment_kind_t *out_kind);
+
 /* Phase M.5.9 — symmetric S5 three-context kernel API.
  *
  * Pfenning-Davies symmetric modal logic uses three judgment forms:
@@ -575,6 +609,16 @@ lizard_ast_node_t *lizard_tt_infer3(lizard_ast_node_t *valid_ctx,
                                     lizard_ast_node_t *poss_ctx,
                                     lizard_ast_node_t *t,
                                     lizard_heap_t *heap);
+
+/* infer3_kind: three-context, with optional judgment-kind output.
+ * Turn 2a wrapper around infer2_kind (forwards, ignoring poss_ctx).
+ * Turn 2b will provide a separate implementation that uses Ω. */
+lizard_ast_node_t *lizard_tt_infer3_kind(lizard_ast_node_t *valid_ctx,
+                                          lizard_ast_node_t *truth_ctx,
+                                          lizard_ast_node_t *poss_ctx,
+                                          lizard_ast_node_t *t,
+                                          lizard_heap_t *heap,
+                                          lizard_judgment_kind_t *out_kind);
 int lizard_tt_check3(lizard_ast_node_t *valid_ctx,
                      lizard_ast_node_t *truth_ctx,
                      lizard_ast_node_t *poss_ctx,
