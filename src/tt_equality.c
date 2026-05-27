@@ -5578,6 +5578,9 @@ typedef struct logic_bundle {
   int HIT_enabled;
   int lattice_universes;
   int couniverse_lattice;
+  /* Phase M.5.3: modal logic toggles. -1 = "don't care". */
+  int modalities_enabled;
+  int modal_strict_typing;
 } logic_bundle_t;
 
 /* Table of predefined logics. The order matters for reverse lookup:
@@ -5589,27 +5592,50 @@ typedef struct logic_bundle {
  * Phase M.6: two new bundles demonstrate the matrix:
  *   STLC-strict     — STLC with ALL lizard extras disabled
  *   CoC-plus-lattice — CoC with lattice on, HITs off
+ *
+ * Phase M.5.3: modal-logic bundles. At lizard's current depth, K, T,
+ * S4, and S5 are operationally indistinguishable — the strict box-
+ * intro and unbox rules implemented in M.5.2 Turn 2 are the same
+ * across these logics. What differs between them are AXIOMS:
+ *
+ *   K: no extra axioms
+ *   T: K + (□A → A)
+ *   S4: T + (□A → □□A)
+ *   S5: S4 + (◇A → □◇A)
+ *
+ * These axioms are not yet wired as type-checkable rules. Selecting
+ * 'K vs 'S4 currently flips the same toggles and produces identical
+ * type-checking behavior. The bundle names are forward-looking:
+ * they declare intent and reserve the names for future axiom work.
  */
 static logic_bundle_t logic_bundles[] = {
-  /* name           cube           structural     features         */
-  /*                tot ton too    wk ct ex       pf cpf H lat colat */
-  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
-  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  /* name           cube           structural     features          modal */
+  /*                tot ton too    wk ct ex       pf cpf H lat colat me ms */
+  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
   /* M.4 substructural variants */
-  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1},
-  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1},
-  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1},
+  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1},
   /* M.6 feature-matrix variants */
-  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0},
-  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1},
-  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1},
+  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1},
+  /* M.5.3 modal-logic bundles. Each is CoC-base with both modal
+   * toggles ON. K/T/S4/S5 are currently aliases — see comment above. */
+  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
+  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
+  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
+  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
+  /* Composite: STLC base with modalities (minimal modal logic). */
+  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
+  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 int lizard_logic_set_bundle(const char *name) {
@@ -5656,6 +5682,15 @@ int lizard_logic_set_bundle(const char *name) {
         if (b->couniverse_lattice) lizard_logic_rule_enable("couniverse-lattice");
         else                       lizard_logic_rule_disable("couniverse-lattice");
       }
+      /* M.5.3 modal toggles. */
+      if (b->modalities_enabled != -1) {
+        if (b->modalities_enabled) lizard_logic_rule_enable("modalities-enabled");
+        else                       lizard_logic_rule_disable("modalities-enabled");
+      }
+      if (b->modal_strict_typing != -1) {
+        if (b->modal_strict_typing) lizard_logic_rule_enable("modal-strict-typing");
+        else                        lizard_logic_rule_disable("modal-strict-typing");
+      }
       return 1;
     }
   }
@@ -5670,6 +5705,7 @@ const char *lizard_logic_current_bundle(void) {
   int weakening, contraction, exchange;
   int pi_fresh, co_pi_fresh, hit_en, lat_u, lat_co;
   logic_bundle_t *b;
+  int modalities_en, modal_strict;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
   type_on_type = lizard_logic_rule_enabled("type-depends-on-type");
@@ -5681,6 +5717,8 @@ const char *lizard_logic_current_bundle(void) {
   hit_en       = lizard_logic_rule_enabled("HIT-enabled");
   lat_u        = lizard_logic_rule_enabled("lattice-universes");
   lat_co       = lizard_logic_rule_enabled("couniverse-lattice");
+  modalities_en = lizard_logic_rule_enabled("modalities-enabled");
+  modal_strict  = lizard_logic_rule_enabled("modal-strict-typing");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
@@ -5692,6 +5730,8 @@ const char *lizard_logic_current_bundle(void) {
   if (hit_en == -1)       hit_en = 1;
   if (lat_u == -1)        lat_u = 1;
   if (lat_co == -1)       lat_co = 1;
+  if (modalities_en == -1) modalities_en = 1;
+  if (modal_strict == -1)  modal_strict = 1;
   for (b = logic_bundles; b->name != NULL; b++) {
     int match = 1;
     if (b->term_on_type != term_on) continue;
@@ -5723,6 +5763,13 @@ const char *lizard_logic_current_bundle(void) {
     if (b->couniverse_lattice != -1) {
       if (b->couniverse_lattice != lat_co) match = 0;
     } else if (lat_co != 1) match = 0;
+    /* M.5.3 modal toggles. */
+    if (b->modalities_enabled != -1) {
+      if (b->modalities_enabled != modalities_en) match = 0;
+    } else if (modalities_en != 1) match = 0;
+    if (b->modal_strict_typing != -1) {
+      if (b->modal_strict_typing != modal_strict) match = 0;
+    } else if (modal_strict != 1) match = 0;
     if (match) return b->name;
   }
   return "custom";
