@@ -5356,19 +5356,37 @@ typedef struct logic_bundle {
   int term_on_type;
   int type_on_term;
   int type_on_type;
+  /* Phase M.4: structural rules. -1 means "don't care" (the bundle
+   * doesn't specify this axis); 0 means "off"; 1 means "on". This
+   * lets the cube-only bundles (STLC etc.) leave structural rules
+   * unspecified while linear / affine / relevant bundles fix them. */
+  int weakening;
+  int contraction;
+  int exchange;
 } logic_bundle_t;
 
+/* Table of predefined logics. The order matters for reverse lookup:
+ * we walk this table and return the FIRST match where all specified
+ * (non -1) fields agree with the active config. STLC etc. specify
+ * only the cube axes; linear/affine/relevant additionally specify
+ * structural rules. */
 static logic_bundle_t logic_bundles[] = {
-  {"STLC",            0, 0, 0},
-  {"F",               1, 0, 0},
-  {"LF",              0, 1, 0},
-  {"lambda-P",        0, 1, 0},   /* alias for LF */
-  {"F-omega",         0, 0, 1},
-  {"lambda-P2",       1, 1, 0},
-  {"lambda-P-omega",  0, 1, 1},
-  {"lambda-omega",    1, 0, 1},
-  {"CoC",             1, 1, 1},
-  {NULL, 0, 0, 0}
+  /* name           cube triple   structural triple (-1 = don't care) */
+  {"STLC",            0, 0, 0,    -1, -1, -1},
+  {"F",               1, 0, 0,    -1, -1, -1},
+  {"LF",              0, 1, 0,    -1, -1, -1},
+  {"lambda-P",        0, 1, 0,    -1, -1, -1},   /* alias for LF */
+  {"F-omega",         0, 0, 1,    -1, -1, -1},
+  {"lambda-P2",       1, 1, 0,    -1, -1, -1},
+  {"lambda-P-omega",  0, 1, 1,    -1, -1, -1},
+  {"lambda-omega",    1, 0, 1,    -1, -1, -1},
+  {"CoC",             1, 1, 1,    -1, -1, -1},
+  /* Phase M.4 — substructural variants. These specify both cube
+   * axes (using STLC as a base) and structural-rule constraints. */
+  {"linear-STLC",     0, 0, 0,     0,  0,  1},  /* no weakening, no contraction */
+  {"affine-STLC",     0, 0, 0,     1,  0,  1},  /* contraction off; weakening ok */
+  {"relevant-STLC",   0, 0, 0,     0,  1,  1},  /* weakening off; contraction ok */
+  {NULL, 0, 0, 0, 0, 0, 0}
 };
 
 int lizard_logic_set_bundle(const char *name) {
@@ -5382,6 +5400,24 @@ int lizard_logic_set_bundle(const char *name) {
       else                  lizard_logic_rule_disable("type-depends-on-term");
       if (b->type_on_type)  lizard_logic_rule_enable("type-depends-on-type");
       else                  lizard_logic_rule_disable("type-depends-on-type");
+      /* Phase M.4: apply structural-rule fields only when specified
+       * (the -1 sentinel means "leave alone"). This lets a switch
+       * from CoC to linear-STLC modify only what each bundle cares
+       * about, but for our predefined bundles, the cube-only ones
+       * leave the structural fields at -1, which means they don't
+       * touch structural state. */
+      if (b->weakening != -1) {
+        if (b->weakening)   lizard_logic_rule_enable("weakening");
+        else                lizard_logic_rule_disable("weakening");
+      }
+      if (b->contraction != -1) {
+        if (b->contraction) lizard_logic_rule_enable("contraction");
+        else                lizard_logic_rule_disable("contraction");
+      }
+      if (b->exchange != -1) {
+        if (b->exchange)    lizard_logic_rule_enable("exchange");
+        else                lizard_logic_rule_disable("exchange");
+      }
       return 1;
     }
   }
@@ -5393,19 +5429,51 @@ int lizard_logic_set_bundle(const char *name) {
  * default-allow convention. Returns a static string; do not free. */
 const char *lizard_logic_current_bundle(void) {
   int term_on, type_on_term, type_on_type;
+  int weakening, contraction, exchange;
   logic_bundle_t *b;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
   type_on_type = lizard_logic_rule_enabled("type-depends-on-type");
+  weakening    = lizard_logic_rule_enabled("weakening");
+  contraction  = lizard_logic_rule_enabled("contraction");
+  exchange     = lizard_logic_rule_enabled("exchange");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
+  /* For structural rules, the default-when-unregistered is also "on";
+   * normalize the unknown state. */
+  if (weakening == -1)    weakening = 1;
+  if (contraction == -1)  contraction = 1;
+  if (exchange == -1)     exchange = 1;
   for (b = logic_bundles; b->name != NULL; b++) {
-    if (b->term_on_type == term_on &&
-        b->type_on_term == type_on_term &&
-        b->type_on_type == type_on_type) {
-      return b->name;
+    int match;
+    if (b->term_on_type != term_on) continue;
+    if (b->type_on_term != type_on_term) continue;
+    if (b->type_on_type != type_on_type) continue;
+    /* Structural rules: -1 in the bundle means "any active state is
+     * acceptable" (bundle doesn't specify). For cube-only bundles
+     * to match a config with structural rules on (the default), the
+     * -1 has to be permissive — but if the active config has any
+     * structural rule explicitly OFF, the cube-only bundle should
+     * NOT match. We enforce this: a cube-only bundle (all structural
+     * fields -1) matches only when all structural rules are on. */
+    match = 1;
+    if (b->weakening != -1) {
+      if (b->weakening != weakening) match = 0;
+    } else {
+      if (weakening != 1) match = 0;
     }
+    if (b->contraction != -1) {
+      if (b->contraction != contraction) match = 0;
+    } else {
+      if (contraction != 1) match = 0;
+    }
+    if (b->exchange != -1) {
+      if (b->exchange != exchange) match = 0;
+    } else {
+      if (exchange != 1) match = 0;
+    }
+    if (match) return b->name;
   }
   return "custom";
 }

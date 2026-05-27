@@ -345,6 +345,17 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         return type_error(heap, "Pi rejected: required cube axis disabled");
       }
     }
+    /* Phase M.4: weakening check. The simple arrow (binder not free
+     * in codomain) corresponds to a derivation that introduces a
+     * variable and never uses it — the hallmark of weakening. If
+     * the user has disabled the weakening rule, reject such Pis.
+     * Dependent Pis (binder_free == 1) are unaffected. */
+    if (!binder_free &&
+        lizard_logic_rule_enabled("weakening") == 0) {
+      return type_error(heap,
+                        "Pi rejected: weakening disabled, "
+                        "but binder doesn't appear in codomain");
+    }
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_U_MAX;
