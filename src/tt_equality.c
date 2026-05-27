@@ -449,6 +449,10 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_co_sigma_fresh.domain, name) ||
            contains_free_var(t->data.tt_co_sigma_fresh.codomain, name);
   }
+  case AST_TT_BOX:
+    return contains_free_var(t->data.tt_box.argument, name);
+  case AST_TT_DIAMOND:
+    return contains_free_var(t->data.tt_diamond.argument, name);
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -812,6 +816,26 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       n->data.tt_co_sigma_fresh.binder = new_binder;
       n->data.tt_co_sigma_fresh.domain = new_dom;
       n->data.tt_co_sigma_fresh.codomain = new_cod;
+      return n;
+    }
+  }
+  case AST_TT_BOX: {
+    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_box.argument, x, v, heap);
+    if (new_arg == t->data.tt_box.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX;
+      n->data.tt_box.argument = new_arg;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND: {
+    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_diamond.argument, x, v, heap);
+    if (new_arg == t->data.tt_diamond.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND;
+      n->data.tt_diamond.argument = new_arg;
       return n;
     }
   }
@@ -1506,6 +1530,26 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_BOX: {
+    lizard_ast_node_t *arg = subst_interval(t->data.tt_box.argument, x, v, heap);
+    if (arg == t->data.tt_box.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX;
+      n->data.tt_box.argument = arg;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND: {
+    lizard_ast_node_t *arg = subst_interval(t->data.tt_diamond.argument, x, v, heap);
+    if (arg == t->data.tt_diamond.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND;
+      n->data.tt_diamond.argument = arg;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1709,6 +1753,10 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_co_sigma_fresh.codomain, b->data.tt_co_sigma_fresh.codomain,
                            &na, &nb);
   }
+  case AST_TT_BOX:
+    return alpha_equal_rec(a->data.tt_box.argument, b->data.tt_box.argument, ea, eb);
+  case AST_TT_DIAMOND:
+    return alpha_equal_rec(a->data.tt_diamond.argument, b->data.tt_diamond.argument, ea, eb);
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2063,6 +2111,10 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.binder, b->data.tt_co_sigma_fresh.binder) &&
            lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.domain, b->data.tt_co_sigma_fresh.domain) &&
            lizard_tt_structurally_equal(a->data.tt_co_sigma_fresh.codomain, b->data.tt_co_sigma_fresh.codomain);
+  case AST_TT_BOX:
+    return lizard_tt_structurally_equal(a->data.tt_box.argument, b->data.tt_box.argument);
+  case AST_TT_DIAMOND:
+    return lizard_tt_structurally_equal(a->data.tt_diamond.argument, b->data.tt_diamond.argument);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3189,6 +3241,32 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
       n->data.tt_co_sigma_fresh.binder = t->data.tt_co_sigma_fresh.binder;
       n->data.tt_co_sigma_fresh.domain = dom;
       n->data.tt_co_sigma_fresh.codomain = cod;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_BOX: {
+    /* M.5.1: no reduction rules for Box yet. Just descend into the
+     * argument; the Box wrapper is preserved. */
+    lizard_ast_node_t *arg = normalize_rec(t->data.tt_box.argument, heap, memo);
+    if (arg == t->data.tt_box.argument) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX;
+      n->data.tt_box.argument = arg;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_DIAMOND: {
+    lizard_ast_node_t *arg = normalize_rec(t->data.tt_diamond.argument, heap, memo);
+    if (arg == t->data.tt_diamond.argument) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND;
+      n->data.tt_diamond.argument = arg;
       result = n;
     }
     break;
@@ -5356,37 +5434,48 @@ typedef struct logic_bundle {
   int term_on_type;
   int type_on_term;
   int type_on_type;
-  /* Phase M.4: structural rules. -1 means "don't care" (the bundle
-   * doesn't specify this axis); 0 means "off"; 1 means "on". This
-   * lets the cube-only bundles (STLC etc.) leave structural rules
-   * unspecified while linear / affine / relevant bundles fix them. */
+  /* Phase M.4: structural rules. -1 = "don't care". */
   int weakening;
   int contraction;
   int exchange;
+  /* Phase M.6: lattice and HIT features. -1 = "don't care". */
+  int pi_fresh_enabled;
+  int co_pi_fresh_enabled;
+  int HIT_enabled;
+  int lattice_universes;
+  int couniverse_lattice;
 } logic_bundle_t;
 
 /* Table of predefined logics. The order matters for reverse lookup:
  * we walk this table and return the FIRST match where all specified
- * (non -1) fields agree with the active config. STLC etc. specify
- * only the cube axes; linear/affine/relevant additionally specify
- * structural rules. */
+ * (non -1) fields agree with the active config. Cube-only bundles
+ * leave structural and feature fields at -1 (which match only when
+ * the active config has those at their defaults, all on).
+ *
+ * Phase M.6: two new bundles demonstrate the matrix:
+ *   STLC-strict     — STLC with ALL lizard extras disabled
+ *   CoC-plus-lattice — CoC with lattice on, HITs off
+ */
 static logic_bundle_t logic_bundles[] = {
-  /* name           cube triple   structural triple (-1 = don't care) */
-  {"STLC",            0, 0, 0,    -1, -1, -1},
-  {"F",               1, 0, 0,    -1, -1, -1},
-  {"LF",              0, 1, 0,    -1, -1, -1},
-  {"lambda-P",        0, 1, 0,    -1, -1, -1},   /* alias for LF */
-  {"F-omega",         0, 0, 1,    -1, -1, -1},
-  {"lambda-P2",       1, 1, 0,    -1, -1, -1},
-  {"lambda-P-omega",  0, 1, 1,    -1, -1, -1},
-  {"lambda-omega",    1, 0, 1,    -1, -1, -1},
-  {"CoC",             1, 1, 1,    -1, -1, -1},
-  /* Phase M.4 — substructural variants. These specify both cube
-   * axes (using STLC as a base) and structural-rule constraints. */
-  {"linear-STLC",     0, 0, 0,     0,  0,  1},  /* no weakening, no contraction */
-  {"affine-STLC",     0, 0, 0,     1,  0,  1},  /* contraction off; weakening ok */
-  {"relevant-STLC",   0, 0, 0,     0,  1,  1},  /* weakening off; contraction ok */
-  {NULL, 0, 0, 0, 0, 0, 0}
+  /* name           cube           structural     features         */
+  /*                tot ton too    wk ct ex       pf cpf H lat colat */
+  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1},
+  /* M.4 substructural variants */
+  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1},
+  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1},
+  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1},
+  /* M.6 feature-matrix variants */
+  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0},
+  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1},
+  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 int lizard_logic_set_bundle(const char *name) {
@@ -5400,12 +5489,6 @@ int lizard_logic_set_bundle(const char *name) {
       else                  lizard_logic_rule_disable("type-depends-on-term");
       if (b->type_on_type)  lizard_logic_rule_enable("type-depends-on-type");
       else                  lizard_logic_rule_disable("type-depends-on-type");
-      /* Phase M.4: apply structural-rule fields only when specified
-       * (the -1 sentinel means "leave alone"). This lets a switch
-       * from CoC to linear-STLC modify only what each bundle cares
-       * about, but for our predefined bundles, the cube-only ones
-       * leave the structural fields at -1, which means they don't
-       * touch structural state. */
       if (b->weakening != -1) {
         if (b->weakening)   lizard_logic_rule_enable("weakening");
         else                lizard_logic_rule_disable("weakening");
@@ -5417,6 +5500,27 @@ int lizard_logic_set_bundle(const char *name) {
       if (b->exchange != -1) {
         if (b->exchange)    lizard_logic_rule_enable("exchange");
         else                lizard_logic_rule_disable("exchange");
+      }
+      /* M.6 feature toggles. */
+      if (b->pi_fresh_enabled != -1) {
+        if (b->pi_fresh_enabled) lizard_logic_rule_enable("pi-fresh-enabled");
+        else                     lizard_logic_rule_disable("pi-fresh-enabled");
+      }
+      if (b->co_pi_fresh_enabled != -1) {
+        if (b->co_pi_fresh_enabled) lizard_logic_rule_enable("co-pi-fresh-enabled");
+        else                        lizard_logic_rule_disable("co-pi-fresh-enabled");
+      }
+      if (b->HIT_enabled != -1) {
+        if (b->HIT_enabled)      lizard_logic_rule_enable("HIT-enabled");
+        else                     lizard_logic_rule_disable("HIT-enabled");
+      }
+      if (b->lattice_universes != -1) {
+        if (b->lattice_universes) lizard_logic_rule_enable("lattice-universes");
+        else                      lizard_logic_rule_disable("lattice-universes");
+      }
+      if (b->couniverse_lattice != -1) {
+        if (b->couniverse_lattice) lizard_logic_rule_enable("couniverse-lattice");
+        else                       lizard_logic_rule_disable("couniverse-lattice");
       }
       return 1;
     }
@@ -5430,6 +5534,7 @@ int lizard_logic_set_bundle(const char *name) {
 const char *lizard_logic_current_bundle(void) {
   int term_on, type_on_term, type_on_type;
   int weakening, contraction, exchange;
+  int pi_fresh, co_pi_fresh, hit_en, lat_u, lat_co;
   logic_bundle_t *b;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
@@ -5437,42 +5542,53 @@ const char *lizard_logic_current_bundle(void) {
   weakening    = lizard_logic_rule_enabled("weakening");
   contraction  = lizard_logic_rule_enabled("contraction");
   exchange     = lizard_logic_rule_enabled("exchange");
+  pi_fresh     = lizard_logic_rule_enabled("pi-fresh-enabled");
+  co_pi_fresh  = lizard_logic_rule_enabled("co-pi-fresh-enabled");
+  hit_en       = lizard_logic_rule_enabled("HIT-enabled");
+  lat_u        = lizard_logic_rule_enabled("lattice-universes");
+  lat_co       = lizard_logic_rule_enabled("couniverse-lattice");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
-  /* For structural rules, the default-when-unregistered is also "on";
-   * normalize the unknown state. */
   if (weakening == -1)    weakening = 1;
   if (contraction == -1)  contraction = 1;
   if (exchange == -1)     exchange = 1;
+  if (pi_fresh == -1)     pi_fresh = 1;
+  if (co_pi_fresh == -1)  co_pi_fresh = 1;
+  if (hit_en == -1)       hit_en = 1;
+  if (lat_u == -1)        lat_u = 1;
+  if (lat_co == -1)       lat_co = 1;
   for (b = logic_bundles; b->name != NULL; b++) {
-    int match;
+    int match = 1;
     if (b->term_on_type != term_on) continue;
     if (b->type_on_term != type_on_term) continue;
     if (b->type_on_type != type_on_type) continue;
-    /* Structural rules: -1 in the bundle means "any active state is
-     * acceptable" (bundle doesn't specify). For cube-only bundles
-     * to match a config with structural rules on (the default), the
-     * -1 has to be permissive — but if the active config has any
-     * structural rule explicitly OFF, the cube-only bundle should
-     * NOT match. We enforce this: a cube-only bundle (all structural
-     * fields -1) matches only when all structural rules are on. */
-    match = 1;
+    /* Structural rules. */
     if (b->weakening != -1) {
       if (b->weakening != weakening) match = 0;
-    } else {
-      if (weakening != 1) match = 0;
-    }
+    } else if (weakening != 1) match = 0;
     if (b->contraction != -1) {
       if (b->contraction != contraction) match = 0;
-    } else {
-      if (contraction != 1) match = 0;
-    }
+    } else if (contraction != 1) match = 0;
     if (b->exchange != -1) {
       if (b->exchange != exchange) match = 0;
-    } else {
-      if (exchange != 1) match = 0;
-    }
+    } else if (exchange != 1) match = 0;
+    /* M.6 features. */
+    if (b->pi_fresh_enabled != -1) {
+      if (b->pi_fresh_enabled != pi_fresh) match = 0;
+    } else if (pi_fresh != 1) match = 0;
+    if (b->co_pi_fresh_enabled != -1) {
+      if (b->co_pi_fresh_enabled != co_pi_fresh) match = 0;
+    } else if (co_pi_fresh != 1) match = 0;
+    if (b->HIT_enabled != -1) {
+      if (b->HIT_enabled != hit_en) match = 0;
+    } else if (hit_en != 1) match = 0;
+    if (b->lattice_universes != -1) {
+      if (b->lattice_universes != lat_u) match = 0;
+    } else if (lat_u != 1) match = 0;
+    if (b->couniverse_lattice != -1) {
+      if (b->couniverse_lattice != lat_co) match = 0;
+    } else if (lat_co != 1) match = 0;
     if (match) return b->name;
   }
   return "custom";

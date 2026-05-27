@@ -97,10 +97,12 @@ int main(void) {
 
   /* list-logics returns all bundle names. */
   r = lizard_test_eval(&e, "(list-logics)");
-  /* Order is reverse of table (we prepend), so M.4 substructural
-   * bundles come first (most recently added), then cube corners. */
+  /* Order is reverse of table (we prepend). M.6 bundles
+   * (CoC-plus-lattice, STLC-strict) come first, then M.4
+   * substructural bundles, then cube corners. */
   TEST_ASSERT_STR(lizard_test_format(r),
-                  "(relevant-STLC affine-STLC linear-STLC "
+                  "(CoC-plus-lattice STLC-strict "
+                  "relevant-STLC affine-STLC linear-STLC "
                   "CoC lambda-omega lambda-P-omega lambda-P2 "
                   "F-omega lambda-P LF F STLC)");
 

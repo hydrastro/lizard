@@ -280,11 +280,37 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     /* (Co-set ...) is itself a couniverse element. Its "type" is the
      * couniverse one level up — we represent that as a (Co-set ...)
      * with a fresh dim, or simpler, just (Uco 0). For L.5 minimal:
-     * say its type is (Uco 0). */
-    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+     * say its type is (Uco 0).
+     * Phase M.6: gated on couniverse-lattice. */
+    lizard_ast_node_t *n;
+    if (lizard_logic_rule_enabled("couniverse-lattice") == 0) {
+      return type_error(heap, "Co-set rejected: couniverse-lattice disabled");
+    }
+    n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     n->type = AST_TT_COUNIVERSE;
     n->data.tt_couniverse.level = 0;
     return n;
+  }
+  case AST_TT_UNIVERSE_SET: {
+    /* Phase M.6: U-set as a value lives at (U <max dim + 1>). The
+     * UNIVERSE_SET node has been a *type-level marker* mainly used
+     * to label what a Pi lives in; now we give it a proper inference
+     * rule. Gated on lattice-universes. */
+    long max_dim = 0;
+    long i;
+    if (lizard_logic_rule_enabled("lattice-universes") == 0) {
+      return type_error(heap, "U-set rejected: lattice-universes disabled");
+    }
+    if (t->data.tt_universe_set.count == 0) {
+      /* Empty set: bottom universe, lives at (U 1). */
+      return lizard_tt_make_universe(heap, 1);
+    }
+    max_dim = t->data.tt_universe_set.dims[0];
+    for (i = 1; i < t->data.tt_universe_set.count; i++) {
+      if (t->data.tt_universe_set.dims[i] > max_dim)
+        max_dim = t->data.tt_universe_set.dims[i];
+    }
+    return lizard_tt_make_universe(heap, max_dim + 1);
   }
   case AST_TT_PI: {
     /* (Pi x A B) : (U-max univ(A) univ(B[x:=fresh])) — but we don't
@@ -374,7 +400,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
      * Same structure as Pi but the result universe is *joined* with
      * a singleton set containing a fresh dimension. After reduction
      * with the L.2 set-union rules, the result is a single U-set
-     * containing all original dimensions plus the new one. */
+     * containing all original dimensions plus the new one.
+     *
+     * Phase M.6: if pi-fresh-enabled is explicitly disabled, reject. */
     lizard_ast_node_t *binder = t->data.tt_pi_fresh.binder;
     lizard_ast_node_t *dom = t->data.tt_pi_fresh.domain;
     lizard_ast_node_t *cod = t->data.tt_pi_fresh.codomain;
@@ -383,6 +411,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *fresh_set;
     lizard_ast_node_t *combined;
     long *dim_ptr;
+    if (lizard_logic_rule_enabled("pi-fresh-enabled") == 0) {
+      return type_error(heap, "pi-fresh rejected: feature disabled");
+    }
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "pi-fresh binder not a symbol");
     }
@@ -428,7 +459,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     return lizard_tt_reduce(combined, heap);
   }
   case AST_TT_SIGMA_FRESH: {
-    /* Same dimension-creating rule for Sigma. */
+    /* Same dimension-creating rule for Sigma.
+     * Phase M.6: gate on pi-fresh-enabled (shared toggle for both
+     * pi-fresh and sigma-fresh — they're one feature). */
     lizard_ast_node_t *binder = t->data.tt_sigma_fresh.binder;
     lizard_ast_node_t *dom = t->data.tt_sigma_fresh.domain;
     lizard_ast_node_t *cod = t->data.tt_sigma_fresh.codomain;
@@ -437,6 +470,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *fresh_set;
     lizard_ast_node_t *combined;
     long *dim_ptr;
+    if (lizard_logic_rule_enabled("pi-fresh-enabled") == 0) {
+      return type_error(heap, "sigma-fresh rejected: feature disabled");
+    }
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "sigma-fresh binder not a symbol");
     }
@@ -489,7 +525,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
      *   (co-pi-fresh x A B) : (Co-max Co_S Co_T) ∨ (Co-set fresh)
      *
      * The fresh-dim counter is SHARED with pi-fresh; sort distinction
-     * is in the result lattice (Co-set, not U-set). */
+     * is in the result lattice (Co-set, not U-set).
+     *
+     * Phase M.6: gated on co-pi-fresh-enabled. */
     lizard_ast_node_t *binder = t->data.tt_co_pi_fresh.binder;
     lizard_ast_node_t *dom = t->data.tt_co_pi_fresh.domain;
     lizard_ast_node_t *cod = t->data.tt_co_pi_fresh.codomain;
@@ -498,6 +536,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *fresh_set;
     lizard_ast_node_t *combined;
     long *dim_ptr;
+    if (lizard_logic_rule_enabled("co-pi-fresh-enabled") == 0) {
+      return type_error(heap, "co-pi-fresh rejected: feature disabled");
+    }
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "co-pi-fresh binder not a symbol");
     }
@@ -542,7 +583,8 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     return lizard_tt_reduce(combined, heap);
   }
   case AST_TT_CO_SIGMA_FRESH: {
-    /* Same dimension-creating rule for Sigma in the couniverse lattice. */
+    /* Same dimension-creating rule for Sigma in the couniverse lattice.
+     * Phase M.6: gated on co-pi-fresh-enabled. */
     lizard_ast_node_t *binder = t->data.tt_co_sigma_fresh.binder;
     lizard_ast_node_t *dom = t->data.tt_co_sigma_fresh.domain;
     lizard_ast_node_t *cod = t->data.tt_co_sigma_fresh.codomain;
@@ -551,6 +593,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *fresh_set;
     lizard_ast_node_t *combined;
     long *dim_ptr;
+    if (lizard_logic_rule_enabled("co-pi-fresh-enabled") == 0) {
+      return type_error(heap, "co-sigma-fresh rejected: feature disabled");
+    }
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "co-sigma-fresh binder not a symbol");
     }
@@ -590,6 +635,60 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       combined->data.tt_co_max.right = fresh_set;
     }
     return lizard_tt_reduce(combined, heap);
+  }
+  case AST_TT_BOX: {
+    /* Phase M.5.1: (Box A) : univ(A).
+     *
+     * The Box modality preserves the universe of its argument. This
+     * is the minimal commitment — it says nothing about *which*
+     * modal logic Box belongs to (K, T, S4, S5, ...). That choice
+     * comes in M.5.2 when introduction and elimination forms are
+     * added, since those rules differ across modal logics.
+     *
+     * Gated on `modalities-enabled` in the logic-rule registry. */
+    lizard_ast_node_t *arg = t->data.tt_box.argument;
+    lizard_ast_node_t *arg_univ;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "Box rejected: modalities-enabled disabled");
+    }
+    if (arg == NULL) {
+      return type_error(heap, "Box missing argument");
+    }
+    arg_univ = lizard_tt_infer(ctx, arg, heap);
+    if (is_error(arg_univ)) return arg_univ;
+    arg_univ = lizard_tt_reduce(arg_univ, heap);
+    if (arg_univ->type != AST_TT_UNIVERSE &&
+        arg_univ->type != AST_TT_U_SUC &&
+        arg_univ->type != AST_TT_U_MAX &&
+        arg_univ->type != AST_TT_U_VAR &&
+        arg_univ->type != AST_TT_U_MIN &&
+        arg_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "Box argument not a type");
+    }
+    return arg_univ;
+  }
+  case AST_TT_DIAMOND: {
+    /* Same as Box: (Diamond A) : univ(A). Possibility modality. */
+    lizard_ast_node_t *arg = t->data.tt_diamond.argument;
+    lizard_ast_node_t *arg_univ;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "Diamond rejected: modalities-enabled disabled");
+    }
+    if (arg == NULL) {
+      return type_error(heap, "Diamond missing argument");
+    }
+    arg_univ = lizard_tt_infer(ctx, arg, heap);
+    if (is_error(arg_univ)) return arg_univ;
+    arg_univ = lizard_tt_reduce(arg_univ, heap);
+    if (arg_univ->type != AST_TT_UNIVERSE &&
+        arg_univ->type != AST_TT_U_SUC &&
+        arg_univ->type != AST_TT_U_MAX &&
+        arg_univ->type != AST_TT_U_VAR &&
+        arg_univ->type != AST_TT_U_MIN &&
+        arg_univ->type != AST_TT_UNIVERSE_SET) {
+      return type_error(heap, "Diamond argument not a type");
+    }
+    return arg_univ;
   }
   case AST_TT_APP: {
     /* (@ f a) : B[a/x] where f : (Pi x A B) and a checks against A. */
@@ -1513,6 +1612,10 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   case AST_TT_HIT_REF: {
     lizard_ast_node_t *name = t->data.tt_hit_ref.name;
     lizard_ast_node_t *decl;
+    /* Phase M.6: gate on HIT-enabled. */
+    if (lizard_logic_rule_enabled("HIT-enabled") == 0) {
+      return type_error(heap, "HIT-ref rejected: HIT feature disabled");
+    }
     if (name == NULL || name->type != AST_SYMBOL) {
       return type_error(heap, "HIT-ref name not a symbol");
     }
@@ -1527,9 +1630,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   }
   case AST_TT_HIT_APP: {
     /* Look up the constructor across all registered HITs. If found,
-     * return (HIT-ref 'host). If not, error. */
+     * return (HIT-ref 'host). If not, error.
+     * Phase M.6: gated on HIT-enabled. */
     lizard_ast_node_t *cname = t->data.tt_hit_app.name;
     lizard_ast_node_t *host_decl;
+    if (lizard_logic_rule_enabled("HIT-enabled") == 0) {
+      return type_error(heap, "HIT-app rejected: HIT feature disabled");
+    }
     if (cname == NULL || cname->type != AST_SYMBOL) {
       return type_error(heap, "HIT-app name not a symbol");
     }

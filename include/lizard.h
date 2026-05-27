@@ -104,6 +104,27 @@ typedef enum {
    */
   AST_TT_CO_PI_FRESH,
   AST_TT_CO_SIGMA_FRESH,
+  /* (Box A) and (Diamond A) — Phase M.5.1 modal type constructors.
+   *
+   * Box and Diamond are the necessity (□) and possibility (◇)
+   * modalities of modal logic. In a modal type theory they appear
+   * as type constructors: Box A is "necessarily A", Diamond A is
+   * "possibly A".
+   *
+   * M.5.1 delivers only the type-constructor level — typing rules
+   * for (Box A) and (Diamond A) — without intro/elim forms or
+   * reduction interactions. Adding box-introduction / unbox-
+   * elimination is M.5.2, and that step commits to a specific modal
+   * logic (K, T, S4, S5, etc.). M.5.1 stays neutral on which logic.
+   *
+   * Typing rule: (Box A) : univ(A), (Diamond A) : univ(A). The
+   * modality preserves the universe of its argument.
+   *
+   * Gated on `modalities-enabled` in the logic-rule registry
+   * (default-on, like other M.6 feature toggles).
+   */
+  AST_TT_BOX,
+  AST_TT_DIAMOND,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -515,6 +536,14 @@ struct lizard_ast_node {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *codomain;
     } tt_co_sigma_fresh;
+    /* Phase M.5.1: modal type constructors. Both Box and Diamond
+     * take a single subtype argument. */
+    struct {
+      lizard_ast_node_t *argument;
+    } tt_box;
+    struct {
+      lizard_ast_node_t *argument;
+    } tt_diamond;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

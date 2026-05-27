@@ -350,6 +350,16 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_co_sigma_fresh.codomain);
     fprintf(fp, ")");
     return;
+  case AST_TT_BOX:
+    fprintf(fp, "(Box ");
+    lizard_fprint_value(fp, node->data.tt_box.argument);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_DIAMOND:
+    fprintf(fp, "(Diamond ");
+    lizard_fprint_value(fp, node->data.tt_diamond.argument);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);
