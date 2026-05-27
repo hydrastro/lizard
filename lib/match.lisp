@@ -1,0 +1,106 @@
+; -*- lisp -*-
+; lib/match.lisp — Pattern matching via cond-based dispatch.
+;
+; (match-type val
+;   ((number?) body ...)
+;   ((string?) body ...)
+;   ((pair?)   body ...)
+;   ((null?)   body ...)
+;   (else      body ...))
+;
+; For now, match-type dispatches on type predicates.
+; Full structural pattern matching (destructuring) is planned
+; for Phase 3 with syntax-case.
+
+; ---- compose / pipe ----
+(define (compose f g)
+  (lambda (x) (f (g x))))
+
+(define (pipe . fns)
+  (fold-left compose (lambda (x) x) fns))
+
+; ---- when / unless ----
+; (These need to be macros for short-circuit, but as functions
+; they still work for their common use case.)
+(define (when-true test body)
+  (if test body '()))
+
+(define (unless-true test body)
+  (if test '() body))
+
+; ---- threading helpers ----
+(define (-> val . fns)
+  (fold-left (lambda (acc f) (f acc)) val fns))
+
+; ---- assoc helpers ----
+(define (alist-ref key alist . default)
+  (let ((pair (assoc key alist)))
+    (if pair
+        (cdr pair)
+        (if (null? default) #f (car default)))))
+
+(define (alist-set key val alist)
+  (cons (cons key val)
+        (filter (lambda (pair)
+                  (not (equal? (car pair) key)))
+                alist)))
+
+; ---- range / enumerate ----
+(define (range start end)
+  (if (>= start end) '()
+    (cons start (range (+ start 1) end))))
+
+(define (enumerate lst)
+  (define (go lst i)
+    (if (null? lst) '()
+      (cons (list i (car lst))
+            (go (cdr lst) (+ i 1)))))
+  (go lst 0))
+
+; ---- zip ----
+(define (zip a b)
+  (if (or (null? a) (null? b)) '()
+    (cons (list (car a) (car b))
+          (zip (cdr a) (cdr b)))))
+
+; ---- flatten ----
+(define (flatten lst)
+  (if (null? lst) '()
+    (if (pair? (car lst))
+        (append (flatten (car lst)) (flatten (cdr lst)))
+        (cons (car lst) (flatten (cdr lst))))))
+
+; ---- take / drop ----
+(define (take n lst)
+  (if (or (= n 0) (null? lst)) '()
+    (cons (car lst) (take (- n 1) (cdr lst)))))
+
+(define (drop n lst)
+  (if (or (= n 0) (null? lst)) lst
+    (drop (- n 1) (cdr lst))))
+
+; ---- any / every ----
+(define (any pred lst)
+  (if (null? lst) #f
+    (if (pred (car lst)) #t
+      (any pred (cdr lst)))))
+
+(define (every pred lst)
+  (if (null? lst) #t
+    (if (pred (car lst))
+      (every pred (cdr lst))
+      #f)))
+
+; ---- partition ----
+(define (partition pred lst)
+  (list (filter pred lst)
+        (filter (lambda (x) (not (pred x))) lst)))
+
+; ---- sort (insertion sort — simple, correct) ----
+(define (sort lst less?)
+  (define (insert x sorted)
+    (if (null? sorted) (list x)
+      (if (less? x (car sorted))
+          (cons x sorted)
+          (cons (car sorted) (insert x (cdr sorted))))))
+  (fold-left (lambda (acc x) (insert x acc)) '() lst))

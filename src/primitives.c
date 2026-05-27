@@ -2538,6 +2538,48 @@ static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
             ((lizard_ast_list_node_t *)parts->head->next)->ast);
         return inner ? kt_refl(heap, inner) : NULL;
       }
+      /* (Id A a b) */
+      if (strcmp(name, "Id") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2, *n3;
+        kterm_t *ta, *ka, *kb;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next;
+        if (n2 == parts->nil) return NULL;
+        n3 = n2->next;
+        if (n3 == parts->nil) return NULL;
+        ta = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        ka = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        kb = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n3)->ast);
+        if (ta && ka && kb) return kt_id(heap, ta, ka, kb);
+        return NULL;
+      }
+      /* (Pi (name domain) codomain) */
+      if (strcmp(name, "Pi") == 0 && parts != NULL) {
+        lz_list_node_t *binder_node = parts->head->next;
+        lz_list_node_t *body_node;
+        lizard_ast_node_t *binder;
+        const char *pname = "_";
+        kterm_t *domain, *codomain;
+        if (binder_node == parts->nil) return NULL;
+        body_node = binder_node->next;
+        if (body_node == parts->nil) return NULL;
+        binder = ((lizard_ast_list_node_t *)binder_node)->ast;
+        if (binder->type == AST_APPLICATION && binder->data.application_arguments) {
+          lz_list_node_t *bn = binder->data.application_arguments->head;
+          if (bn != binder->data.application_arguments->nil) {
+            lizard_ast_node_t *nm = ((lizard_ast_list_node_t *)bn)->ast;
+            if (nm->type == AST_SYMBOL) pname = nm->data.variable;
+            bn = bn->next;
+            if (bn != binder->data.application_arguments->nil) {
+              domain = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)bn)->ast);
+            } else { return NULL; }
+          } else { return NULL; }
+        } else { return NULL; }
+        codomain = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        if (domain && codomain) return kt_pi(heap, pname, domain, codomain);
+        return NULL;
+      }
     }
   }
   return NULL;
@@ -2619,6 +2661,106 @@ lizard_ast_node_t *lizard_primitive_kernel_check(lz_list_t *args,
   ctx = kctx_create(heap);
   result = kt_check(heap, ctx, term, type);
   return lizard_make_bool(heap, result == KERNEL_OK);
+}
+
+/* ============================================================
+ * Track K: Tactic primitives.
+ * ============================================================ */
+#include "tactics.h"
+
+static proof_state_t *current_proof = NULL;
+
+lizard_ast_node_t *lizard_primitive_begin_proof(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *type_expr;
+  kterm_t *goal_type;
+  kctx_t *ctx;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  type_expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  goal_type = sexp_to_kterm(heap, type_expr);
+  if (goal_type == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  current_proof = proof_begin(heap, ctx, goal_type);
+  printf("Proof started.\n");
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_proof_state(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  (void)args; (void)env;
+  if (current_proof == NULL) { printf("No active proof.\n"); }
+  else { proof_state_fprint(stdout, current_proof); }
+  return lizard_make_nil(heap);
+}
+
+lizard_ast_node_t *lizard_primitive_tactic_intro(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *name_node;
+  const char *name;
+  int r;
+  (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  name_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  name = (name_node->type == AST_STRING) ? name_node->data.string
+       : (name_node->type == AST_SYMBOL) ? name_node->data.variable : "x";
+  r = tactic_intro(current_proof, name);
+  if (r < 0) { printf("tactic-intro: goal is not a Pi type.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_tactic_exact(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *expr;
+  kterm_t *term;
+  int r;
+  (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  term = sexp_to_kterm(heap, expr);
+  if (term == NULL) { printf("tactic-exact: cannot parse term.\n"); return lizard_make_bool(heap, 0); }
+  r = tactic_exact(current_proof, term);
+  if (r < 0) { printf("tactic-exact: type mismatch.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_tactic_refl(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_reflexivity(current_proof);
+  if (r < 0) { printf("tactic-refl: goal is not Id a a.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_qed(lz_list_t *args,
+                                         lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  kterm_t *proof;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  proof = proof_qed(current_proof);
+  if (proof == NULL) {
+    printf("qed: %d goal(s) remaining.\n", proof_open_goals(current_proof));
+    return lizard_make_bool(heap, 0);
+  }
+  printf("Qed! Proof term: ");
+  kt_fprint(stdout, proof);
+  printf("\n");
+  current_proof = NULL;
+  return lizard_make_bool(heap, 1);
 }
 
 static void install_one(lizard_heap_t *heap, lizard_env_t *env,
@@ -6723,6 +6865,13 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   /* Track K: kernel primitives. */
   install_one(heap, env, "kernel-check",     lizard_primitive_kernel_check);
   install_one(heap, env, "kernel-infer",     lizard_primitive_kernel_infer);
+  /* Track K: tactics. */
+  install_one(heap, env, "begin-proof",      lizard_primitive_begin_proof);
+  install_one(heap, env, "proof-state",      lizard_primitive_proof_state);
+  install_one(heap, env, "tactic-intro",     lizard_primitive_tactic_intro);
+  install_one(heap, env, "tactic-exact",     lizard_primitive_tactic_exact);
+  install_one(heap, env, "tactic-refl",      lizard_primitive_tactic_refl);
+  install_one(heap, env, "qed",              lizard_primitive_qed);
   install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
   install_one(heap, env, "expt",            lizard_primitive_expt);
   install_one(heap, env, "gcd",             lizard_primitive_gcd);
