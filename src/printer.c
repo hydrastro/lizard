@@ -374,6 +374,27 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_box_elim.body);
     fprintf(fp, ")");
     return;
+  case AST_TT_DIAMOND_INTRO:
+    fprintf(fp, "(diamond ");
+    lizard_fprint_value(fp, node->data.tt_diamond_intro.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_DIAMOND_ELIM:
+    fprintf(fp, "(let-diamond ");
+    lizard_fprint_value(fp, node->data.tt_diamond_elim.binder);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_diamond_elim.scrutinee);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_diamond_elim.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_BOX_APP:
+    fprintf(fp, "(box-app ");
+    lizard_fprint_value(fp, node->data.tt_box_app.fun);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_box_app.arg);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

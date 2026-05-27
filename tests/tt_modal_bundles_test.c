@@ -77,16 +77,18 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r),
                   "Error: unknown AST node type in eval.");
 
-  /* Honest scope: current-logic returns the cube-name for these,
-   * not the modal-name, because the modal toggles match the
-   * default state and the matcher prefers earlier bundles. */
+  /* M.5.5 update: as of Turn 2 (5-axiom), the modal bundles are
+   * genuinely distinguishable. set-logic 'S4 sets modal_4_axiom=1
+   * and modal_5_axiom=0, which doesn't match CoC's don't-care
+   * fields under default-allow (those require both modal axioms
+   * at default-on). So current-logic now returns the right name. */
   lizard_test_eval(&e, "(set-logic 'S4)");
   r = lizard_test_eval(&e, "(current-logic)");
-  TEST_ASSERT_STR(lizard_test_format(r), "CoC");
+  TEST_ASSERT_STR(lizard_test_format(r), "S4");
 
   lizard_test_eval(&e, "(set-logic 'modal-STLC)");
   r = lizard_test_eval(&e, "(current-logic)");
-  TEST_ASSERT_STR(lizard_test_format(r), "STLC");
+  TEST_ASSERT_STR(lizard_test_format(r), "modal-STLC");
 
   /* When we disable modalities explicitly under CoC, CoC's matcher
    * (which has don't-care for modal fields, requiring default state)

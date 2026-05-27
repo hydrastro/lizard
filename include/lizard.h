@@ -145,6 +145,44 @@ typedef enum {
    */
   AST_TT_BOX_INTRO,
   AST_TT_BOX_ELIM,
+  /* (diamond e) and (let-diamond x b e) — Phase M.5.5 (Turn 1 of
+   * "5-axiom for S5" work).
+   *
+   * The introduction and elimination forms for the Diamond
+   * (possibility) modality, parallel to box and unbox.
+   *
+   * Introduction: (diamond e) constructs a Diamond value.
+   * Elimination:  (let-diamond x b body) pattern-matches a Diamond
+   *               value b, binding its content as x in body.
+   *
+   * Beta rule: (let-diamond x (diamond e) body) → body[e/x].
+   *
+   * M.5.5 Turn 1 uses PLACEHOLDER typing — no 5-axiom yet, no
+   * dual-context discipline for Diamond. Turn 2 will add the
+   * S5-distinguishing 5-axiom (◇A → □◇A) as a typing rule.
+   *
+   * Gated on `modalities-enabled`.
+   */
+  AST_TT_DIAMOND_INTRO,
+  AST_TT_DIAMOND_ELIM,
+  /* (box-app f a) — Phase M.5.6. The K-axiom realized as a term:
+   *
+   *   K-axiom:  □(A → B) → □A → □B
+   *
+   * Given f of type Box (Pi x A B) and a of type Box A, (box-app f a)
+   * produces a term of type Box B. This is the "necessity distributes
+   * over function application" form: from "necessarily f" and
+   * "necessarily a", deduce "necessarily (f a)".
+   *
+   * Computation: (box-app (box f') (box a')) → (box (@ f' a')).
+   *
+   * The K-axiom is admissible (derivable) in all of K/T/S4/S5 — it's
+   * a theorem in each. We add it as an explicit AST node primarily
+   * for K's sake, since K lacks other elimination rules. In T/S4/S5
+   * it's redundant but still usable.
+   *
+   * Gated on `modalities-enabled` (same toggle as Box). */
+  AST_TT_BOX_APP,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -577,6 +615,20 @@ struct lizard_ast_node {
       lizard_ast_node_t *scrutinee;  /* b — the Box-typed term being eliminated */
       lizard_ast_node_t *body;       /* body — uses x freely */
     } tt_box_elim;
+    /* Phase M.5.5: Diamond intro and elim, mirroring box / unbox. */
+    struct {
+      lizard_ast_node_t *body;
+    } tt_diamond_intro;
+    struct {
+      lizard_ast_node_t *binder;
+      lizard_ast_node_t *scrutinee;
+      lizard_ast_node_t *body;
+    } tt_diamond_elim;
+    /* Phase M.5.6: K-axiom application. */
+    struct {
+      lizard_ast_node_t *fun;   /* Box (Pi x A B) */
+      lizard_ast_node_t *arg;   /* Box A */
+    } tt_box_app;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

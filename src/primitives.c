@@ -1378,6 +1378,9 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_DIAMOND:        name = "Diamond";        break;
   case AST_TT_BOX_INTRO:      name = "box";            break;
   case AST_TT_BOX_ELIM:       name = "unbox";          break;
+  case AST_TT_DIAMOND_INTRO:  name = "diamond";        break;
+  case AST_TT_DIAMOND_ELIM:   name = "let-diamond";    break;
+  case AST_TT_BOX_APP:        name = "box-app";        break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2544,6 +2547,54 @@ lizard_ast_node_t *lizard_primitive_tt_box_elim(lz_list_t *args,
   return n;
 }
 
+/* (diamond e) — Phase M.5.5 Diamond introduction. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_DIAMOND_INTRO;
+  n->data.tt_diamond_intro.body = nth_arg(args, 0);
+  return n;
+}
+
+/* (let-diamond x b body) — Phase M.5.5 Diamond elimination. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_elim(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_DIAMOND_ELIM;
+  n->data.tt_diamond_elim.binder = nth_arg(args, 0);
+  n->data.tt_diamond_elim.scrutinee = nth_arg(args, 1);
+  n->data.tt_diamond_elim.body = nth_arg(args, 2);
+  return n;
+}
+
+/* (box-app f a) — Phase M.5.6 K-axiom application. */
+lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_BOX_APP;
+  n->data.tt_box_app.fun = nth_arg(args, 0);
+  n->data.tt_box_app.arg = nth_arg(args, 1);
+  return n;
+}
+
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -3028,6 +3079,9 @@ TT_PREDICATE(tt_boxp,     AST_TT_BOX)
 TT_PREDICATE(tt_diamondp, AST_TT_DIAMOND)
 TT_PREDICATE(tt_box_introp, AST_TT_BOX_INTRO)
 TT_PREDICATE(tt_box_elimp,  AST_TT_BOX_ELIM)
+TT_PREDICATE(tt_diamond_introp, AST_TT_DIAMOND_INTRO)
+TT_PREDICATE(tt_diamond_elimp,  AST_TT_DIAMOND_ELIM)
+TT_PREDICATE(tt_box_appp,       AST_TT_BOX_APP)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3081,6 +3135,12 @@ TT_ACCESSOR(tt_box_intro_body, AST_TT_BOX_INTRO, x->data.tt_box_intro.body)
 TT_ACCESSOR(tt_box_elim_binder,    AST_TT_BOX_ELIM, x->data.tt_box_elim.binder)
 TT_ACCESSOR(tt_box_elim_scrutinee, AST_TT_BOX_ELIM, x->data.tt_box_elim.scrutinee)
 TT_ACCESSOR(tt_box_elim_body,      AST_TT_BOX_ELIM, x->data.tt_box_elim.body)
+TT_ACCESSOR(tt_diamond_intro_body,    AST_TT_DIAMOND_INTRO, x->data.tt_diamond_intro.body)
+TT_ACCESSOR(tt_diamond_elim_binder,    AST_TT_DIAMOND_ELIM, x->data.tt_diamond_elim.binder)
+TT_ACCESSOR(tt_diamond_elim_scrutinee, AST_TT_DIAMOND_ELIM, x->data.tt_diamond_elim.scrutinee)
+TT_ACCESSOR(tt_diamond_elim_body,      AST_TT_DIAMOND_ELIM, x->data.tt_diamond_elim.body)
+TT_ACCESSOR(tt_box_app_fun, AST_TT_BOX_APP, x->data.tt_box_app.fun)
+TT_ACCESSOR(tt_box_app_arg, AST_TT_BOX_APP, x->data.tt_box_app.arg)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4759,6 +4819,20 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "unbox-binder",   lizard_primitive_tt_box_elim_binder);
   install_one(heap, env, "unbox-scrutinee",lizard_primitive_tt_box_elim_scrutinee);
   install_one(heap, env, "unbox-body",     lizard_primitive_tt_box_elim_body);
+  /* Phase M.5.5 — Diamond intro and elim. */
+  install_one(heap, env, "diamond",        lizard_primitive_tt_diamond_intro);
+  install_one(heap, env, "diamond?",       lizard_primitive_tt_diamond_introp);
+  install_one(heap, env, "diamond-body",   lizard_primitive_tt_diamond_intro_body);
+  install_one(heap, env, "let-diamond",    lizard_primitive_tt_diamond_elim);
+  install_one(heap, env, "let-diamond?",   lizard_primitive_tt_diamond_elimp);
+  install_one(heap, env, "let-diamond-binder",    lizard_primitive_tt_diamond_elim_binder);
+  install_one(heap, env, "let-diamond-scrutinee", lizard_primitive_tt_diamond_elim_scrutinee);
+  install_one(heap, env, "let-diamond-body",      lizard_primitive_tt_diamond_elim_body);
+  /* Phase M.5.6 — K-axiom application. */
+  install_one(heap, env, "box-app",   lizard_primitive_tt_box_app);
+  install_one(heap, env, "box-app?",  lizard_primitive_tt_box_appp);
+  install_one(heap, env, "box-app-fun", lizard_primitive_tt_box_app_fun);
+  install_one(heap, env, "box-app-arg", lizard_primitive_tt_box_app_arg);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);

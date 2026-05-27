@@ -242,6 +242,20 @@ lizard_ast_node_t *lizard_primitive_tt_box_elimp(lz_list_t *, lizard_env_t *, li
 lizard_ast_node_t *lizard_primitive_tt_box_elim_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_box_elim_scrutinee(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_box_elim_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase M.5.5 — Diamond intro and elim. */
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_introp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_intro_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_elim(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_elimp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_elim_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_elim_scrutinee(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_diamond_elim_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase M.5.6 — K-axiom application. */
+lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_appp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_app_fun(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_app_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);

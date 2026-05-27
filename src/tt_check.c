@@ -704,24 +704,23 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
      *   ─────────────────────
      *   Δ; Γ ⊢ (box e) : (Box T)
      *
-     * The truth context Γ is DROPPED when checking the box body.
-     * Only Δ (the valid context) is visible inside. This is what
-     * enforces "box represents necessity": you can't box a term
-     * that uses an ordinary hypothesis, only one that uses valid
-     * (= necessarily true) hypotheses.
+     * Inside the box body:
+     *   - The truth context Γ is dropped to empty
+     *   - The valid context Δ is PRESERVED as Δ (not promoted)
      *
-     * Implementation: recurse with valid_ctx as the new truth-ctx,
-     * and an empty valid-ctx. The valid hypotheses become available
-     * as the only visible hypotheses inside the box; nothing else is
-     * visible.
+     * Preservation of Δ is what gives S4 its 4-axiom (□A → □□A):
+     * a valid hypothesis remains valid across NESTED box-introductions,
+     * not just one box deep.
+     *
+     * Previous (buggy) implementation promoted Δ to truth at each
+     * level, which lost the valid status after one nesting. This
+     * version keeps Δ as Δ throughout.
      *
      * If `modal-strict-typing` is disabled, falls back to Turn 1
      * loose typing. */
     lizard_ast_node_t *body = t->data.tt_box_intro.body;
     lizard_ast_node_t *body_type;
     lizard_ast_node_t *result;
-    lizard_ast_node_t *body_ctx;
-    lizard_ast_node_t *empty_valid;
     if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
       return type_error(heap, "box rejected: modalities-enabled disabled");
     }
@@ -731,12 +730,26 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
     if (lizard_logic_rule_enabled("modal-strict-typing") == 0) {
       /* Turn 1 loose typing: full ctx available inside box. */
       body_type = lizard_tt_infer2(valid_ctx, ctx, body, heap);
-    } else {
-      /* Strict S4: drop truth, promote valid. */
-      body_ctx = valid_ctx;
-      empty_valid = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    } else if (lizard_logic_rule_enabled("modal-4-axiom") == 0) {
+      /* T modal logic: strict box-intro but NO 4-axiom. The 4-axiom
+       * (□A → □□A) requires valid hypotheses to survive nested boxes.
+       * When this toggle is off, valid context is consumed at each
+       * box level — nested boxes can't reach beyond the immediate
+       * enclosing unbox.
+       *
+       * Implementation: promote valid to truth (the old "buggy"
+       * behavior, which is actually correct for T). Valid hypotheses
+       * are visible one box deep but disappear at the next level. */
+      lizard_ast_node_t *empty_valid = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       empty_valid->type = AST_NIL;
-      body_type = lizard_tt_infer2(empty_valid, body_ctx, body, heap);
+      body_type = lizard_tt_infer2(empty_valid, valid_ctx, body, heap);
+    } else {
+      /* S4 modal logic: strict box-intro WITH the 4-axiom.
+       * Preserve Δ as valid, drop Γ to empty. Valid hypotheses
+       * remain valid across arbitrary nested boxes. */
+      lizard_ast_node_t *empty_truth = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      empty_truth->type = AST_NIL;
+      body_type = lizard_tt_infer2(valid_ctx, empty_truth, body, heap);
     }
     if (is_error(body_type)) return body_type;
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -789,7 +802,217 @@ lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
     /* Strict S4: extend VALID context with x:T; truth ctx unchanged. */
     new_valid_ctx = ctx_extend(valid_ctx, binder->data.variable,
                                scrut_type->data.tt_box.argument, heap);
+    {
+      lizard_ast_node_t *body_type = lizard_tt_infer2(new_valid_ctx, ctx, body, heap);
+      if (is_error(body_type)) return body_type;
+      /* Phase M.5.6 — K's distinguished elim:
+       *
+       * Under K (t-axiom-enabled = off), unbox cannot EXTRACT a value
+       * — the result type must still be a Box. If the body's type
+       * isn't Box, we reject. This forces the user to think of unbox
+       * as "look under the modality to manipulate boxed structure,"
+       * not "open up to get the value."
+       *
+       * Under T+ (t-axiom-enabled = on, default), unbox can yield
+       * any type — the standard extraction-via-binder behavior. */
+      if (lizard_logic_rule_enabled("t-axiom-enabled") == 0) {
+        lizard_ast_node_t *reduced = lizard_tt_reduce(body_type, heap);
+        if (reduced->type != AST_TT_BOX) {
+          return type_error(heap,
+            "unbox rejected: t-axiom-enabled off (K), body must be Box-typed");
+        }
+      }
+      return body_type;
+    }
+  }
+  case AST_TT_DIAMOND_INTRO: {
+    /* Phase M.5.5 placeholder typing for diamond-intro:
+     *
+     *   Γ ⊢ e : T
+     *   ──────────────────────
+     *   Γ ⊢ (diamond e) : Diamond T
+     *
+     * Mirrors box-intro structurally. Loose typing for Turn 1 —
+     * no commitment to specific modal logic axioms. M.5.5 Turn 2
+     * will add the 5-axiom (◇A → □◇A) as a refined typing rule
+     * that distinguishes S5 from S4.
+     *
+     * Gated on `modalities-enabled`. */
+    lizard_ast_node_t *body = t->data.tt_diamond_intro.body;
+    lizard_ast_node_t *body_type;
+    lizard_ast_node_t *result;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "diamond rejected: modalities-enabled disabled");
+    }
+    if (body == NULL) {
+      return type_error(heap, "diamond missing argument");
+    }
+    body_type = lizard_tt_infer2(valid_ctx, ctx, body, heap);
+    if (is_error(body_type)) return body_type;
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_DIAMOND;
+    result->data.tt_diamond.argument = body_type;
+    return result;
+  }
+  case AST_TT_DIAMOND_ELIM: {
+    /* Phase M.5.5 Turn 2 — let-diamond typing with 5-axiom toggle:
+     *
+     * Without 5-axiom (K, T, S4):
+     *   Δ; Γ ⊢ b : Diamond T    Δ; Γ, x:T ⊢ body : U
+     *   ────────────────────────────────────────────
+     *   Δ; Γ ⊢ (let-diamond x b body) : U
+     *
+     * The unboxed Diamond content is just a TRUTH hypothesis —
+     * dropped inside a future box. This matches modal logics
+     * weaker than S5: a possibility value isn't necessarily a
+     * possibility value.
+     *
+     * With 5-axiom (S5):
+     *   Δ; Γ ⊢ b : Diamond T    Δ, x:T; Γ ⊢ body : U
+     *   ────────────────────────────────────────────
+     *   Δ; Γ ⊢ (let-diamond x b body) : U
+     *
+     * The unboxed content lands in VALID context — survives entry
+     * into subsequent boxes. This encodes the 5-axiom (◇A → □◇A):
+     * a possibility is necessarily a possibility.
+     *
+     * Toggle: modal-5-axiom (default-on per default-allow). Bundles:
+     *   K, T, S4   → off
+     *   S5         → on
+     *   modal-STLC → off (S4-flavored) */
+    lizard_ast_node_t *binder = t->data.tt_diamond_elim.binder;
+    lizard_ast_node_t *scrut = t->data.tt_diamond_elim.scrutinee;
+    lizard_ast_node_t *body = t->data.tt_diamond_elim.body;
+    lizard_ast_node_t *scrut_type;
+    lizard_ast_node_t *new_truth_ctx, *new_valid_ctx;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "let-diamond rejected: modalities-enabled disabled");
+    }
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "let-diamond binder not a symbol");
+    }
+    scrut_type = lizard_tt_infer2(valid_ctx, ctx, scrut, heap);
+    if (is_error(scrut_type)) return scrut_type;
+    scrut_type = lizard_tt_reduce(scrut_type, heap);
+    if (scrut_type->type != AST_TT_DIAMOND) {
+      return type_error(heap, "let-diamond scrutinee not of Diamond type");
+    }
+    if (lizard_logic_rule_enabled("modal-5-axiom") == 0) {
+      /* K/T/S4: extend truth context with x:T. */
+      new_truth_ctx = ctx_extend(ctx, binder->data.variable,
+                                 scrut_type->data.tt_diamond.argument, heap);
+      return lizard_tt_infer2(valid_ctx, new_truth_ctx, body, heap);
+    }
+    /* S5: extend VALID context — the 5-axiom encoding. */
+    new_valid_ctx = ctx_extend(valid_ctx, binder->data.variable,
+                               scrut_type->data.tt_diamond.argument, heap);
     return lizard_tt_infer2(new_valid_ctx, ctx, body, heap);
+  }
+  case AST_TT_BOX_APP: {
+    /* Phase M.5.6 + M.5.7 — K-axiom: Box (Pi x A B) → Box A → Box B.
+     *
+     * Typing rule (non-dependent Pi, B doesn't mention x):
+     *
+     *   Δ; Γ ⊢ f : Box (Pi x A B)    Δ; Γ ⊢ a : Box A
+     *   ─────────────────────────────────────────────
+     *   Δ; Γ ⊢ (box-app f a) : Box B
+     *
+     * Typing rule (dependent Pi, B mentions x; M.5.7):
+     *
+     *   t-axiom-enabled is ON
+     *   Δ; Γ ⊢ f : Box (Pi x A B)    Δ; Γ ⊢ a : Box A
+     *   ─────────────────────────────────────────────
+     *   Δ; Γ ⊢ (box-app f a) : Box (B[(unbox y a y)/x])
+     *
+     * For the dependent case, we substitute an explicit unboxing
+     * (which is the T-axiom realized) for x in B. The result type
+     * contains an embedded extraction term, which is well-typed
+     * because unbox a yields A.
+     *
+     * Under K (t-axiom-enabled off), the dependent case is rejected
+     * because the substituent term can't be formed without the
+     * T-axiom.
+     *
+     * Gated on `modalities-enabled`. */
+    lizard_ast_node_t *fun = t->data.tt_box_app.fun;
+    lizard_ast_node_t *arg = t->data.tt_box_app.arg;
+    lizard_ast_node_t *fun_type, *arg_type;
+    lizard_ast_node_t *inner_pi, *inner_a, *inner_b;
+    const char *inner_binder;
+    lizard_ast_node_t *result;
+    int is_dependent;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "box-app rejected: modalities-enabled disabled");
+    }
+    fun_type = lizard_tt_infer2(valid_ctx, ctx, fun, heap);
+    if (is_error(fun_type)) return fun_type;
+    fun_type = lizard_tt_reduce(fun_type, heap);
+    if (fun_type->type != AST_TT_BOX) {
+      return type_error(heap, "box-app fun not of Box type");
+    }
+    inner_pi = lizard_tt_reduce(fun_type->data.tt_box.argument, heap);
+    if (inner_pi->type != AST_TT_PI) {
+      return type_error(heap, "box-app fun's boxed type not Pi");
+    }
+    inner_a = inner_pi->data.tt_pi.domain;
+    inner_b = inner_pi->data.tt_pi.codomain;
+    inner_binder = (inner_pi->data.tt_pi.binder &&
+                    inner_pi->data.tt_pi.binder->type == AST_SYMBOL)
+                       ? inner_pi->data.tt_pi.binder->data.variable
+                       : NULL;
+    /* arg must have type Box (inner_a). */
+    arg_type = lizard_tt_infer2(valid_ctx, ctx, arg, heap);
+    if (is_error(arg_type)) return arg_type;
+    arg_type = lizard_tt_reduce(arg_type, heap);
+    if (arg_type->type != AST_TT_BOX) {
+      return type_error(heap, "box-app arg not of Box type");
+    }
+    if (!lizard_tt_structurally_equal(arg_type->data.tt_box.argument, inner_a)) {
+      return type_error(heap, "box-app arg/fun domain mismatch");
+    }
+    is_dependent = (inner_binder != NULL && inner_b != NULL &&
+                    contains_free_var_public(inner_b, inner_binder));
+    if (is_dependent) {
+      /* M.5.7 — dependent case. Substitute (unbox y a y) for x in B.
+       * Requires T-axiom (extraction); rejected under K. */
+      char fresh_name[32];
+      lizard_ast_node_t *y_sym, *unbox_term;
+      lizard_ast_node_t *new_b;
+      if (lizard_logic_rule_enabled("t-axiom-enabled") == 0) {
+        return type_error(heap,
+          "box-app on dependent Pi rejected: t-axiom-enabled disabled");
+      }
+      /* Construct a fresh variable name. The format uses the dim
+       * counter for uniqueness across calls. */
+      snprintf(fresh_name, sizeof(fresh_name), "__boxapp_%ld",
+               lizard_tt_next_fresh_dim());
+      /* Allocate the symbol node for y. Strings live in heap. */
+      y_sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      y_sym->type = AST_SYMBOL;
+      {
+        size_t len = strlen(fresh_name) + 1;
+        char *namebuf = lizard_heap_alloc(len);
+        memcpy(namebuf, fresh_name, len);
+        y_sym->data.variable = namebuf;
+      }
+      /* Build (unbox y_sym a y_sym). */
+      unbox_term = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      unbox_term->type = AST_TT_BOX_ELIM;
+      unbox_term->data.tt_box_elim.binder = y_sym;
+      unbox_term->data.tt_box_elim.scrutinee = arg;
+      unbox_term->data.tt_box_elim.body = y_sym;
+      /* Substitute unbox_term for inner_binder in inner_b. */
+      new_b = lizard_tt_subst(inner_b, inner_binder, unbox_term, heap);
+      result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      result->type = AST_TT_BOX;
+      result->data.tt_box.argument = new_b;
+      return result;
+    }
+    /* Non-dependent: just wrap inner_b in Box. */
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_BOX;
+    result->data.tt_box.argument = inner_b;
+    return result;
   }
   case AST_TT_APP: {
     /* (@ f a) : B[a/x] where f : (Pi x A B) and a checks against A. */

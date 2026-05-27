@@ -55,11 +55,11 @@ int main(void) {
 
   lizard_test_eval(&e, "(set-logic 'lambda-P)");
   r = lizard_test_eval(&e, "(current-logic)");
-  /* Bundle table is walked first-match-wins; LF appears before
-   * lambda-P so both configs yield "LF". This is a deliberate
-   * alias resolution; lambda-P sets the same flags but is named
-   * canonically as LF. */
-  TEST_ASSERT_STR(lizard_test_format(r), "LF");
+  /* M.5.7 — set-logic remembers the explicit name. Previously, lambda-P
+   * would reverse-lookup to LF (same toggle config, LF appears first
+   * in the table). Now current-logic respects the user's explicit
+   * choice while the toggles still match. */
+  TEST_ASSERT_STR(lizard_test_format(r), "lambda-P");
 
   /* F-omega: type-on-type only. */
   lizard_test_eval(&e, "(set-logic 'F-omega)");

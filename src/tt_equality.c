@@ -466,6 +466,20 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     }
     return contains_free_var(t->data.tt_box_elim.body, name);
   }
+  case AST_TT_DIAMOND_INTRO:
+    return contains_free_var(t->data.tt_diamond_intro.body, name);
+  case AST_TT_DIAMOND_ELIM: {
+    if (contains_free_var(t->data.tt_diamond_elim.scrutinee, name)) return 1;
+    if (t->data.tt_diamond_elim.binder &&
+        t->data.tt_diamond_elim.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_diamond_elim.binder->data.variable, name) == 0) {
+      return 0;
+    }
+    return contains_free_var(t->data.tt_diamond_elim.body, name);
+  }
+  case AST_TT_BOX_APP:
+    return contains_free_var(t->data.tt_box_app.fun, name) ||
+           contains_free_var(t->data.tt_box_app.arg, name);
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -881,6 +895,48 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       n->data.tt_box_elim.binder = new_binder;
       n->data.tt_box_elim.scrutinee = new_scrut;
       n->data.tt_box_elim.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND_INTRO: {
+    lizard_ast_node_t *new_body = subst_rec(t->data.tt_diamond_intro.body, x, v, heap);
+    if (new_body == t->data.tt_diamond_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO;
+      n->data.tt_diamond_intro.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND_ELIM: {
+    lizard_ast_node_t *new_scrut = subst_rec(t->data.tt_diamond_elim.scrutinee, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_body = subst_under_binder(
+        t->data.tt_diamond_elim.binder, t->data.tt_diamond_elim.body, x, v, heap,
+        &new_binder);
+    if (new_scrut == t->data.tt_diamond_elim.scrutinee &&
+        new_body == t->data.tt_diamond_elim.body &&
+        new_binder == t->data.tt_diamond_elim.binder) {
+      return t;
+    }
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_ELIM;
+      n->data.tt_diamond_elim.binder = new_binder;
+      n->data.tt_diamond_elim.scrutinee = new_scrut;
+      n->data.tt_diamond_elim.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_BOX_APP: {
+    lizard_ast_node_t *new_fun = subst_rec(t->data.tt_box_app.fun, x, v, heap);
+    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_box_app.arg, x, v, heap);
+    if (new_fun == t->data.tt_box_app.fun && new_arg == t->data.tt_box_app.arg) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_APP;
+      n->data.tt_box_app.fun = new_fun;
+      n->data.tt_box_app.arg = new_arg;
       return n;
     }
   }
@@ -1619,6 +1675,42 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_DIAMOND_INTRO: {
+    lizard_ast_node_t *body = subst_interval(t->data.tt_diamond_intro.body, x, v, heap);
+    if (body == t->data.tt_diamond_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO;
+      n->data.tt_diamond_intro.body = body;
+      return n;
+    }
+  }
+  case AST_TT_DIAMOND_ELIM: {
+    lizard_ast_node_t *scrut = subst_interval(t->data.tt_diamond_elim.scrutinee, x, v, heap);
+    lizard_ast_node_t *body = subst_interval(t->data.tt_diamond_elim.body, x, v, heap);
+    if (scrut == t->data.tt_diamond_elim.scrutinee &&
+        body == t->data.tt_diamond_elim.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_ELIM;
+      n->data.tt_diamond_elim.binder = t->data.tt_diamond_elim.binder;
+      n->data.tt_diamond_elim.scrutinee = scrut;
+      n->data.tt_diamond_elim.body = body;
+      return n;
+    }
+  }
+  case AST_TT_BOX_APP: {
+    lizard_ast_node_t *fun = subst_interval(t->data.tt_box_app.fun, x, v, heap);
+    lizard_ast_node_t *arg = subst_interval(t->data.tt_box_app.arg, x, v, heap);
+    if (fun == t->data.tt_box_app.fun && arg == t->data.tt_box_app.arg) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_APP;
+      n->data.tt_box_app.fun = fun;
+      n->data.tt_box_app.arg = arg;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1843,6 +1935,26 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_box_elim.body, b->data.tt_box_elim.body,
                            &na, &nb);
   }
+  case AST_TT_DIAMOND_INTRO:
+    return alpha_equal_rec(a->data.tt_diamond_intro.body, b->data.tt_diamond_intro.body, ea, eb);
+  case AST_TT_DIAMOND_ELIM: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_diamond_elim.scrutinee,
+                         b->data.tt_diamond_elim.scrutinee, ea, eb)) return 0;
+    na.name = (a->data.tt_diamond_elim.binder &&
+               a->data.tt_diamond_elim.binder->type == AST_SYMBOL)
+                  ? a->data.tt_diamond_elim.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_diamond_elim.binder &&
+               b->data.tt_diamond_elim.binder->type == AST_SYMBOL)
+                  ? b->data.tt_diamond_elim.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_diamond_elim.body, b->data.tt_diamond_elim.body,
+                           &na, &nb);
+  }
+  case AST_TT_BOX_APP:
+    return alpha_equal_rec(a->data.tt_box_app.fun, b->data.tt_box_app.fun, ea, eb) &&
+           alpha_equal_rec(a->data.tt_box_app.arg, b->data.tt_box_app.arg, ea, eb);
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2207,6 +2319,15 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_box_elim.binder, b->data.tt_box_elim.binder) &&
            lizard_tt_structurally_equal(a->data.tt_box_elim.scrutinee, b->data.tt_box_elim.scrutinee) &&
            lizard_tt_structurally_equal(a->data.tt_box_elim.body, b->data.tt_box_elim.body);
+  case AST_TT_DIAMOND_INTRO:
+    return lizard_tt_structurally_equal(a->data.tt_diamond_intro.body, b->data.tt_diamond_intro.body);
+  case AST_TT_DIAMOND_ELIM:
+    return lizard_tt_structurally_equal(a->data.tt_diamond_elim.binder, b->data.tt_diamond_elim.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_diamond_elim.scrutinee, b->data.tt_diamond_elim.scrutinee) &&
+           lizard_tt_structurally_equal(a->data.tt_diamond_elim.body, b->data.tt_diamond_elim.body);
+  case AST_TT_BOX_APP:
+    return lizard_tt_structurally_equal(a->data.tt_box_app.fun, b->data.tt_box_app.fun) &&
+           lizard_tt_structurally_equal(a->data.tt_box_app.arg, b->data.tt_box_app.arg);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3402,6 +3523,76 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
         n->data.tt_box_elim.body = body;
         result = n;
       }
+    }
+    break;
+  }
+  case AST_TT_DIAMOND_INTRO: {
+    lizard_ast_node_t *body = normalize_rec(t->data.tt_diamond_intro.body, heap, memo);
+    if (body == t->data.tt_diamond_intro.body) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_DIAMOND_INTRO;
+      n->data.tt_diamond_intro.body = body;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_DIAMOND_ELIM: {
+    /* Phase M.5.5 beta rule:
+     *   (let-diamond x (diamond e) body) → body[e/x]
+     * Parallel to box-elim beta. */
+    lizard_ast_node_t *scrut = normalize_rec(t->data.tt_diamond_elim.scrutinee, heap, memo);
+    if (scrut->type == AST_TT_DIAMOND_INTRO &&
+        t->data.tt_diamond_elim.binder &&
+        t->data.tt_diamond_elim.binder->type == AST_SYMBOL) {
+      lizard_ast_node_t *substituted = subst_rec(
+          t->data.tt_diamond_elim.body,
+          t->data.tt_diamond_elim.binder->data.variable,
+          scrut->data.tt_diamond_intro.body,
+          heap);
+      result = normalize_rec(substituted, heap, memo);
+    } else {
+      lizard_ast_node_t *body = normalize_rec(t->data.tt_diamond_elim.body, heap, memo);
+      if (scrut == t->data.tt_diamond_elim.scrutinee &&
+          body == t->data.tt_diamond_elim.body) {
+        result = t;
+      } else {
+        lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        n->type = AST_TT_DIAMOND_ELIM;
+        n->data.tt_diamond_elim.binder = t->data.tt_diamond_elim.binder;
+        n->data.tt_diamond_elim.scrutinee = scrut;
+        n->data.tt_diamond_elim.body = body;
+        result = n;
+      }
+    }
+    break;
+  }
+  case AST_TT_BOX_APP: {
+    /* Phase M.5.6 K-axiom reduction:
+     *   (box-app (box f) (box a)) → (box (@ f a))
+     *
+     * Otherwise, normalize subterms. */
+    lizard_ast_node_t *fun = normalize_rec(t->data.tt_box_app.fun, heap, memo);
+    lizard_ast_node_t *arg = normalize_rec(t->data.tt_box_app.arg, heap, memo);
+    if (fun->type == AST_TT_BOX_INTRO && arg->type == AST_TT_BOX_INTRO) {
+      /* Construct (@ f a) and wrap it in a box. */
+      lizard_ast_node_t *inner_app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      lizard_ast_node_t *wrapped = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      inner_app->type = AST_TT_APP;
+      inner_app->data.tt_app.fun = fun->data.tt_box_intro.body;
+      inner_app->data.tt_app.arg = arg->data.tt_box_intro.body;
+      wrapped->type = AST_TT_BOX_INTRO;
+      wrapped->data.tt_box_intro.body = inner_app;
+      result = normalize_rec(wrapped, heap, memo);
+    } else if (fun == t->data.tt_box_app.fun && arg == t->data.tt_box_app.arg) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_APP;
+      n->data.tt_box_app.fun = fun;
+      n->data.tt_box_app.arg = arg;
+      result = n;
     }
     break;
   }
@@ -5398,6 +5589,17 @@ typedef struct logic_rule_entry {
 } logic_rule_entry_t;
 
 static logic_rule_entry_t *logic_config_head = NULL;
+/* Phase M.5.7 — last explicitly-set bundle name, for current_bundle
+ * reverse lookup. If a user calls (set-logic 'X) and X still matches
+ * the active state, current-logic returns "X". Otherwise (e.g. after
+ * a manual toggle change that breaks the match, or after a reset),
+ * current-logic falls back to walking the table.
+ *
+ * This is state, not a pure function of toggles, because the toggle
+ * state alone is ambiguous in some cases — "all modal toggles on"
+ * could be CoC-with-extras or S5. set-logic's explicit name resolves
+ * the ambiguity. */
+static const char *logic_last_set_bundle = NULL;
 
 /* Internal: find a rule by name, return entry or NULL. */
 static logic_rule_entry_t *logic_rule_find(const char *name) {
@@ -5490,13 +5692,23 @@ void lizard_logic_config_reset(void) {
     e = next;
   }
   logic_config_head = NULL;
+  /* M.5.7 — clear remembered set-logic name. */
+  logic_last_set_bundle = NULL;
 }
 
 /* Snapshot: take a deep copy of the current configuration and return
  * an opaque handle. The handle is a pointer to a copy of the linked
  * list. Callers must restore or free it later. */
+/* Snapshot wrapper that includes the remembered set-logic name.
+ * Returned as the opaque snapshot handle; restore unwraps it. */
+typedef struct logic_snapshot {
+  logic_rule_entry_t *config_head;
+  const char *last_set_bundle;
+} logic_snapshot_t;
+
 void *lizard_logic_snapshot(void) {
   logic_rule_entry_t *src, *new_head, *new_tail;
+  logic_snapshot_t *snap;
   new_head = NULL;
   new_tail = NULL;
   for (src = logic_config_head; src != NULL; src = src->next) {
@@ -5504,10 +5716,10 @@ void *lizard_logic_snapshot(void) {
     char *namedup;
     size_t namelen;
     copy = malloc(sizeof(logic_rule_entry_t));
-    if (copy == NULL) return new_head;  /* partial snapshot; OK */
+    if (copy == NULL) break;  /* partial snapshot; OK */
     namelen = strlen(src->name) + 1;
     namedup = malloc(namelen);
-    if (namedup == NULL) { free(copy); return new_head; }
+    if (namedup == NULL) { free(copy); break; }
     memcpy(namedup, src->name, namelen);
     copy->name = namedup;
     copy->enabled = src->enabled;
@@ -5519,7 +5731,16 @@ void *lizard_logic_snapshot(void) {
     }
     new_tail = copy;
   }
-  return new_head;
+  snap = malloc(sizeof(logic_snapshot_t));
+  if (snap == NULL) {
+    /* Out of memory; fall back to returning just the list. Restore
+     * detects this case via the magic head pointer convention is
+     * undefined here — easier to leak. */
+    return new_head;
+  }
+  snap->config_head = new_head;
+  snap->last_set_bundle = logic_last_set_bundle;  /* Points into static table; no dup needed. */
+  return snap;
 }
 
 /* Restore: replace the current configuration with the snapshot. The
@@ -5527,8 +5748,13 @@ void *lizard_logic_snapshot(void) {
  * must not reuse it. To keep a snapshot for multiple restores, take
  * multiple snapshots. */
 void lizard_logic_restore(void *snapshot) {
+  logic_snapshot_t *snap = (logic_snapshot_t *)snapshot;
   lizard_logic_config_reset();
-  logic_config_head = (logic_rule_entry_t *)snapshot;
+  if (snap != NULL) {
+    logic_config_head = snap->config_head;
+    logic_last_set_bundle = snap->last_set_bundle;
+    free(snap);
+  }
 }
 
 /* Iterator: walk the configuration in registration order (reverse
@@ -5581,6 +5807,23 @@ typedef struct logic_bundle {
   /* Phase M.5.3: modal logic toggles. -1 = "don't care". */
   int modalities_enabled;
   int modal_strict_typing;
+  /* Phase M.5.4: 4-axiom (□A → □□A) toggle. -1 = "don't care".
+   * Distinguishes T (no 4-axiom) from S4 (yes 4-axiom). */
+  int modal_4_axiom;
+  /* Phase M.5.5 Turn 2: 5-axiom (◇A → □◇A) toggle. -1 = "don't care".
+   * Distinguishes S4 (no 5-axiom) from S5 (yes 5-axiom).
+   *
+   * When ON, let-diamond extends the VALID context — the unboxed
+   * Diamond content is treated as necessarily-possibly-true. When
+   * OFF, let-diamond extends truth (the M.5.5 Turn 1 behavior). */
+  int modal_5_axiom;
+  /* Phase M.5.6: T-axiom (□A → A) toggle. -1 = "don't care".
+   * Distinguishes K (no T-axiom; unbox cannot extract) from T+
+   * (T-axiom present; unbox extracts via binder).
+   *
+   * When OFF, unbox requires body to be Box-typed — no extraction.
+   * When ON (default), unbox is full S4-style extraction. */
+  int t_axiom;
 } logic_bundle_t;
 
 /* Table of predefined logics. The order matters for reverse lookup:
@@ -5609,33 +5852,36 @@ typedef struct logic_bundle {
  * they declare intent and reserve the names for future axiom work.
  */
 static logic_bundle_t logic_bundles[] = {
-  /* name           cube           structural     features          modal */
-  /*                tot ton too    wk ct ex       pf cpf H lat colat me ms */
-  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1},
+  /* name           cube           structural     features          modal     4ax  5ax  tax */
+  /*                tot ton too    wk ct ex       pf cpf H lat colat me ms   4    5    T  */
+  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
   /* M.4 substructural variants */
-  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1},
-  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1},
+  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
+  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1},
   /* M.6 feature-matrix variants */
-  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1},
-  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1},
-  /* M.5.3 modal-logic bundles. Each is CoC-base with both modal
-   * toggles ON. K/T/S4/S5 are currently aliases — see comment above. */
-  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
-  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
-  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
-  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
-  /* Composite: STLC base with modalities (minimal modal logic). */
-  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1},
-  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1,    -1,  -1,  -1},
+  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1,    -1,  -1,  -1},
+  /* M.5.3+ modal-logic bundles. T differs from S4 by the 4-axiom
+   * (modal_4_axiom). S5 differs from S4 by the 5-axiom (modal_5_axiom,
+   * M.5.5 Turn 2). K differs from T by the T-axiom (t_axiom, M.5.6):
+   * K disables extraction-via-unbox, forcing unbox to keep results
+   * boxed. All four modal logics are now operationally distinct. */
+  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  0},
+  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  1},
+  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1},
+  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   1,  1},
+  /* Composite: STLC base with modalities (S4-flavored: no 5-axiom). */
+  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1},
+  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
 int lizard_logic_set_bundle(const char *name) {
@@ -5691,21 +5937,40 @@ int lizard_logic_set_bundle(const char *name) {
         if (b->modal_strict_typing) lizard_logic_rule_enable("modal-strict-typing");
         else                        lizard_logic_rule_disable("modal-strict-typing");
       }
+      /* M.5.4 4-axiom. */
+      if (b->modal_4_axiom != -1) {
+        if (b->modal_4_axiom) lizard_logic_rule_enable("modal-4-axiom");
+        else                  lizard_logic_rule_disable("modal-4-axiom");
+      }
+      /* M.5.5 5-axiom. */
+      if (b->modal_5_axiom != -1) {
+        if (b->modal_5_axiom) lizard_logic_rule_enable("modal-5-axiom");
+        else                  lizard_logic_rule_disable("modal-5-axiom");
+      }
+      /* M.5.6 T-axiom. */
+      if (b->t_axiom != -1) {
+        if (b->t_axiom) lizard_logic_rule_enable("t-axiom-enabled");
+        else            lizard_logic_rule_disable("t-axiom-enabled");
+      }
+      /* M.5.7 — remember the explicit name so current_bundle can
+       * disambiguate when multiple bundles match the same toggle
+       * state. Points into the static table; no allocation. */
+      logic_last_set_bundle = b->name;
       return 1;
     }
   }
   return 0;
 }
 
-/* Returns the name of the current logic, or "custom" if no bundle
- * matches. Unregistered axes are treated as enabled, matching M.2's
- * default-allow convention. Returns a static string; do not free. */
-const char *lizard_logic_current_bundle(void) {
+/* Helper: test whether a specific bundle matches the active state.
+ * Same conditions as the table walk; factored out for reuse by
+ * current_bundle's remembered-name fast path. */
+static int bundle_matches_active(logic_bundle_t *b) {
   int term_on, type_on_term, type_on_type;
   int weakening, contraction, exchange;
   int pi_fresh, co_pi_fresh, hit_en, lat_u, lat_co;
-  logic_bundle_t *b;
-  int modalities_en, modal_strict;
+  int modalities_en, modal_strict, modal_4, modal_5, t_ax;
+  int match = 1;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
   type_on_type = lizard_logic_rule_enabled("type-depends-on-type");
@@ -5719,6 +5984,9 @@ const char *lizard_logic_current_bundle(void) {
   lat_co       = lizard_logic_rule_enabled("couniverse-lattice");
   modalities_en = lizard_logic_rule_enabled("modalities-enabled");
   modal_strict  = lizard_logic_rule_enabled("modal-strict-typing");
+  modal_4 = lizard_logic_rule_enabled("modal-4-axiom");
+  modal_5 = lizard_logic_rule_enabled("modal-5-axiom");
+  t_ax    = lizard_logic_rule_enabled("t-axiom-enabled");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
@@ -5732,45 +6000,77 @@ const char *lizard_logic_current_bundle(void) {
   if (lat_co == -1)       lat_co = 1;
   if (modalities_en == -1) modalities_en = 1;
   if (modal_strict == -1)  modal_strict = 1;
+  if (modal_4 == -1)       modal_4 = 1;
+  if (modal_5 == -1)       modal_5 = 1;
+  if (t_ax == -1)          t_ax = 1;
+  if (b->term_on_type != term_on) return 0;
+  if (b->type_on_term != type_on_term) return 0;
+  if (b->type_on_type != type_on_type) return 0;
+  if (b->weakening != -1) {
+    if (b->weakening != weakening) match = 0;
+  } else if (weakening != 1) match = 0;
+  if (b->contraction != -1) {
+    if (b->contraction != contraction) match = 0;
+  } else if (contraction != 1) match = 0;
+  if (b->exchange != -1) {
+    if (b->exchange != exchange) match = 0;
+  } else if (exchange != 1) match = 0;
+  if (b->pi_fresh_enabled != -1) {
+    if (b->pi_fresh_enabled != pi_fresh) match = 0;
+  } else if (pi_fresh != 1) match = 0;
+  if (b->co_pi_fresh_enabled != -1) {
+    if (b->co_pi_fresh_enabled != co_pi_fresh) match = 0;
+  } else if (co_pi_fresh != 1) match = 0;
+  if (b->HIT_enabled != -1) {
+    if (b->HIT_enabled != hit_en) match = 0;
+  } else if (hit_en != 1) match = 0;
+  if (b->lattice_universes != -1) {
+    if (b->lattice_universes != lat_u) match = 0;
+  } else if (lat_u != 1) match = 0;
+  if (b->couniverse_lattice != -1) {
+    if (b->couniverse_lattice != lat_co) match = 0;
+  } else if (lat_co != 1) match = 0;
+  if (b->modalities_enabled != -1) {
+    if (b->modalities_enabled != modalities_en) match = 0;
+  } else if (modalities_en != 1) match = 0;
+  if (b->modal_strict_typing != -1) {
+    if (b->modal_strict_typing != modal_strict) match = 0;
+  } else if (modal_strict != 1) match = 0;
+  if (b->modal_4_axiom != -1) {
+    if (b->modal_4_axiom != modal_4) match = 0;
+  } else if (modal_4 != 1) match = 0;
+  if (b->modal_5_axiom != -1) {
+    if (b->modal_5_axiom != modal_5) match = 0;
+  } else if (modal_5 != 1) match = 0;
+  if (b->t_axiom != -1) {
+    if (b->t_axiom != t_ax) match = 0;
+  } else if (t_ax != 1) match = 0;
+  return match;
+}
+
+/* Returns the name of the current logic, or "custom" if no bundle
+ * matches.
+ *
+ * M.5.7 — if the user explicitly called (set-logic 'X) and X still
+ * matches the active state, return "X". This resolves the ambiguity
+ * where multiple bundles can match the same toggle state (e.g. S5
+ * and CoC both match all-toggles-on). Falls back to walking the
+ * table when no name was set or the remembered name no longer
+ * applies. */
+const char *lizard_logic_current_bundle(void) {
+  logic_bundle_t *b;
+  /* Fast path: try the remembered name first. */
+  if (logic_last_set_bundle != NULL) {
+    for (b = logic_bundles; b->name != NULL; b++) {
+      if (strcmp(b->name, logic_last_set_bundle) == 0) {
+        if (bundle_matches_active(b)) return b->name;
+        break;  /* Found the bundle but it no longer matches; fall through. */
+      }
+    }
+  }
+  /* Fall back to table walk. */
   for (b = logic_bundles; b->name != NULL; b++) {
-    int match = 1;
-    if (b->term_on_type != term_on) continue;
-    if (b->type_on_term != type_on_term) continue;
-    if (b->type_on_type != type_on_type) continue;
-    /* Structural rules. */
-    if (b->weakening != -1) {
-      if (b->weakening != weakening) match = 0;
-    } else if (weakening != 1) match = 0;
-    if (b->contraction != -1) {
-      if (b->contraction != contraction) match = 0;
-    } else if (contraction != 1) match = 0;
-    if (b->exchange != -1) {
-      if (b->exchange != exchange) match = 0;
-    } else if (exchange != 1) match = 0;
-    /* M.6 features. */
-    if (b->pi_fresh_enabled != -1) {
-      if (b->pi_fresh_enabled != pi_fresh) match = 0;
-    } else if (pi_fresh != 1) match = 0;
-    if (b->co_pi_fresh_enabled != -1) {
-      if (b->co_pi_fresh_enabled != co_pi_fresh) match = 0;
-    } else if (co_pi_fresh != 1) match = 0;
-    if (b->HIT_enabled != -1) {
-      if (b->HIT_enabled != hit_en) match = 0;
-    } else if (hit_en != 1) match = 0;
-    if (b->lattice_universes != -1) {
-      if (b->lattice_universes != lat_u) match = 0;
-    } else if (lat_u != 1) match = 0;
-    if (b->couniverse_lattice != -1) {
-      if (b->couniverse_lattice != lat_co) match = 0;
-    } else if (lat_co != 1) match = 0;
-    /* M.5.3 modal toggles. */
-    if (b->modalities_enabled != -1) {
-      if (b->modalities_enabled != modalities_en) match = 0;
-    } else if (modalities_en != 1) match = 0;
-    if (b->modal_strict_typing != -1) {
-      if (b->modal_strict_typing != modal_strict) match = 0;
-    } else if (modal_strict != 1) match = 0;
-    if (match) return b->name;
+    if (bundle_matches_active(b)) return b->name;
   }
   return "custom";
 }
