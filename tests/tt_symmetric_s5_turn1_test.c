@@ -100,10 +100,9 @@ int main(void) {
   TEST_ASSERT_STR(lizard_test_format(r), "#f");
 
   /* === Typing: Turn 2b wires the real rules ===
-   * After Turn 2b, the symmetric forms have real typing rules.
-   * Updated assertions: dia of a true-typed body is rejected (must
+   * Updated after Turn 2b: dia of a true-typed body rejects (must
    * be poss); poss-coerce of a true-typed body produces the same
-   * type with POSS kind (the kind is internal; user sees the type). */
+   * type with POSS kind. */
 
   lizard_test_eval(&e, "(set-logic 'S5)");
   /* dia of a true-typed body: rejected. */

@@ -101,7 +101,8 @@ int main(void) {
    * come first, then M.6 features, then M.4 substructural, then
    * cube corners. */
   TEST_ASSERT_STR(lizard_test_format(r),
-                  "(modal-STLC S5 S4 T K "
+                  "(proof-scaffold truncations cubical-S1 "
+                  "modal-STLC S5 S4 T K "
                   "CoC-plus-lattice STLC-strict "
                   "relevant-STLC affine-STLC linear-STLC "
                   "CoC lambda-omega lambda-P-omega lambda-P2 "

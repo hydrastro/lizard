@@ -49,7 +49,7 @@ RUN_ENV     ?=
 
 # --- flags ---------------------------------------------------------------
 CPPFLAGS ?=
-CPPFLAGS += -I$(INC_DIR) -I$(SRC_DIR)
+override CPPFLAGS += -I$(INC_DIR) -I$(SRC_DIR)
 
 WARNINGS := -Wall -Wextra -Werror -pedantic -pedantic-errors
 WARNINGS += -Waggregate-return -Wbad-function-cast -Wcast-align -Wcast-qual

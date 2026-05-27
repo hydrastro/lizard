@@ -1,7 +1,7 @@
 #ifndef LIZARD_PARSER_H
 #define LIZARD_PARSER_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 
 lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap);
 lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,

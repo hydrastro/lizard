@@ -27,8 +27,27 @@ typedef enum {
   LIZARD_STATUS_ERROR = 1,
   LIZARD_STATUS_INVALID_ARGUMENT = 2,
   LIZARD_STATUS_IO_ERROR = 3,
-  LIZARD_STATUS_OUT_OF_MEMORY = 4
+  LIZARD_STATUS_OUT_OF_MEMORY = 4,
+  LIZARD_STATUS_PARSE_ERROR = 5,
+  LIZARD_STATUS_EVAL_ERROR = 6,
+  LIZARD_STATUS_TYPE_ERROR = 7
 } lizard_status_t;
+
+typedef struct lizard_source_span {
+  const char *filename;
+  int start_line;
+  int start_column;
+  int end_line;
+  int end_column;
+  int start_offset;
+  int end_offset;
+} lizard_source_span_t;
+
+typedef struct lizard_diagnostic {
+  lizard_status_t status;
+  lizard_source_span_t span;
+  char message[256];
+} lizard_diagnostic_t;
 
 typedef enum {
   LIZARD_VALUE_STRING,
@@ -70,11 +89,15 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
                                          lizard_value_t **out_value);
 lizard_value_t *lizard_context_last_value(lizard_context_t *context);
 const char *lizard_context_last_error(lizard_context_t *context);
+const lizard_diagnostic_t *lizard_context_last_diagnostic(
+    lizard_context_t *context);
 
 lizard_value_type_t lizard_value_type(const lizard_value_t *value);
 const char *lizard_value_type_name(lizard_value_type_t type);
 int lizard_value_is_error(const lizard_value_t *value);
 int lizard_value_error_code(const lizard_value_t *value);
+int lizard_value_source_span(const lizard_value_t *value,
+                             lizard_source_span_t *out_span);
 void lizard_value_fprint(FILE *fp, lizard_value_t *value);
 void lizard_value_print(lizard_value_t *value);
 

@@ -29,6 +29,8 @@ The public API gives embedders a stable shape:
 - `lizard_context_t` owns an environment and last-result metadata.
 - `lizard_value_t` is opaque to API users.
 - API users can evaluate strings/files and print/query values.
+- API users can inspect the last structured diagnostic.
+- API users can ask values for their source span when available.
 
 ## Known limitation
 
@@ -43,5 +45,6 @@ active heap, diagnostics, continuation state, module registry, and GC roots into
 - Make the runtime reentrant by removing all remaining process-global evaluator
   state.
 - Add a value-retention/handle API before adding moving or compacting GC.
-- Split public `include/lizard.h` into a true private implementation header and
-  keep `include/lizard_api.h` as the stable embedder-facing API.
+- Continue shrinking the compatibility `include/lizard.h` wrapper until embedders
+  only need `include/lizard_api.h`.
+- Replace remaining parser/evaluator fatal exits with structured diagnostics.

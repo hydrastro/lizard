@@ -16,22 +16,23 @@ pessimistic accounting.
 |---|---|
 | Scheme core | Solid. Standard features, tests pass, real-world usage in examples. |
 | λΠ type checker | Solid in scope. Bidirectional, cumulativity works, decidability not proved. |
-| Lambda cube (M.2) | All 8 corners + CoC available as bundles. STLC/F/LF/λ-P/F-omega/λ-omega/λ-P2/λ-P-omega/CoC. |
-| Named-logic bundles (M.3) | 19 bundles spanning cube + substructural + features + modal logics. |
-| Substructural rules (M.4) | weakening/contraction/exchange toggles + linear-STLC/affine-STLC/relevant-STLC bundles. |
-| Universe lattice (L.1–L.5) | Pi-fresh / co-pi-fresh dimension-creating, lattice and couniverse, shared fresh-dim counter. |
+| Lambda cube (M.2, M.3) | All 8 corners + CoC as named bundles. |
+| Substructural toggles (M.4) | `weakening`/`contraction`/`exchange` rules + `linear-STLC`/`affine-STLC`/`relevant-STLC` bundles. |
+| Universe lattice (L.1–L.5) | Pi-fresh/co-pi-fresh as dimension-creating, lattice and couniverse work. |
 | Observational HoTT engine | 23 reduction rules. Covers core Id manipulations + per-type-former Id and xport. |
 | Cubical core (Path, faces) | Solid. Connection operations and face entailment work. |
 | Kan composition | Working for the common per-type-former cases; some specific rules are partial (see below). |
 | Glue types | Single-face Glue. Reduction and typing work. |
 | ua | Type rule sound. Reduction for `id-equiv` is complete; general case is incomplete. |
-| HIT scaffolding (H.1) | AST nodes + registry for higher inductive types. **No computation rules.** |
-| Modal logic layer (M.5.1–M.5.9) | K, T, S4, S5 operationally distinct. Asymmetric forms (box/unbox/diamond/let-diamond/box-app/diamond-bind) and symmetric S5 forms (dia/poss-coerce) with Pfenning-Davies judgment-kind discipline. See MODAL.md. |
+| HIT scaffolding (H.1) | AST nodes + registry for higher inductive types. Declaration only. |
+| HIT — propositional truncation (H.2) | Typing rules and primary computation rule. Gated on `truncations-enabled`. Honest gap: propositionality obligation on motive not enforced. |
+| HIT — S¹ (cubical-S1) | Scaffold only. Minimal typing spine for `S1`/`base`/`loop`. No recursor, no `loop` computation. |
+| HIT — generic extensions | Scaffold only. `theory-extension` node admits experiments behind opt-in rules. |
+| Modal logic layer (M.5.1–M.5.9) | K, T, S4, S5 operationally distinct. Asymmetric forms (box/unbox/diamond/let-diamond/box-app/diamond-bind) and symmetric S5 forms (dia/poss-coerce) with Pfenning-Davies judgment-kind discipline. See `docs/MODAL.md`. |
 | Soundness proof | None. |
 | Decidability of typechecking | Not proved. |
 | Categorical laws (comonad/monad) | Operations definable; specific witnesses fire via beta; laws not generally proven. |
 | Strict single-Ω invariant | Encoded via kind propagation, not enforced syntactically. |
-| HITs with computation rules | Not yet (H.2 pending). |
 
 ## 1. Things deliberately out of scope
 
@@ -57,13 +58,13 @@ data needed for the full comp Glue rule. Our representation:
 (`(i=i0) ↦ (A, e)` and `(i=i1) ↦ (B, id-equiv B)`). We could express
 the unary case but not the binary case as a single Glue term.
 
-**HITs are not supported.** No support for higher inductive types
-(S¹, suspension, truncation, pushouts). Adding HITs would require:
-- New AST node forms for HIT introductions
-- Per-HIT computation rules
-- The interaction of comp with HIT constructors (this is where
-  Cubical Agda spends substantial implementation effort)
-- Generic HIT framework or per-HIT special-casing
+**HITs are partially supported.** The HIT layer is split into two tiers:
+
+- **Scaffolds.** AST nodes for `S1`/`base`/`loop`, generic `theory-extension`, and the H.1 declaration registry exist. These are opt-in via logic rules and have minimal typing only. No recursors, no computation rules for path constructors, no Kan composition with the motive. The scaffold layer is intentionally limited — see `docs/OPTIONAL_PROOF_SCAFFOLDS.md` for the migration path.
+
+- **Checked: propositional truncation.** `Trunc level A`, `trunc value`, `trunc-elim motive handler value` have real typing rules and a primary computation rule `(trunc-elim C h (trunc x)) ⟶ (@ h x)`. Gated on `truncations-enabled`. Honest gap: the propositionality obligation on the motive C (any two values path-equal) is not structurally enforced — see `docs/CLAIMS_MATRIX.md`.
+
+Bringing the scaffolds up to checked status (especially S¹ with loop computation and Kan composition) is the same kind of work as Cubical Agda's HIT implementation, which is non-trivial.
 
 ## 2. Things that work but are incomplete
 

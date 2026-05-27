@@ -108,7 +108,8 @@ int main(void) {
   /* list-logics includes the new bundles. */
   r = lizard_test_eval(&e, "(list-logics)");
   TEST_ASSERT_STR(lizard_test_format(r),
-                  "(modal-STLC S5 S4 T K "
+                  "(proof-scaffold truncations cubical-S1 "
+                  "modal-STLC S5 S4 T K "
                   "CoC-plus-lattice STLC-strict "
                   "relevant-STLC affine-STLC linear-STLC "
                   "CoC lambda-omega lambda-P-omega lambda-P2 "

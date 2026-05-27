@@ -1,5 +1,5 @@
 #include "tokenizer.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 
 bool lizard_is_digit(const char *input, int i) {

@@ -1,5 +1,5 @@
 #include "env.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include <stdio.h>
 #include <stdlib.h>

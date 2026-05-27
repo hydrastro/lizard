@@ -1,7 +1,7 @@
 #ifndef LIZARD_MEM_H
 #define LIZARD_MEM_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 
 extern lizard_heap_t *heap;
 

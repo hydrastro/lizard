@@ -1,7 +1,7 @@
 #include "primitives.h"
 #include "env.h"
 #include "errors.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include "parser.h"
 #include "printer.h"
@@ -14,6 +14,18 @@ extern lizard_ast_node_t *callcc_value;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+
+static const char *lizard_heap_strdup(lizard_heap_t *heap, const char *src) {
+  char *dst;
+  size_t len;
+  if (src == NULL) {
+    return NULL;
+  }
+  len = strlen(src) + 1U;
+  dst = lizard_heap_alloc(len);
+  memcpy(dst, src, len);
+  return dst;
+}
 
 static lizard_ast_node_t *lizard_make_number_copy(lizard_heap_t *heap,
                                                    lizard_ast_node_t *source) {
@@ -925,16 +937,17 @@ lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
   }
   copy = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   copy->type = node->type;
+  copy->span = node->span;
   switch (node->type) {
   case AST_NUMBER:
     mpz_init(copy->data.number);
     mpz_set(copy->data.number, node->data.number);
     break;
   case AST_STRING:
-    copy->data.string = strdup(node->data.string);
+    copy->data.string = lizard_heap_strdup(heap, node->data.string);
     break;
   case AST_SYMBOL:
-    copy->data.variable = strdup(node->data.variable);
+    copy->data.variable = lizard_heap_strdup(heap, node->data.variable);
     break;
   case AST_BOOL:
     copy->data.boolean = node->data.boolean;
@@ -1384,9 +1397,6 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_DIAMOND_BIND:   name = "diamond-bind";   break;
   case AST_TT_DIAMOND_INTRO_SYM: name = "dia";         break;
   case AST_TT_POSS_COERCE:    name = "poss-coerce";    break;
-  case AST_TT_TRUNC_TYPE:     name = "Trunc";          break;
-  case AST_TT_TRUNC_INTRO:    name = "trunc-intro";    break;
-  case AST_TT_TRUNC_REC:      name = "trunc-rec";      break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -1851,7 +1861,9 @@ static unsigned long lizard_gensym_counter = 0;
 lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   const char *prefix = "g";
-  char buf[64];
+  char counter_buf[32];
+  char *buf;
+  size_t len;
   (void)env;
   if (args->head != args->nil) {
     lizard_ast_node_t *p = ((lizard_ast_list_node_t *)args->head)->ast;
@@ -1864,7 +1876,11 @@ lizard_ast_node_t *lizard_primitive_gensym(lz_list_t *args, lizard_env_t *env,
     }
   }
   lizard_gensym_counter++;
-  snprintf(buf, sizeof(buf), "%s%lu", prefix, lizard_gensym_counter);
+  sprintf(counter_buf, "%lu", lizard_gensym_counter);
+  len = strlen(prefix) + strlen(counter_buf) + 1U;
+  buf = lizard_heap_alloc(len);
+  strcpy(buf, prefix);
+  strcat(buf, counter_buf);
   return make_symbol(heap, buf);
 }
 
@@ -2367,6 +2383,9 @@ lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
  * mathematical notation; predicates/accessors use lowercase.
  * ------------------------------------------------------------------- */
 
+static int no_args(lz_list_t *args) {
+  return args->head == args->nil;
+}
 static int single_arg(lz_list_t *args) {
   return args->head != args->nil && args->head->next == args->nil;
 }
@@ -2644,52 +2663,6 @@ lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *args,
   n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   n->type = AST_TT_POSS_COERCE;
   n->data.tt_poss_coerce.body = nth_arg(args, 0);
-  return n;
-}
-
-/* Phase H.2 — propositional truncation constructors. */
-lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *args,
-                                                   lizard_env_t *env,
-                                                   lizard_heap_t *heap) {
-  lizard_ast_node_t *n;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_TRUNC_TYPE;
-  n->data.tt_trunc_type.argument = nth_arg(args, 0);
-  return n;
-}
-
-lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *args,
-                                                    lizard_env_t *env,
-                                                    lizard_heap_t *heap) {
-  lizard_ast_node_t *n;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_TRUNC_INTRO;
-  n->data.tt_trunc_intro.body = nth_arg(args, 0);
-  return n;
-}
-
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec(lz_list_t *args,
-                                                  lizard_env_t *env,
-                                                  lizard_heap_t *heap) {
-  lizard_ast_node_t *n;
-  (void)env;
-  if (!four_args(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_TRUNC_REC;
-  n->data.tt_trunc_rec.motive    = nth_arg(args, 0);
-  n->data.tt_trunc_rec.point     = nth_arg(args, 1);
-  n->data.tt_trunc_rec.prop      = nth_arg(args, 2);
-  n->data.tt_trunc_rec.scrutinee = nth_arg(args, 3);
   return n;
 }
 
@@ -3183,9 +3156,6 @@ TT_PREDICATE(tt_box_appp,       AST_TT_BOX_APP)
 TT_PREDICATE(tt_diamond_bindp,  AST_TT_DIAMOND_BIND)
 TT_PREDICATE(tt_diamond_intro_symp, AST_TT_DIAMOND_INTRO_SYM)
 TT_PREDICATE(tt_poss_coercep,       AST_TT_POSS_COERCE)
-TT_PREDICATE(tt_trunc_typep,        AST_TT_TRUNC_TYPE)
-TT_PREDICATE(tt_trunc_introp,       AST_TT_TRUNC_INTRO)
-TT_PREDICATE(tt_trunc_recp,         AST_TT_TRUNC_REC)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3249,12 +3219,6 @@ TT_ACCESSOR(tt_diamond_bind_fun, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.fu
 TT_ACCESSOR(tt_diamond_bind_arg, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.arg)
 TT_ACCESSOR(tt_diamond_intro_sym_body, AST_TT_DIAMOND_INTRO_SYM, x->data.tt_diamond_intro_sym.body)
 TT_ACCESSOR(tt_poss_coerce_body,       AST_TT_POSS_COERCE,       x->data.tt_poss_coerce.body)
-TT_ACCESSOR(tt_trunc_type_arg,         AST_TT_TRUNC_TYPE,        x->data.tt_trunc_type.argument)
-TT_ACCESSOR(tt_trunc_intro_body,       AST_TT_TRUNC_INTRO,       x->data.tt_trunc_intro.body)
-TT_ACCESSOR(tt_trunc_rec_motive,       AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.motive)
-TT_ACCESSOR(tt_trunc_rec_point,        AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.point)
-TT_ACCESSOR(tt_trunc_rec_prop,         AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.prop)
-TT_ACCESSOR(tt_trunc_rec_scrutinee,    AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.scrutinee)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4736,6 +4700,336 @@ lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *args,
   return lizard_make_bool(heap, 1);
 }
 
+
+/* ===== Optional proof-theory scaffolds =====
+ *
+ * These constructors are intentionally opt-in. They are useful for designing
+ * cubical S¹, truncations, and user-provided theory extensions, but they are
+ * not trusted kernel terms yet.
+ */
+
+static int lizard_rule_on(const char *name) {
+  return lizard_logic_rule_enabled(name) == 1;
+}
+
+static lizard_ast_node_t *lizard_make_nullary_tt(lizard_heap_t *heap,
+                                                  lizard_ast_node_type_t type) {
+  lizard_ast_node_t *n;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = type;
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1(lz_list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  (void)env;
+  if (!no_args(args) || !lizard_rule_on("cubical-s1-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  return lizard_make_nullary_tt(heap, AST_TT_S1);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1p(lz_list_t *args, lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1_base(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  (void)env;
+  if (!no_args(args) || !lizard_rule_on("cubical-s1-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  return lizard_make_nullary_tt(heap, AST_TT_S1_BASE);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1_basep(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1_BASE);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1_loop(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  (void)env;
+  if (!no_args(args) || !lizard_rule_on("cubical-s1-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  return lizard_make_nullary_tt(heap, AST_TT_S1_LOOP);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_s1_loopp(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1_LOOP);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!two_args(args) || !lizard_rule_on("truncations-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC;
+  n->data.tt_trunc.level = nth_arg(args, 0);
+  n->data.tt_trunc.type = nth_arg(args, 1);
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_truncp(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_level(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc.level;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc.type;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args) || !lizard_rule_on("truncations-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC_INTRO;
+  n->data.tt_trunc_intro.value = nth_arg(args, 0);
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_introp(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC_INTRO);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_value(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC_INTRO) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc_intro.value;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  int has_prop;
+  (void)env;
+  /* Accept 3 args (scaffold, no prop witness) or 4 args (checked,
+   * with prop witness for propositionality). */
+  has_prop = four_args(args);
+  if (!has_prop && !three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  if (!lizard_rule_on("truncations-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC_ELIM;
+  n->data.tt_trunc_elim.motive = nth_arg(args, 0);
+  n->data.tt_trunc_elim.handler = nth_arg(args, 1);
+  if (has_prop) {
+    n->data.tt_trunc_elim.prop  = nth_arg(args, 2);
+    n->data.tt_trunc_elim.value = nth_arg(args, 3);
+  } else {
+    n->data.tt_trunc_elim.prop  = NULL;
+    n->data.tt_trunc_elim.value = nth_arg(args, 2);
+  }
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elimp(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC_ELIM);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_motive(lz_list_t *args,
+                                                         lizard_env_t *env,
+                                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc_elim.motive;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_handler(lz_list_t *args,
+                                                          lizard_env_t *env,
+                                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc_elim.handler;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_value(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_trunc_elim.value;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_prop(lz_list_t *args,
+                                                       lizard_env_t *env,
+                                                       lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  if (x->data.tt_trunc_elim.prop == NULL) return lizard_make_nil(heap);
+  return x->data.tt_trunc_elim.prop;
+}
+
+static lizard_ast_node_t *tt_list_to_lisp_list(lz_list_t *list,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *head;
+  lizard_ast_node_t *tail;
+  lz_list_node_t *iter;
+
+  head = lizard_make_nil(heap);
+  tail = NULL;
+  if (list == NULL) return head;
+  for (iter = list->head; iter != list->nil; iter = iter->next) {
+    lizard_ast_node_t *cell;
+    cell = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    cell->type = AST_PAIR;
+    cell->data.pair.car = ((lizard_ast_list_node_t *)iter)->ast;
+    cell->data.pair.cdr = lizard_make_nil(heap);
+    if (tail == NULL) {
+      head = cell;
+    } else {
+      tail->data.pair.cdr = cell;
+    }
+    tail = cell;
+  }
+  return head;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_extension(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  lizard_ast_node_t *name;
+  lz_list_t *rest;
+  lz_list_node_t *iter;
+  (void)env;
+  if (args->head == args->nil || !lizard_rule_on("theory-extensions-enabled")) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
+  name = nth_arg(args, 0);
+  if (name == NULL || name->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  rest = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  for (iter = args->head->next; iter != args->nil; iter = iter->next) {
+    lizard_ast_list_node_t *copy;
+    copy = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    copy->ast = ((lizard_ast_list_node_t *)iter)->ast;
+    list_append(rest, &copy->node);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_EXTENSION;
+  n->data.tt_extension.name = name;
+  n->data.tt_extension.args = rest;
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_extensionp(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  return lizard_make_bool(heap, x != NULL && x->type == AST_TT_EXTENSION);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_extension_name(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_EXTENSION) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return x->data.tt_extension.name;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_extension_args(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *x;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = nth_arg(args, 0);
+  if (x == NULL || x->type != AST_TT_EXTENSION) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return tt_list_to_lisp_list(x->data.tt_extension.args, heap);
+}
+
 /* ===== Phase M.3 — Lisp primitives for logic bundles ===== */
 
 /* (set-logic 'NAME)
@@ -4959,19 +5253,6 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "poss-coerce",       lizard_primitive_tt_poss_coerce);
   install_one(heap, env, "poss-coerce?",      lizard_primitive_tt_poss_coercep);
   install_one(heap, env, "poss-coerce-body",  lizard_primitive_tt_poss_coerce_body);
-  /* Phase H.2 — propositional truncation. */
-  install_one(heap, env, "Trunc",              lizard_primitive_tt_trunc_type);
-  install_one(heap, env, "Trunc?",             lizard_primitive_tt_trunc_typep);
-  install_one(heap, env, "Trunc-arg",          lizard_primitive_tt_trunc_type_arg);
-  install_one(heap, env, "trunc-intro",        lizard_primitive_tt_trunc_intro);
-  install_one(heap, env, "trunc-intro?",       lizard_primitive_tt_trunc_introp);
-  install_one(heap, env, "trunc-intro-body",   lizard_primitive_tt_trunc_intro_body);
-  install_one(heap, env, "trunc-rec",          lizard_primitive_tt_trunc_rec);
-  install_one(heap, env, "trunc-rec?",         lizard_primitive_tt_trunc_recp);
-  install_one(heap, env, "trunc-rec-motive",   lizard_primitive_tt_trunc_rec_motive);
-  install_one(heap, env, "trunc-rec-point",    lizard_primitive_tt_trunc_rec_point);
-  install_one(heap, env, "trunc-rec-prop",     lizard_primitive_tt_trunc_rec_prop);
-  install_one(heap, env, "trunc-rec-scrutinee",lizard_primitive_tt_trunc_rec_scrutinee);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);
@@ -5256,6 +5537,30 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "system-value",  lizard_primitive_tt_system_value);
   install_one(heap, env, "system-next",   lizard_primitive_tt_system_next);
   install_one(heap, env, "system-lookup", lizard_primitive_tt_system_lookup);
+  /* Optional proof-theory scaffolds. */
+  install_one(heap, env, "S1", lizard_primitive_tt_s1);
+  install_one(heap, env, "S1?", lizard_primitive_tt_s1p);
+  install_one(heap, env, "base", lizard_primitive_tt_s1_base);
+  install_one(heap, env, "base?", lizard_primitive_tt_s1_basep);
+  install_one(heap, env, "loop", lizard_primitive_tt_s1_loop);
+  install_one(heap, env, "loop?", lizard_primitive_tt_s1_loopp);
+  install_one(heap, env, "Trunc", lizard_primitive_tt_trunc);
+  install_one(heap, env, "Trunc?", lizard_primitive_tt_truncp);
+  install_one(heap, env, "Trunc-level", lizard_primitive_tt_trunc_level);
+  install_one(heap, env, "Trunc-type", lizard_primitive_tt_trunc_type);
+  install_one(heap, env, "trunc", lizard_primitive_tt_trunc_intro);
+  install_one(heap, env, "trunc?", lizard_primitive_tt_trunc_introp);
+  install_one(heap, env, "trunc-value", lizard_primitive_tt_trunc_value);
+  install_one(heap, env, "trunc-elim", lizard_primitive_tt_trunc_elim);
+  install_one(heap, env, "trunc-elim?", lizard_primitive_tt_trunc_elimp);
+  install_one(heap, env, "trunc-elim-motive", lizard_primitive_tt_trunc_elim_motive);
+  install_one(heap, env, "trunc-elim-handler", lizard_primitive_tt_trunc_elim_handler);
+  install_one(heap, env, "trunc-elim-value", lizard_primitive_tt_trunc_elim_value);
+  install_one(heap, env, "trunc-elim-prop", lizard_primitive_tt_trunc_elim_prop);
+  install_one(heap, env, "theory-extension", lizard_primitive_tt_extension);
+  install_one(heap, env, "theory-extension?", lizard_primitive_tt_extensionp);
+  install_one(heap, env, "theory-extension-name", lizard_primitive_tt_extension_name);
+  install_one(heap, env, "theory-extension-args", lizard_primitive_tt_extension_args);
   install_one(heap, env, "universe-leq?", lizard_primitive_tt_universe_leq);
   install_one(heap, env, "couniverse-leq?", lizard_primitive_tt_couniverse_leq);
   install_one(heap, env, "face-entails?", lizard_primitive_tt_face_entails);

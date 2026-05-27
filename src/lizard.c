@@ -1,4 +1,4 @@
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "env.h"
 #include "lang.h"
 #include "mem.h"

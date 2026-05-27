@@ -1,7 +1,7 @@
 #ifndef LIZARD_TOKENIZER_H
 #define LIZARD_TOKENIZER_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 
 typedef enum {
   TOKEN_LEFT_PAREN,

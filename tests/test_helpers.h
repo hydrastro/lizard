@@ -15,7 +15,7 @@
 
 #include "env.h"
 #include "lang.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include "parser.h"
 #include "primitives.h"

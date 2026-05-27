@@ -1,7 +1,7 @@
 #ifndef PRINTER_H
 #define PRINTER_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 
 void lizard_print_indent(int depth);
 void lizard_print_ast(lizard_ast_node_t *node, int depth);

@@ -1,9 +1,24 @@
 #include "parser.h"
 #include "errors.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include "primitives.h"
 #include "tokenizer.h"
+
+
+static void lizard_set_node_span_from_token(lizard_ast_node_t *node,
+                                            const lizard_token_t *token) {
+  if (node == NULL || token == NULL) {
+    return;
+  }
+  node->span.filename = NULL;
+  node->span.start_line = token->line;
+  node->span.start_column = token->column;
+  node->span.end_line = token->line;
+  node->span.end_column = token->column;
+  node->span.start_offset = token->offset;
+  node->span.end_offset = token->offset;
+}
 
 lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   static lizard_ast_node_t *canonical_empty_list = NULL;
@@ -34,6 +49,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     return NULL;
   }
   ast_node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  lizard_set_node_span_from_token(ast_node, current_token);
   switch (current_token->type) {
   case TOKEN_LEFT_PAREN: {
     lizard_ast_list_node_t *first_arg;

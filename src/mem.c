@@ -1,7 +1,7 @@
 #include "mem.h"
 #include "env.h"
 #include "lang.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 
 static const char *lizard_error_messages_lang_en[LIZARD_ERROR_COUNT] = {
 #define X(fst, snd) snd,

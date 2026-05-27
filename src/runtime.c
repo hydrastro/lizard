@@ -30,15 +30,40 @@ static void copy_error(char *dst, size_t dst_size, const char *message) {
   dst[n] = '\0';
 }
 
+static void clear_span(lizard_source_span_t *span) {
+  if (span == NULL) {
+    return;
+  }
+  span->filename = NULL;
+  span->start_line = 0;
+  span->start_column = 0;
+  span->end_line = 0;
+  span->end_column = 0;
+  span->start_offset = 0;
+  span->end_offset = 0;
+}
+
+static void set_diagnostic(lizard_diagnostic_t *diagnostic,
+                           lizard_status_t status, const char *message) {
+  if (diagnostic == NULL) {
+    return;
+  }
+  diagnostic->status = status;
+  clear_span(&diagnostic->span);
+  copy_error(diagnostic->message, sizeof(diagnostic->message), message);
+}
+
 void lizard_runtime_set_error(lizard_runtime_t *runtime, const char *message) {
   if (runtime != NULL) {
     copy_error(runtime->last_error, sizeof(runtime->last_error), message);
+    set_diagnostic(&runtime->diagnostic, LIZARD_STATUS_ERROR, message);
   }
 }
 
 void lizard_context_set_error(lizard_context_t *context, const char *message) {
   if (context != NULL) {
     copy_error(context->last_error, sizeof(context->last_error), message);
+    set_diagnostic(&context->diagnostic, LIZARD_STATUS_ERROR, message);
     lizard_runtime_set_error(context->runtime, message);
   }
 }
@@ -67,6 +92,7 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->initial_heap_size = options->initial_heap_size;
   runtime->max_segment_size = options->max_segment_size;
   runtime->last_error[0] = '\0';
+  set_diagnostic(&runtime->diagnostic, LIZARD_STATUS_OK, "");
 
   mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
                           lizard_heap_free_wrapper);
@@ -114,6 +140,7 @@ lizard_context_t *lizard_context_create(lizard_runtime_t *runtime) {
   context->runtime = runtime;
   context->last_value = NULL;
   context->last_error[0] = '\0';
+  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
   context->env = lizard_env_create(runtime->heap, NULL);
   if (context->env == NULL) {
     free(context);
@@ -158,6 +185,8 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
     *out_value = result;
   }
   context->last_error[0] = '\0';
+  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
+  set_diagnostic(&context->runtime->diagnostic, LIZARD_STATUS_OK, "");
   return LIZARD_STATUS_OK;
 }
 
@@ -205,6 +234,8 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
   fp = fopen(path, "rb");
   if (fp == NULL) {
     lizard_context_set_error(context, "unable to open file");
+    set_diagnostic(&context->diagnostic, LIZARD_STATUS_IO_ERROR,
+                   "unable to open file");
     return LIZARD_STATUS_IO_ERROR;
   }
   if (fseek(fp, 0L, SEEK_END) != 0) {
@@ -252,11 +283,19 @@ const char *lizard_context_last_error(lizard_context_t *context) {
   return context->last_error;
 }
 
+const lizard_diagnostic_t *lizard_context_last_diagnostic(
+    lizard_context_t *context) {
+  if (context == NULL) {
+    return NULL;
+  }
+  return &context->diagnostic;
+}
+
 lizard_value_type_t lizard_value_type(const lizard_value_t *value) {
   if (value == NULL) {
     return LIZARD_VALUE_INTERNAL;
   }
-  if (value->type >= AST_TT_PI && value->type <= AST_TT_GLUE_SYS) {
+  if (value->type >= AST_TT_PI && value->type <= AST_TT_EXTENSION) {
     return LIZARD_VALUE_TYPE_THEORY;
   }
   switch (value->type) {
@@ -341,6 +380,16 @@ int lizard_value_error_code(const lizard_value_t *value) {
     return 0;
   }
   return value->data.error.code;
+}
+
+int lizard_value_source_span(const lizard_value_t *value,
+                             lizard_source_span_t *out_span) {
+  if (value == NULL || out_span == NULL) {
+    return 0;
+  }
+  *out_span = value->span;
+  return value->span.start_line != 0 || value->span.start_column != 0 ||
+         value->span.start_offset != 0;
 }
 
 void lizard_value_fprint(FILE *fp, lizard_value_t *value) {

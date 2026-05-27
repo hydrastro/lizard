@@ -1,112 +1,85 @@
-# Lizard v4 — type-theory expansion (in progress)
+# Lizard v4 — type-theory expansion + diagnostics/scaffolds (in progress)
 
-This section logs the changes from v3 (post-restructure baseline) to
-the current head. The v3 section follows. For per-phase detail, see
-DESIGN.md and MODAL.md.
+This section logs the changes from v3 (post-restructure baseline) to the current
+head. The v3 section follows. For per-phase detail, see `DESIGN.md`, `docs/MODAL.md`,
+`docs/CLAIMS_MATRIX.md`, and `docs/OPTIONAL_PROOF_SCAFFOLDS.md`.
 
-## Type-theory: lambda cube (M.2, M.3)
+## Public/internal header split
 
-- **8 lambda-cube corners + CoC** are now reachable as named bundles:
-  `STLC`, `F`, `LF` (aliased `lambda-P`), `F-omega`, `lambda-P2`,
-  `lambda-P-omega`, `lambda-omega`, `CoC`. The cube axes
-  (`term-depends-on-type`, `type-depends-on-term`, `type-depends-on-type`)
-  are individually controllable via the logic-config registry.
-- **Reverse lookup** (`(current-logic)`) returns the most recently
-  named bundle when active toggles still match it, otherwise falls
-  back to a table walk. This resolves the "all toggles on matches
-  both CoC and S5" ambiguity that pre-M.5.7 had.
+- `include/lizard.h` is now a 13-line compatibility shim re-exporting
+  `include/lizard_api.h`. All AST node definitions and interpreter internals
+  moved to `src/lizard_internal.h`.
+- Embedders get a stable opaque public surface. Internals can evolve without
+  ABI breaks. Older embedders that `#include <lizard.h>` keep working.
 
-## Substructural rules (M.4)
+## Source spans on every AST node
 
-- Toggles `weakening`, `contraction`, `exchange` (default-on).
-- Bundles: `linear-STLC` (no weakening, no contraction),
-  `affine-STLC` (no contraction), `relevant-STLC` (no weakening).
+- `lizard_source_span_t span` field on each `lizard_ast_node_t`.
+- Tokens already carried `line`/`column`/`offset`; this propagates them
+  forward into the AST so diagnostics can point at the right place in source.
+- Foundation for future structured error messages.
 
-## Universe lattice (L.1–L.5)
+## Scaffold/checked discipline
 
-- Pi-fresh and Sigma-fresh as dimension-creating type formers.
-- Couniverse and co-pi-fresh, co-sigma-fresh duals.
-- Shared fresh-dim counter starting at 1000 (also used for hygienic
-  fresh-name generation in box-app and diamond-bind dependent cases).
-- Lattice-universes and couniverse-lattice toggles.
-- `STLC-strict` and `CoC-plus-lattice` bundles.
+- New convention: experimental syntax lives behind opt-in **logic rules** and
+  is documented as "scaffold" in `docs/CLAIMS_MATRIX.md` until promoted to
+  "checked" status.
+- New bundles: `cubical-S1`, `truncations`, `proof-scaffold`.
+- New toggles: `cubical-s1-enabled`, `truncations-enabled`,
+  `theory-extensions-enabled`.
+- Documented migration path in `docs/OPTIONAL_PROOF_SCAFFOLDS.md`.
 
-## HIT scaffolding (H.1)
+## Phase H.2 — Propositional truncation promoted from scaffold to checked
 
-- AST nodes for `(declare-hit ...)`, `(hit-constructor ...)`,
-  `(hit-path ...)`, registry, predicates. **No computation rules
-  yet** — H.2 is pending.
+- AST nodes `Trunc`, `trunc`, `trunc-elim` (originally scaffold) now have real
+  typing rules and a primary computation rule.
+- Typing:
+  - `(Trunc level A) : Universe-of-A` — universe-preserving.
+  - `(trunc x) : (Trunc A)` infers `A` from `x : A`; level left NULL.
+  - `(trunc-elim C h e) : C` when `e : (Trunc _ A)` and `h : Π _:A. C`.
+- Reduction: `(trunc-elim C h (trunc x)) ⟶ (@ h x)`, deterministic.
+- Honest gap: propositionality obligation on motive `C` not structurally
+  enforced (see `docs/CLAIMS_MATRIX.md`).
+- All operations gated on `truncations-enabled`.
+- New test `tests/tt_truncation_test.c`, walkthrough `examples/62-truncation.lisp`.
 
-## Modal logic layer (M.5.1–M.5.9)
+## Cubical S¹ scaffold (unchanged from upload)
 
-See MODAL.md for the full write-up. Summary:
+- `S1`, `base`, `loop` with minimal typing spine.
+- Remains scaffold-only — no recursor, no `loop`-computation rule, no
+  Kan composition.
 
-- **M.5.1–M.5.3**: Box / Diamond type constructors with intro/elim,
-  beta reduction, strict S4 dual-context kernel, named bundles K, T,
-  S4, S5, modal-STLC.
-- **M.5.4**: `modal-4-axiom` toggle distinguishes T from S4.
-- **M.5.5**: `modal-5-axiom` toggle distinguishes S4 from S5.
-- **M.5.6**: K's distinguished elim. `t-axiom-enabled` toggle gates
-  unbox's extraction behavior. `box-app` realizes the K-axiom as a
-  term. K rejects extraction; all four logics now operationally
-  distinct.
-- **M.5.7**: Dependent Pi in `box-app` via T-axiom realization.
-  Reverse-lookup memory for `current-logic`.
-- **M.5.8**: Hygiene fix for box-app's fresh-name generator.
-  `diamond-bind` (Diamond's Kleisli composition / monadic bind), the
-  structural dual of `box-app` at the term level.
-- **M.5.9**: Symmetric S5 (Pfenning-Davies three-judgment form).
-  New AST nodes `(dia e)` and `(poss-coerce e)`. New toggle
-  `modal-symmetric`. Three-context kernel API
-  (`lizard_tt_infer3`/`check3`) and kind-aware variants
-  (`lizard_tt_infer2_kind`/`infer3_kind`). Judgment-kind enum
-  (TRUE/VALID/POSS) tracked through the kernel. `let-diamond`
-  propagates body kind to result; `box-intro` rejects POSS bodies
-  under symmetric mode.
+## Type-theory work prior to H.2 (carried forward from earlier v4 state)
 
-## Embedding C API (community contribution)
+- Lambda cube (M.2, M.3): 8 cube corners + CoC as named bundles.
+- Substructural rules (M.4): `weakening`/`contraction`/`exchange` toggles.
+- Universe lattice (L.1–L.5): pi-fresh/co-pi-fresh, couniverse, lattice toggles.
+- HIT scaffolding (H.1): AST nodes + registry, no computation rules.
+- Modal logic layer (M.5.1–M.5.9): K, T, S4, S5 operationally distinct;
+  asymmetric forms (box/unbox/diamond/let-diamond/box-app/diamond-bind);
+  **symmetric S5 (M.5.9 Turn 2b)**: `dia`, `poss-coerce`, judgment-kind
+  tracking, kind propagation through `let-diamond`, kind check in `box-intro`.
+  See `docs/MODAL.md`.
 
-- `include/lizard_api.h` — stable opaque embedding API.
-- `src/runtime.c`, `src/runtime.h` — `lizard_runtime_t`,
-  `lizard_context_t`, eval-string / eval-file, value-type
-  classification.
-- `lib/prelude.lisp` — installed system-wide under
-  `share/lizard/prelude.lisp` when `make install` is run.
-- `flake.nix` / `flake.lock` — Nix devshell.
-- `tests/api_test.c` — exercises the embedding API.
-- `docs/` directory with FEATURE_BACKLOG.md,
-  LIZARD_EVOLUTION_PLAN.md, STABLE_C_API.md,
-  COMPILER_RUNTIME_DEBUGGER_PLAN.md, C_API_SKETCH.md.
-- Top-level DESIGN.md, LIMITATIONS.md (this CHANGELOG file).
+## Diagnostics and proof-scaffold infrastructure (community contribution)
 
-## Scoreboard at v4 head
+- `docs/CLAIMS_MATRIX.md` — precise feature status (implemented / partial /
+  scaffold / not implemented), updated whenever a feature changes tier.
+- `docs/OPTIONAL_PROOF_SCAFFOLDS.md` — explains the scaffold/checked
+  discipline and the intended migration path.
+- `tests/tt_optional_extensions.lisp` + `.expected` — golden test for the
+  new opt-in nodes at the construction layer.
+- Enhanced `runtime.c/h` and `lizard_api.h` for richer embedding surface.
+- Generic `theory-extension` AST node (scaffold) for plugging in
+  experiments without changing the AST.
+
+## Scoreboard at v4 head (after H.2 + merge)
 
 ```
-$ make test
-55 C unit tests passing  (lambda, lists, control, arith, macros,
-                          higher_order, closures, errors, exceptions,
-                          fastprims, hashes, quasiquote, reflection,
-                          strings, tco, varargs, vectors, bignum,
-                          tt_check, tt_test, tt_equality, tt_context,
-                          tt_identity, tt_comp, tt_cubical, tt_faces,
-                          tt_glue, tt_system, tt_hit, tt_lattice,
-                          tt_lattice_co, tt_lattice_fresh,
-                          tt_lattice_co_fresh, tt_lattice_set,
-                          tt_logic_bundles, tt_logic_features,
-                          tt_logic_structural, tt_logic_config,
-                          tt_logic_cube, tt_modalities,
-                          tt_modalities_intro_elim,
-                          tt_modalities_strict_s4, tt_modal_diamond,
-                          tt_modal_4_axiom, tt_modal_5_axiom,
-                          tt_modal_bundles, tt_modal_k_elim,
-                          tt_modal_s5_lookup_and_dep_pi,
-                          tt_symmetric_s5, tt_symmetric_s5_turn1,
-                          tt_symmetric_s5_turn2a,
-                          tt_symmetric_s5_turn2b, api_test,
-                          deep_recursion, syntax_rules)
-4/4 Lisp golden tests passing
-60+ examples covering Scheme core, cubical, lattice, modal layers
-Benchmark: ~0.4s
+57 C unit tests + 5 Lisp golden tests passing
+62+ examples including modal layer (M.5.*) walkthroughs and H.2 truncation
+Benchmark: ~0.5s
+Builds clean: release, debug, asan, coverage
 ```
 
 ---

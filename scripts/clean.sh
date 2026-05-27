@@ -9,7 +9,8 @@
 # Usage:
 #   ./scripts/clean.sh                 # standard cleanup (safe)
 #   ./scripts/clean.sh --dry           # print what would be removed
-#   ./scripts/clean.sh --deep          # also wipe Nix result + flake.lock
+#   ./scripts/clean.sh --deep          # also wipe Nix result/.direnv/cache
+  ./scripts/clean.sh --nuke-lock     # with --deep, also remove flake.lock
 #   ./scripts/clean.sh --suspicious    # also list files at top level
 #                                      # that look out of place (NOT
 #                                      # removed automatically — only
@@ -36,12 +37,15 @@ root=$(cd -- "$script_dir/.." &>/dev/null && pwd)
 # --- options --------------------------------------------------------------
 dry=0
 deep=0
+nuke_lock=0
 suspicious=0
 check=0
+suspicious_count=0
 for arg in "$@"; do
   case "$arg" in
     --dry|-n)       dry=1 ;;
     --deep)         deep=1 ;;
+    --nuke-lock)    nuke_lock=1 ;;
     --suspicious)   suspicious=1 ;;
     --inspect)      dry=1; suspicious=1 ;;
     --check)        dry=1; suspicious=1; check=1 ;;
@@ -170,6 +174,8 @@ nuke "lizard.zip"
 nuke "lizard.tar.gz"
 nuke "lizard.tar.bz2"
 nuke "src.zip"
+nuke "examples/*.zip"
+nuke "examples/*.tar.gz"
 nuke "src.tar.gz"
 nuke "*.zip.bak"
 nuke "*.tar.gz.bak"
@@ -186,13 +192,16 @@ nuke "*.orig"
 nuke "src/*.orig"
 nuke "*.rej"
 nuke "src/*.rej"
+nuke "examples/*.patch"
 
 # --- deep cleanup (opt-in) ------------------------------------------------
 if [[ $deep -eq 1 ]]; then
   section "deep cleanup"
   nuke "result"
   nuke "result-*"
-  nuke "flake.lock"
+  if [[ $nuke_lock -eq 1 ]]; then
+    nuke "flake.lock"
+  fi
   nuke ".direnv"
   nuke ".envrc.cache"
   nuke "compile_commands.json"
@@ -218,6 +227,7 @@ if [[ $suspicious -eq 1 ]]; then
     if ! echo "$entry" | grep -Eq "$expected_re"; then
       printf '  %ssuspicious:%s   %s\n' "$c_keep" "$c_off" "$entry"
       found_any=1
+      suspicious_count=$((suspicious_count + 1))
     fi
   done
   shopt -u nullglob
@@ -228,6 +238,7 @@ if [[ $suspicious -eq 1 ]]; then
       if [[ -e "$variant" ]]; then
         printf '  %slikely typo of %s:%s %s\n' "$c_keep" "$d" "$c_off" "$variant"
         found_any=1
+        suspicious_count=$((suspicious_count + 1))
       fi
     done
   done
@@ -238,6 +249,16 @@ if [[ $suspicious -eq 1 ]]; then
     printf '  %ssource file at root:%s %s %s(expected in src/ or include/)%s\n' \
       "$c_keep" "$c_off" "$f" "$c_dim" "$c_off"
     found_any=1
+    suspicious_count=$((suspicious_count + 1))
+  done
+
+  # Known wrong-project leftovers that should never live under examples/.
+  for f in examples/Makefile examples/flake.nix examples/flake.lock examples/dynsys-*; do
+    if [[ -e "$f" ]]; then
+      printf '  %swrong-project leftover:%s %s\n' "$c_keep" "$c_off" "$f"
+      found_any=1
+      suspicious_count=$((suspicious_count + 1))
+    fi
   done
 
   if [[ $found_any -eq 0 ]]; then
@@ -249,9 +270,9 @@ fi
 echo
 if [[ $check -eq 1 ]]; then
   # CI mode: fail if any dirt detected.
-  if [[ $would_remove_count -gt 0 ]]; then
-    echo "${c_remove}CHECK FAILED${c_off}: ${would_remove_count} pattern(s) of dirt detected."
-    echo "${c_dim}Run './scripts/clean.sh' to remove.${c_off}"
+  if [[ $would_remove_count -gt 0 || $suspicious_count -gt 0 ]]; then
+    echo "${c_remove}CHECK FAILED${c_off}: ${would_remove_count} removable pattern(s), ${suspicious_count} suspicious entrie(s)."
+    echo "${c_dim}Run './scripts/clean.sh' to remove generated dirt; review suspicious files manually.${c_off}"
     exit 1
   else
     echo "${c_ok}CHECK PASSED${c_off}: tree is clean."

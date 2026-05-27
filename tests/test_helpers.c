@@ -55,19 +55,29 @@ static char lizard_test_buf[2048];
 
 const char *lizard_test_format(lizard_ast_node_t *node) {
   FILE *fp;
+  long pos;
   size_t n;
-  fp = fmemopen(lizard_test_buf, sizeof(lizard_test_buf) - 1, "w");
+  size_t got;
+
+  lizard_test_buf[0] = '\0';
+  fp = tmpfile();
   if (!fp) {
-    lizard_test_buf[0] = '\0';
     return lizard_test_buf;
   }
   lizard_fprint_value(fp, node);
   fflush(fp);
-  n = (size_t)ftell(fp);
+  pos = ftell(fp);
+  if (pos < 0) {
+    fclose(fp);
+    return lizard_test_buf;
+  }
+  n = (size_t)pos;
   if (n >= sizeof(lizard_test_buf)) {
     n = sizeof(lizard_test_buf) - 1;
   }
-  lizard_test_buf[n] = '\0';
+  rewind(fp);
+  got = fread(lizard_test_buf, 1, n, fp);
+  lizard_test_buf[got] = '\0';
   fclose(fp);
   return lizard_test_buf;
 }

@@ -1,7 +1,7 @@
 #ifndef LIZARD_LANG_EN_H
 #define LIZARD_LANG_EN_H
 #include "errors.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 
 #define LIZARD_ERROR_MESSAGES_EN                                               \
   X(LIZARD_ERROR_NONE, "Everything's good.")                                   \

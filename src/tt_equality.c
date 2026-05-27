@@ -100,7 +100,7 @@
 #include "primitives.h"
 #include "env.h"
 #include "errors.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include <string.h>
 #include <stdlib.h>  /* malloc/free for H.1 HIT registry */
@@ -120,6 +120,16 @@ typedef struct lizard_tt_flag {
 
 static lizard_tt_flag_t *flag_list = NULL;
 
+static char *host_strdup(const char *src) {
+  char *dst;
+  size_t len;
+  if (src == NULL) return NULL;
+  len = strlen(src) + 1U;
+  dst = (char *)malloc(len);
+  if (dst != NULL) memcpy(dst, src, len);
+  return dst;
+}
+
 static lizard_tt_flag_t *flag_find_or_create(const char *name) {
   lizard_tt_flag_t *f;
   for (f = flag_list; f != NULL; f = f->next) {
@@ -128,7 +138,7 @@ static lizard_tt_flag_t *flag_find_or_create(const char *name) {
   /* Not found; create with default value 1. Persisted across calls;
    * this is fine because flag entries are tiny and finite. */
   f = (lizard_tt_flag_t *)malloc(sizeof(lizard_tt_flag_t));
-  f->name = strdup(name);
+  f->name = host_strdup(name);
   f->value = 1;
   f->next = flag_list;
   flag_list = f;
@@ -487,15 +497,18 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_diamond_intro_sym.body, name);
   case AST_TT_POSS_COERCE:
     return contains_free_var(t->data.tt_poss_coerce.body, name);
-  case AST_TT_TRUNC_TYPE:
-    return contains_free_var(t->data.tt_trunc_type.argument, name);
+  /* Phase H.2 — propositional truncation (on the scaffold AST). */
+  case AST_TT_TRUNC:
+    return (t->data.tt_trunc.level && contains_free_var(t->data.tt_trunc.level, name)) ||
+           (t->data.tt_trunc.type  && contains_free_var(t->data.tt_trunc.type,  name));
   case AST_TT_TRUNC_INTRO:
-    return contains_free_var(t->data.tt_trunc_intro.body, name);
-  case AST_TT_TRUNC_REC:
-    return contains_free_var(t->data.tt_trunc_rec.motive, name) ||
-           contains_free_var(t->data.tt_trunc_rec.point, name) ||
-           contains_free_var(t->data.tt_trunc_rec.prop, name) ||
-           contains_free_var(t->data.tt_trunc_rec.scrutinee, name);
+    return t->data.tt_trunc_intro.value &&
+           contains_free_var(t->data.tt_trunc_intro.value, name);
+  case AST_TT_TRUNC_ELIM:
+    return (t->data.tt_trunc_elim.motive  && contains_free_var(t->data.tt_trunc_elim.motive,  name)) ||
+           (t->data.tt_trunc_elim.handler && contains_free_var(t->data.tt_trunc_elim.handler, name)) ||
+           (t->data.tt_trunc_elim.prop    && contains_free_var(t->data.tt_trunc_elim.prop,    name)) ||
+           (t->data.tt_trunc_elim.value   && contains_free_var(t->data.tt_trunc_elim.value,   name));
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -988,42 +1001,59 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       return n;
     }
   }
-  case AST_TT_TRUNC_TYPE: {
-    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_trunc_type.argument, x, v, heap);
-    if (new_arg == t->data.tt_trunc_type.argument) return t;
+  /* Phase H.2 — propositional truncation (on the scaffold AST). */
+  case AST_TT_TRUNC: {
+    lizard_ast_node_t *lvl = t->data.tt_trunc.level
+                              ? subst_rec(t->data.tt_trunc.level, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *typ = t->data.tt_trunc.type
+                              ? subst_rec(t->data.tt_trunc.type, x, v, heap)
+                              : NULL;
+    if (lvl == t->data.tt_trunc.level && typ == t->data.tt_trunc.type) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_TYPE;
-      n->data.tt_trunc_type.argument = new_arg;
+      n->type = AST_TT_TRUNC;
+      n->data.tt_trunc.level = lvl;
+      n->data.tt_trunc.type  = typ;
       return n;
     }
   }
   case AST_TT_TRUNC_INTRO: {
-    lizard_ast_node_t *new_body = subst_rec(t->data.tt_trunc_intro.body, x, v, heap);
-    if (new_body == t->data.tt_trunc_intro.body) return t;
+    lizard_ast_node_t *val = t->data.tt_trunc_intro.value
+                              ? subst_rec(t->data.tt_trunc_intro.value, x, v, heap)
+                              : NULL;
+    if (val == t->data.tt_trunc_intro.value) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_TRUNC_INTRO;
-      n->data.tt_trunc_intro.body = new_body;
+      n->data.tt_trunc_intro.value = val;
       return n;
     }
   }
-  case AST_TT_TRUNC_REC: {
-    lizard_ast_node_t *m  = subst_rec(t->data.tt_trunc_rec.motive,    x, v, heap);
-    lizard_ast_node_t *p  = subst_rec(t->data.tt_trunc_rec.point,     x, v, heap);
-    lizard_ast_node_t *pr = subst_rec(t->data.tt_trunc_rec.prop,      x, v, heap);
-    lizard_ast_node_t *sc = subst_rec(t->data.tt_trunc_rec.scrutinee, x, v, heap);
-    if (m  == t->data.tt_trunc_rec.motive    && p  == t->data.tt_trunc_rec.point &&
-        pr == t->data.tt_trunc_rec.prop      && sc == t->data.tt_trunc_rec.scrutinee) {
-      return t;
-    }
+  case AST_TT_TRUNC_ELIM: {
+    lizard_ast_node_t *m  = t->data.tt_trunc_elim.motive
+                              ? subst_rec(t->data.tt_trunc_elim.motive, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *h  = t->data.tt_trunc_elim.handler
+                              ? subst_rec(t->data.tt_trunc_elim.handler, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *pr = t->data.tt_trunc_elim.prop
+                              ? subst_rec(t->data.tt_trunc_elim.prop, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *val= t->data.tt_trunc_elim.value
+                              ? subst_rec(t->data.tt_trunc_elim.value, x, v, heap)
+                              : NULL;
+    if (m == t->data.tt_trunc_elim.motive &&
+        h == t->data.tt_trunc_elim.handler &&
+        pr == t->data.tt_trunc_elim.prop &&
+        val == t->data.tt_trunc_elim.value) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_REC;
-      n->data.tt_trunc_rec.motive    = m;
-      n->data.tt_trunc_rec.point     = p;
-      n->data.tt_trunc_rec.prop      = pr;
-      n->data.tt_trunc_rec.scrutinee = sc;
+      n->type = AST_TT_TRUNC_ELIM;
+      n->data.tt_trunc_elim.motive  = m;
+      n->data.tt_trunc_elim.handler = h;
+      n->data.tt_trunc_elim.prop    = pr;
+      n->data.tt_trunc_elim.value   = val;
       return n;
     }
   }
@@ -1830,42 +1860,60 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
-  case AST_TT_TRUNC_TYPE: {
-    lizard_ast_node_t *arg = subst_interval(t->data.tt_trunc_type.argument, x, v, heap);
-    if (arg == t->data.tt_trunc_type.argument) return t;
+  /* Phase H.2 — truncation forms participate in interval substitution
+   * (they can be applied at path positions). */
+  case AST_TT_TRUNC: {
+    lizard_ast_node_t *lvl = t->data.tt_trunc.level
+                              ? subst_interval(t->data.tt_trunc.level, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *typ = t->data.tt_trunc.type
+                              ? subst_interval(t->data.tt_trunc.type, x, v, heap)
+                              : NULL;
+    if (lvl == t->data.tt_trunc.level && typ == t->data.tt_trunc.type) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_TYPE;
-      n->data.tt_trunc_type.argument = arg;
+      n->type = AST_TT_TRUNC;
+      n->data.tt_trunc.level = lvl;
+      n->data.tt_trunc.type  = typ;
       return n;
     }
   }
   case AST_TT_TRUNC_INTRO: {
-    lizard_ast_node_t *body = subst_interval(t->data.tt_trunc_intro.body, x, v, heap);
-    if (body == t->data.tt_trunc_intro.body) return t;
+    lizard_ast_node_t *val = t->data.tt_trunc_intro.value
+                              ? subst_interval(t->data.tt_trunc_intro.value, x, v, heap)
+                              : NULL;
+    if (val == t->data.tt_trunc_intro.value) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_TRUNC_INTRO;
-      n->data.tt_trunc_intro.body = body;
+      n->data.tt_trunc_intro.value = val;
       return n;
     }
   }
-  case AST_TT_TRUNC_REC: {
-    lizard_ast_node_t *m  = subst_interval(t->data.tt_trunc_rec.motive,    x, v, heap);
-    lizard_ast_node_t *p  = subst_interval(t->data.tt_trunc_rec.point,     x, v, heap);
-    lizard_ast_node_t *pr = subst_interval(t->data.tt_trunc_rec.prop,      x, v, heap);
-    lizard_ast_node_t *sc = subst_interval(t->data.tt_trunc_rec.scrutinee, x, v, heap);
-    if (m  == t->data.tt_trunc_rec.motive    && p  == t->data.tt_trunc_rec.point &&
-        pr == t->data.tt_trunc_rec.prop      && sc == t->data.tt_trunc_rec.scrutinee) {
-      return t;
-    }
+  case AST_TT_TRUNC_ELIM: {
+    lizard_ast_node_t *m  = t->data.tt_trunc_elim.motive
+                              ? subst_interval(t->data.tt_trunc_elim.motive, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *h  = t->data.tt_trunc_elim.handler
+                              ? subst_interval(t->data.tt_trunc_elim.handler, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *pr = t->data.tt_trunc_elim.prop
+                              ? subst_interval(t->data.tt_trunc_elim.prop, x, v, heap)
+                              : NULL;
+    lizard_ast_node_t *val= t->data.tt_trunc_elim.value
+                              ? subst_interval(t->data.tt_trunc_elim.value, x, v, heap)
+                              : NULL;
+    if (m == t->data.tt_trunc_elim.motive &&
+        h == t->data.tt_trunc_elim.handler &&
+        pr == t->data.tt_trunc_elim.prop &&
+        val == t->data.tt_trunc_elim.value) return t;
     {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_REC;
-      n->data.tt_trunc_rec.motive    = m;
-      n->data.tt_trunc_rec.point     = p;
-      n->data.tt_trunc_rec.prop      = pr;
-      n->data.tt_trunc_rec.scrutinee = sc;
+      n->type = AST_TT_TRUNC_ELIM;
+      n->data.tt_trunc_elim.motive  = m;
+      n->data.tt_trunc_elim.handler = h;
+      n->data.tt_trunc_elim.prop    = pr;
+      n->data.tt_trunc_elim.value   = val;
       return n;
     }
   }
@@ -2120,15 +2168,31 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body, ea, eb);
   case AST_TT_POSS_COERCE:
     return alpha_equal_rec(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body, ea, eb);
-  case AST_TT_TRUNC_TYPE:
-    return alpha_equal_rec(a->data.tt_trunc_type.argument, b->data.tt_trunc_type.argument, ea, eb);
+  case AST_TT_TRUNC: {
+    int level_eq = (a->data.tt_trunc.level == NULL && b->data.tt_trunc.level == NULL) ||
+                   (a->data.tt_trunc.level != NULL && b->data.tt_trunc.level != NULL &&
+                    alpha_equal_rec(a->data.tt_trunc.level, b->data.tt_trunc.level, ea, eb));
+    if (!level_eq) return 0;
+    if (a->data.tt_trunc.type == NULL || b->data.tt_trunc.type == NULL) {
+      return a->data.tt_trunc.type == b->data.tt_trunc.type;
+    }
+    return alpha_equal_rec(a->data.tt_trunc.type, b->data.tt_trunc.type, ea, eb);
+  }
   case AST_TT_TRUNC_INTRO:
-    return alpha_equal_rec(a->data.tt_trunc_intro.body, b->data.tt_trunc_intro.body, ea, eb);
-  case AST_TT_TRUNC_REC:
-    return alpha_equal_rec(a->data.tt_trunc_rec.motive,    b->data.tt_trunc_rec.motive,    ea, eb) &&
-           alpha_equal_rec(a->data.tt_trunc_rec.point,     b->data.tt_trunc_rec.point,     ea, eb) &&
-           alpha_equal_rec(a->data.tt_trunc_rec.prop,      b->data.tt_trunc_rec.prop,      ea, eb) &&
-           alpha_equal_rec(a->data.tt_trunc_rec.scrutinee, b->data.tt_trunc_rec.scrutinee, ea, eb);
+    if (a->data.tt_trunc_intro.value == NULL || b->data.tt_trunc_intro.value == NULL) {
+      return a->data.tt_trunc_intro.value == b->data.tt_trunc_intro.value;
+    }
+    return alpha_equal_rec(a->data.tt_trunc_intro.value, b->data.tt_trunc_intro.value, ea, eb);
+  case AST_TT_TRUNC_ELIM: {
+    int prop_eq;
+    if (!alpha_equal_rec(a->data.tt_trunc_elim.motive,  b->data.tt_trunc_elim.motive,  ea, eb)) return 0;
+    if (!alpha_equal_rec(a->data.tt_trunc_elim.handler, b->data.tt_trunc_elim.handler, ea, eb)) return 0;
+    prop_eq = (a->data.tt_trunc_elim.prop == NULL && b->data.tt_trunc_elim.prop == NULL) ||
+              (a->data.tt_trunc_elim.prop != NULL && b->data.tt_trunc_elim.prop != NULL &&
+               alpha_equal_rec(a->data.tt_trunc_elim.prop, b->data.tt_trunc_elim.prop, ea, eb));
+    if (!prop_eq) return 0;
+    return alpha_equal_rec(a->data.tt_trunc_elim.value, b->data.tt_trunc_elim.value, ea, eb);
+  }
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2509,15 +2573,29 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body);
   case AST_TT_POSS_COERCE:
     return lizard_tt_structurally_equal(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body);
-  case AST_TT_TRUNC_TYPE:
-    return lizard_tt_structurally_equal(a->data.tt_trunc_type.argument, b->data.tt_trunc_type.argument);
+  case AST_TT_TRUNC: {
+    int level_eq = (a->data.tt_trunc.level == NULL && b->data.tt_trunc.level == NULL) ||
+                   (a->data.tt_trunc.level != NULL && b->data.tt_trunc.level != NULL &&
+                    lizard_tt_structurally_equal(a->data.tt_trunc.level, b->data.tt_trunc.level));
+    int type_eq = (a->data.tt_trunc.type == NULL && b->data.tt_trunc.type == NULL) ||
+                  (a->data.tt_trunc.type != NULL && b->data.tt_trunc.type != NULL &&
+                   lizard_tt_structurally_equal(a->data.tt_trunc.type, b->data.tt_trunc.type));
+    return level_eq && type_eq;
+  }
   case AST_TT_TRUNC_INTRO:
-    return lizard_tt_structurally_equal(a->data.tt_trunc_intro.body, b->data.tt_trunc_intro.body);
-  case AST_TT_TRUNC_REC:
-    return lizard_tt_structurally_equal(a->data.tt_trunc_rec.motive,    b->data.tt_trunc_rec.motive)    &&
-           lizard_tt_structurally_equal(a->data.tt_trunc_rec.point,     b->data.tt_trunc_rec.point)     &&
-           lizard_tt_structurally_equal(a->data.tt_trunc_rec.prop,      b->data.tt_trunc_rec.prop)      &&
-           lizard_tt_structurally_equal(a->data.tt_trunc_rec.scrutinee, b->data.tt_trunc_rec.scrutinee);
+    if (a->data.tt_trunc_intro.value == NULL || b->data.tt_trunc_intro.value == NULL) {
+      return a->data.tt_trunc_intro.value == b->data.tt_trunc_intro.value;
+    }
+    return lizard_tt_structurally_equal(a->data.tt_trunc_intro.value, b->data.tt_trunc_intro.value);
+  case AST_TT_TRUNC_ELIM: {
+    int prop_eq = (a->data.tt_trunc_elim.prop == NULL && b->data.tt_trunc_elim.prop == NULL) ||
+                  (a->data.tt_trunc_elim.prop != NULL && b->data.tt_trunc_elim.prop != NULL &&
+                   lizard_tt_structurally_equal(a->data.tt_trunc_elim.prop, b->data.tt_trunc_elim.prop));
+    return lizard_tt_structurally_equal(a->data.tt_trunc_elim.motive,  b->data.tt_trunc_elim.motive)  &&
+           lizard_tt_structurally_equal(a->data.tt_trunc_elim.handler, b->data.tt_trunc_elim.handler) &&
+           prop_eq &&
+           lizard_tt_structurally_equal(a->data.tt_trunc_elim.value,   b->data.tt_trunc_elim.value);
+  }
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3836,68 +3914,75 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     result = normalize_rec(t->data.tt_poss_coerce.body, heap, memo);
     break;
   }
-  case AST_TT_TRUNC_TYPE: {
-    /* Phase H.2 — Trunc preserves shape; argument reduces under it. */
-    lizard_ast_node_t *arg = normalize_rec(t->data.tt_trunc_type.argument, heap, memo);
-    if (arg == t->data.tt_trunc_type.argument) {
+  case AST_TT_TRUNC: {
+    /* Phase H.2 — Trunc preserves shape; level and argument reduce. */
+    lizard_ast_node_t *lvl = t->data.tt_trunc.level
+                              ? normalize_rec(t->data.tt_trunc.level, heap, memo)
+                              : NULL;
+    lizard_ast_node_t *typ = t->data.tt_trunc.type
+                              ? normalize_rec(t->data.tt_trunc.type, heap, memo)
+                              : NULL;
+    if (lvl == t->data.tt_trunc.level && typ == t->data.tt_trunc.type) {
       result = t;
     } else {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_TYPE;
-      n->data.tt_trunc_type.argument = arg;
+      n->type = AST_TT_TRUNC;
+      n->data.tt_trunc.level = lvl;
+      n->data.tt_trunc.type  = typ;
       result = n;
     }
     break;
   }
   case AST_TT_TRUNC_INTRO: {
-    /* Phase H.2 — trunc-intro preserves shape; body reduces. */
-    lizard_ast_node_t *body = normalize_rec(t->data.tt_trunc_intro.body, heap, memo);
-    if (body == t->data.tt_trunc_intro.body) {
+    /* Phase H.2 — trunc-intro preserves shape; value reduces. */
+    lizard_ast_node_t *val = t->data.tt_trunc_intro.value
+                              ? normalize_rec(t->data.tt_trunc_intro.value, heap, memo)
+                              : NULL;
+    if (val == t->data.tt_trunc_intro.value) {
       result = t;
     } else {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_TRUNC_INTRO;
-      n->data.tt_trunc_intro.body = body;
+      n->data.tt_trunc_intro.value = val;
       result = n;
     }
     break;
   }
-  case AST_TT_TRUNC_REC: {
+  case AST_TT_TRUNC_ELIM: {
     /* Phase H.2 — primary computation rule:
      *
-     *   (trunc-rec C cm cs (trunc-intro x))  →  (@ cm x)
+     *   (trunc-elim C h (trunc x))  →  (@ h x)
      *
-     * This rule is DETERMINISTIC: the LHS pattern matches at most one
-     * way (trunc-rec applied to a literal trunc-intro). Other
-     * scrutinee shapes (variables, recursor results, etc.) don't fire
-     * and the recursor stays as a normal form.
-     *
-     * No overlap with any other reduction in the engine: trunc-rec is
-     * the unique elim form for Trunc, and no other rule produces a
-     * trunc-intro as its result. */
-    lizard_ast_node_t *m  = normalize_rec(t->data.tt_trunc_rec.motive,    heap, memo);
-    lizard_ast_node_t *p  = normalize_rec(t->data.tt_trunc_rec.point,     heap, memo);
-    lizard_ast_node_t *pr = normalize_rec(t->data.tt_trunc_rec.prop,      heap, memo);
-    lizard_ast_node_t *sc = normalize_rec(t->data.tt_trunc_rec.scrutinee, heap, memo);
-    if (sc->type == AST_TT_TRUNC_INTRO) {
-      /* Beta: result is (@ p sc.body). */
+     * Deterministic by LHS uniqueness: trunc-elim fires only when
+     * its `value` argument is a literal `trunc`. No overlap with
+     * any other reduction in the engine — trunc-elim is the unique
+     * elim form for Trunc, and no other rule produces a trunc-intro
+     * (i.e. `trunc`) as its result. */
+    lizard_ast_node_t *m  = normalize_rec(t->data.tt_trunc_elim.motive,  heap, memo);
+    lizard_ast_node_t *h  = normalize_rec(t->data.tt_trunc_elim.handler, heap, memo);
+    lizard_ast_node_t *pr = t->data.tt_trunc_elim.prop
+                              ? normalize_rec(t->data.tt_trunc_elim.prop, heap, memo)
+                              : NULL;
+    lizard_ast_node_t *val= normalize_rec(t->data.tt_trunc_elim.value,   heap, memo);
+    if (val->type == AST_TT_TRUNC_INTRO) {
+      /* Beta: result is (@ h val.value). */
       lizard_ast_node_t *app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       app->type = AST_TT_APP;
-      app->data.tt_app.fun = p;
-      app->data.tt_app.arg = sc->data.tt_trunc_intro.body;
+      app->data.tt_app.fun = h;
+      app->data.tt_app.arg = val->data.tt_trunc_intro.value;
       result = normalize_rec(app, heap, memo);
-    } else if (m  == t->data.tt_trunc_rec.motive    &&
-               p  == t->data.tt_trunc_rec.point     &&
-               pr == t->data.tt_trunc_rec.prop      &&
-               sc == t->data.tt_trunc_rec.scrutinee) {
+    } else if (m == t->data.tt_trunc_elim.motive &&
+               h == t->data.tt_trunc_elim.handler &&
+               pr == t->data.tt_trunc_elim.prop &&
+               val == t->data.tt_trunc_elim.value) {
       result = t;
     } else {
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-      n->type = AST_TT_TRUNC_REC;
-      n->data.tt_trunc_rec.motive    = m;
-      n->data.tt_trunc_rec.point     = p;
-      n->data.tt_trunc_rec.prop      = pr;
-      n->data.tt_trunc_rec.scrutinee = sc;
+      n->type = AST_TT_TRUNC_ELIM;
+      n->data.tt_trunc_elim.motive  = m;
+      n->data.tt_trunc_elim.handler = h;
+      n->data.tt_trunc_elim.prop    = pr;
+      n->data.tt_trunc_elim.value   = val;
       result = n;
     }
     break;
@@ -6141,6 +6226,10 @@ typedef struct logic_bundle {
    * Bundle settings track modal_5_axiom: K/T/S4 have it off, S5 has
    * it on. */
   int modal_symmetric;
+  /* Optional proof-theory scaffolds. -1 requires the feature to be off. */
+  int cubical_s1;
+  int truncations;
+  int theory_extensions;
 } logic_bundle_t;
 
 /* Table of predefined logics. The order matters for reverse lookup:
@@ -6171,35 +6260,37 @@ typedef struct logic_bundle {
 static logic_bundle_t logic_bundles[] = {
   /* name           cube           structural     features          modal     4ax  5ax  tax sym */
   /*                tot ton too    wk ct ex       pf cpf H lat colat me ms   4    5    T   S  */
-  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"STLC",            0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"F",               1, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"LF",              0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"lambda-P",        0, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"F-omega",         0, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"lambda-P2",       1, 1, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"lambda-P-omega",  0, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"lambda-omega",    1, 0, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"CoC",             1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
   /* M.4 substructural variants */
-  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
-  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1},
+  {"linear-STLC",     0, 0, 0,     0, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"affine-STLC",     0, 0, 0,     1, 0, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"relevant-STLC",   0, 0, 0,     0, 1, 1,    -1,-1,-1,-1,-1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
   /* M.6 feature-matrix variants */
-  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1,    -1,  -1,  -1, -1},
-  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1,    -1,  -1,  -1, -1},
+  {"STLC-strict",     0, 0, 0,    -1,-1,-1,     0, 0, 0, 0, 0,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
+  {"CoC-plus-lattice",1, 1, 1,    -1,-1,-1,     1, 1, 0, 1, 1,   -1,-1,    -1,  -1,  -1, -1, -1, -1, -1},
   /* M.5.3+ modal-logic bundles. T differs from S4 by the 4-axiom
    * (modal_4_axiom). S5 differs from S4 by the 5-axiom (modal_5_axiom,
    * M.5.5 Turn 2). K differs from T by the T-axiom (t_axiom, M.5.6):
    * K disables extraction-via-unbox, forcing unbox to keep results
    * boxed. All four modal logics are now operationally distinct. */
-  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  0, 0},
-  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  1, 0},
-  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0},
-  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   1,  1, 1},
+  {"K",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  0, 0, -1, -1, -1},
+  {"T",               1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     0,   0,  1, 0, -1, -1, -1},
+  {"S4",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0, -1, -1, -1},
+  {"S5",              1, 1, 1,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   1,  1, 1, -1, -1, -1},
   /* Composite: STLC base with modalities (S4-flavored: no 5-axiom). */
-  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0},
-  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-};
+  {"modal-STLC",      0, 0, 0,    -1,-1,-1,    -1,-1,-1,-1,-1,    1, 1,     1,   0,  1, 0, -1, -1, -1},
+  {"cubical-S1",       1, 1, 1,    -1,-1,-1,     1, 1, 1, 1, 1,    1, 1,     1,   1,  1, 0, 1, 0, 0},
+  {"truncations",      1, 1, 1,    -1,-1,-1,     1, 1, 1, 1, 1,    1, 1,     1,   1,  1, 0, 0, 1, 0},
+  {"proof-scaffold",   1, 1, 1,    -1,-1,-1,     1, 1, 1, 1, 1,    1, 1,     1,   1,  1, 0, 1, 1, 1},
+  {NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
 
 int lizard_logic_set_bundle(const char *name) {
   logic_bundle_t *b;
@@ -6274,6 +6365,19 @@ int lizard_logic_set_bundle(const char *name) {
         if (b->modal_symmetric) lizard_logic_rule_enable("modal-symmetric");
         else                    lizard_logic_rule_disable("modal-symmetric");
       }
+      /* Optional proof-theory scaffolds. */
+      if (b->cubical_s1 != -1) {
+        if (b->cubical_s1) lizard_logic_rule_enable("cubical-s1-enabled");
+        else               lizard_logic_rule_disable("cubical-s1-enabled");
+      }
+      if (b->truncations != -1) {
+        if (b->truncations) lizard_logic_rule_enable("truncations-enabled");
+        else                lizard_logic_rule_disable("truncations-enabled");
+      }
+      if (b->theory_extensions != -1) {
+        if (b->theory_extensions) lizard_logic_rule_enable("theory-extensions-enabled");
+        else                      lizard_logic_rule_disable("theory-extensions-enabled");
+      }
       /* M.5.7 — remember the explicit name so current_bundle can
        * disambiguate when multiple bundles match the same toggle
        * state. Points into the static table; no allocation. */
@@ -6292,6 +6396,7 @@ static int bundle_matches_active(logic_bundle_t *b) {
   int weakening, contraction, exchange;
   int pi_fresh, co_pi_fresh, hit_en, lat_u, lat_co;
   int modalities_en, modal_strict, modal_4, modal_5, t_ax, modal_sym;
+  int cubical_s1, truncations, theory_ext;
   int match = 1;
   term_on      = lizard_logic_rule_enabled("term-depends-on-type");
   type_on_term = lizard_logic_rule_enabled("type-depends-on-term");
@@ -6310,6 +6415,9 @@ static int bundle_matches_active(logic_bundle_t *b) {
   modal_5 = lizard_logic_rule_enabled("modal-5-axiom");
   t_ax    = lizard_logic_rule_enabled("t-axiom-enabled");
   modal_sym = lizard_logic_rule_enabled("modal-symmetric");
+  cubical_s1 = lizard_logic_rule_enabled("cubical-s1-enabled");
+  truncations = lizard_logic_rule_enabled("truncations-enabled");
+  theory_ext = lizard_logic_rule_enabled("theory-extensions-enabled");
   if (term_on == -1)      term_on = 1;
   if (type_on_term == -1) type_on_term = 1;
   if (type_on_type == -1) type_on_type = 1;
@@ -6327,6 +6435,9 @@ static int bundle_matches_active(logic_bundle_t *b) {
   if (modal_5 == -1)       modal_5 = 1;
   if (t_ax == -1)          t_ax = 1;
   if (modal_sym == -1)     modal_sym = 1;
+  if (cubical_s1 == -1)    cubical_s1 = 0;
+  if (truncations == -1)   truncations = 0;
+  if (theory_ext == -1)    theory_ext = 0;
   if (b->term_on_type != term_on) return 0;
   if (b->type_on_term != type_on_term) return 0;
   if (b->type_on_type != type_on_type) return 0;
@@ -6372,6 +6483,15 @@ static int bundle_matches_active(logic_bundle_t *b) {
   if (b->modal_symmetric != -1) {
     if (b->modal_symmetric != modal_sym) match = 0;
   } else if (modal_sym != 1) match = 0;
+  if (b->cubical_s1 != -1) {
+    if (b->cubical_s1 != cubical_s1) match = 0;
+  } else if (cubical_s1 != 0) match = 0;
+  if (b->truncations != -1) {
+    if (b->truncations != truncations) match = 0;
+  } else if (truncations != 0) match = 0;
+  if (b->theory_extensions != -1) {
+    if (b->theory_extensions != theory_ext) match = 0;
+  } else if (theory_ext != 0) match = 0;
   return match;
 }
 

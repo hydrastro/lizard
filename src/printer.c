@@ -112,6 +112,62 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
       }
     }
     break;
+  case AST_TT_S1:
+    fprintf(fp, "S1");
+    return;
+  case AST_TT_S1_BASE:
+    fprintf(fp, "base");
+    return;
+  case AST_TT_S1_LOOP:
+    fprintf(fp, "loop");
+    return;
+  case AST_TT_TRUNC:
+    /* When level is omitted (NULL), print as (Trunc A) rather than
+     * (Trunc () A). NULL level arises from inference on (trunc x)
+     * which doesn't carry an explicit level. */
+    if (node->data.tt_trunc.level == NULL) {
+      fprintf(fp, "(Trunc ");
+      lizard_fprint_value(fp, node->data.tt_trunc.type);
+      fprintf(fp, ")");
+    } else {
+      fprintf(fp, "(Trunc ");
+      lizard_fprint_value(fp, node->data.tt_trunc.level);
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.tt_trunc.type);
+      fprintf(fp, ")");
+    }
+    return;
+  case AST_TT_TRUNC_INTRO:
+    fprintf(fp, "(trunc ");
+    lizard_fprint_value(fp, node->data.tt_trunc_intro.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_TRUNC_ELIM:
+    fprintf(fp, "(trunc-elim ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.motive);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.handler);
+    if (node->data.tt_trunc_elim.prop != NULL) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.tt_trunc_elim.prop);
+    }
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_EXTENSION:
+    fprintf(fp, "(theory-extension ");
+    lizard_fprint_value(fp, node->data.tt_extension.name);
+    {
+      lz_list_node_t *it;
+      for (it = node->data.tt_extension.args->head;
+           it != node->data.tt_extension.args->nil; it = it->next) {
+        fprintf(fp, " ");
+        lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+      }
+    }
+    fprintf(fp, ")");
+    return;
   case AST_MACRO:
     fprintf(fp, "Macro:\n");
     lizard_fprint_ast(fp, node->data.macro_def.variable, depth + 1);
@@ -410,27 +466,6 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
   case AST_TT_POSS_COERCE:
     fprintf(fp, "(poss-coerce ");
     lizard_fprint_value(fp, node->data.tt_poss_coerce.body);
-    fprintf(fp, ")");
-    return;
-  case AST_TT_TRUNC_TYPE:
-    fprintf(fp, "(Trunc ");
-    lizard_fprint_value(fp, node->data.tt_trunc_type.argument);
-    fprintf(fp, ")");
-    return;
-  case AST_TT_TRUNC_INTRO:
-    fprintf(fp, "(trunc-intro ");
-    lizard_fprint_value(fp, node->data.tt_trunc_intro.body);
-    fprintf(fp, ")");
-    return;
-  case AST_TT_TRUNC_REC:
-    fprintf(fp, "(trunc-rec ");
-    lizard_fprint_value(fp, node->data.tt_trunc_rec.motive);
-    fprintf(fp, " ");
-    lizard_fprint_value(fp, node->data.tt_trunc_rec.point);
-    fprintf(fp, " ");
-    lizard_fprint_value(fp, node->data.tt_trunc_rec.prop);
-    fprintf(fp, " ");
-    lizard_fprint_value(fp, node->data.tt_trunc_rec.scrutinee);
     fprintf(fp, ")");
     return;
   case AST_TT_APP:
@@ -942,6 +977,62 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
       }
     }
     fprintf(fp, "]");
+    return;
+  case AST_TT_S1:
+    fprintf(fp, "S1");
+    return;
+  case AST_TT_S1_BASE:
+    fprintf(fp, "base");
+    return;
+  case AST_TT_S1_LOOP:
+    fprintf(fp, "loop");
+    return;
+  case AST_TT_TRUNC:
+    /* When level is omitted (NULL), print as (Trunc A) rather than
+     * (Trunc () A). NULL level arises from inference on (trunc x)
+     * which doesn't carry an explicit level. */
+    if (node->data.tt_trunc.level == NULL) {
+      fprintf(fp, "(Trunc ");
+      lizard_fprint_value(fp, node->data.tt_trunc.type);
+      fprintf(fp, ")");
+    } else {
+      fprintf(fp, "(Trunc ");
+      lizard_fprint_value(fp, node->data.tt_trunc.level);
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.tt_trunc.type);
+      fprintf(fp, ")");
+    }
+    return;
+  case AST_TT_TRUNC_INTRO:
+    fprintf(fp, "(trunc ");
+    lizard_fprint_value(fp, node->data.tt_trunc_intro.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_TRUNC_ELIM:
+    fprintf(fp, "(trunc-elim ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.motive);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.handler);
+    if (node->data.tt_trunc_elim.prop != NULL) {
+      fprintf(fp, " ");
+      lizard_fprint_value(fp, node->data.tt_trunc_elim.prop);
+    }
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_elim.value);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_EXTENSION:
+    fprintf(fp, "(theory-extension ");
+    lizard_fprint_value(fp, node->data.tt_extension.name);
+    {
+      lz_list_node_t *it;
+      for (it = node->data.tt_extension.args->head;
+           it != node->data.tt_extension.args->nil; it = it->next) {
+        fprintf(fp, " ");
+        lizard_fprint_value(fp, ((lizard_ast_list_node_t *)it)->ast);
+      }
+    }
+    fprintf(fp, ")");
     return;
   case AST_MACRO:
     fprintf(fp, "<macro>");

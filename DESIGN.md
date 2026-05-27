@@ -240,3 +240,17 @@ at the entry to each public reduce call.
 
 These choices are documented in `LIMITATIONS.md` with their
 implications.
+
+## Further documentation
+
+| Document | What it covers |
+|---|---|
+| `docs/MODAL.md` | Modal logic layer (K, T, S4, S5, symmetric S5) |
+| `docs/HIT.md` | Higher inductive types (truncation, S¹ scaffold) |
+| `docs/CLAIMS_MATRIX.md` | Per-feature status tracking |
+| `docs/OPTIONAL_PROOF_SCAFFOLDS.md` | Scaffold/checked discipline and migration path |
+| `docs/STABLE_C_API.md` | Embedding C API |
+| `docs/FEATURE_BACKLOG.md` | Feature wishlist and research tower |
+| `docs/LIZARD_EVOLUTION_PLAN.md` | Multi-phase engineering roadmap |
+| `LIMITATIONS.md` | Honest limitations and design decisions |
+| `CHANGELOG.md` | Version history |

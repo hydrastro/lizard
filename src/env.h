@@ -1,7 +1,7 @@
 #ifndef LIZARD_ENV_H
 #define LIZARD_ENV_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 

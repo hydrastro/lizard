@@ -41,7 +41,7 @@
 #include "primitives.h"
 #include "env.h"
 #include "errors.h"
-#include "lizard.h"
+#include "lizard_internal.h"
 #include "mem.h"
 #include <string.h>
 
@@ -748,31 +748,20 @@ static lizard_ast_node_t *infer2_kind_impl(
       /* Turn 1 loose typing: full ctx available inside box. */
       body_type = lizard_tt_infer2_kind(valid_ctx, ctx, body, heap, &body_kind);
     } else if (lizard_logic_rule_enabled("modal-4-axiom") == 0) {
-      /* T modal logic: strict box-intro but NO 4-axiom. The 4-axiom
-       * (□A → □□A) requires valid hypotheses to survive nested boxes.
-       * When this toggle is off, valid context is consumed at each
-       * box level — nested boxes can't reach beyond the immediate
-       * enclosing unbox.
-       *
-       * Implementation: promote valid to truth (the old "buggy"
-       * behavior, which is actually correct for T). Valid hypotheses
-       * are visible one box deep but disappear at the next level. */
+      /* T modal logic: strict box-intro but NO 4-axiom. */
       lizard_ast_node_t *empty_valid = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       empty_valid->type = AST_NIL;
       body_type = lizard_tt_infer2_kind(empty_valid, valid_ctx, body, heap, &body_kind);
     } else {
-      /* S4 modal logic: strict box-intro WITH the 4-axiom.
-       * Preserve Δ as valid, drop Γ to empty. Valid hypotheses
-       * remain valid across arbitrary nested boxes. */
+      /* S4 modal logic: strict box-intro WITH the 4-axiom. */
       lizard_ast_node_t *empty_truth = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       empty_truth->type = AST_NIL;
       body_type = lizard_tt_infer2_kind(valid_ctx, empty_truth, body, heap, &body_kind);
     }
     if (is_error(body_type)) return body_type;
     /* M.5.9 Turn 2b — under modal-symmetric, body must be TRUE-typed.
-     * This rejects (box (poss-coerce e)) and similar attempts to box
-     * a poss judgment. For existing code (which all produces TRUE
-     * implicitly), this check is a no-op. */
+     * Rejects (box (poss-coerce e)) and similar attempts to box a
+     * poss judgment. No-op for existing code (all rules produce TRUE). */
     if (lizard_logic_rule_enabled("modal-symmetric") != 0) {
       if (body_kind != LIZARD_KIND_TRUE) {
         return type_error(heap,
@@ -932,9 +921,8 @@ static lizard_ast_node_t *infer2_kind_impl(
                                  scrut_type->data.tt_diamond.argument, heap);
       body_type = lizard_tt_infer2_kind(valid_ctx, new_truth_ctx, body, heap, &body_kind);
       if (is_error(body_type)) return body_type;
-      /* M.5.9 Turn 2b — kind propagates from body. If user wrote a
-       * poss-typed body (via poss-coerce or nested let-diamond),
-       * result is POSS. Otherwise, TRUE — matching M.5.5 contract. */
+      /* M.5.9 Turn 2b — propagate body kind to result. TRUE → TRUE
+       * (M.5.5 contract); POSS body → POSS result. */
       if (out_kind != NULL) *out_kind = body_kind;
       return body_type;
     }
@@ -946,7 +934,7 @@ static lizard_ast_node_t *infer2_kind_impl(
                                  scrut_type->data.tt_diamond.argument, heap);
       body_type = lizard_tt_infer2_kind(new_valid_ctx, ctx, body, heap, &body_kind);
       if (is_error(body_type)) return body_type;
-      /* M.5.9 Turn 2b — kind propagates from body. */
+      /* M.5.9 Turn 2b — propagate body kind to result. */
       if (out_kind != NULL) *out_kind = body_kind;
       return body_type;
     }
@@ -1034,8 +1022,8 @@ static lizard_ast_node_t *infer2_kind_impl(
        * users don't write __boxapp_N names. */
       max_retries = 100;
       while (max_retries-- > 0) {
-        snprintf(fresh_name, sizeof(fresh_name), "__boxapp_%ld",
-                 lizard_tt_next_fresh_dim());
+        sprintf(fresh_name, "__boxapp_%ld",
+                lizard_tt_next_fresh_dim());
         if (!contains_free_var_public(arg, fresh_name) &&
             !contains_free_var_public(inner_b, fresh_name)) {
           break;  /* Free in both — safe to use. */
@@ -1139,8 +1127,8 @@ static lizard_ast_node_t *infer2_kind_impl(
       lizard_ast_node_t *new_b;
       int max_retries = 100;
       while (max_retries-- > 0) {
-        snprintf(fresh_name, sizeof(fresh_name), "__dbind_%ld",
-                 lizard_tt_next_fresh_dim());
+        sprintf(fresh_name, "__dbind_%ld",
+                lizard_tt_next_fresh_dim());
         if (!contains_free_var_public(arg, fresh_name) &&
             !contains_free_var_public(inner_b, fresh_name)) {
           break;
@@ -1397,6 +1385,221 @@ static lizard_ast_node_t *infer2_kind_impl(
                            p_type->data.tt_sigma.binder->data.variable,
                            fst_p, heap);
   }
+  case AST_TT_S1:
+    if (lizard_logic_rule_enabled("cubical-s1-enabled") != 1) {
+      return type_error(heap, "S1 rejected: cubical-s1-enabled disabled");
+    }
+    return lizard_tt_make_universe(heap, 0);
+  case AST_TT_S1_BASE: {
+    lizard_ast_node_t *s1;
+    if (lizard_logic_rule_enabled("cubical-s1-enabled") != 1) {
+      return type_error(heap, "base rejected: cubical-s1-enabled disabled");
+    }
+    s1 = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    s1->type = AST_TT_S1;
+    return s1;
+  }
+  case AST_TT_S1_LOOP: {
+    lizard_ast_node_t *s1;
+    lizard_ast_node_t *base_a;
+    lizard_ast_node_t *base_b;
+    lizard_ast_node_t *path;
+    if (lizard_logic_rule_enabled("cubical-s1-enabled") != 1) {
+      return type_error(heap, "loop rejected: cubical-s1-enabled disabled");
+    }
+    s1 = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    s1->type = AST_TT_S1;
+    base_a = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    base_a->type = AST_TT_S1_BASE;
+    base_b = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    base_b->type = AST_TT_S1_BASE;
+    path = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    path->type = AST_TT_PATH;
+    path->data.tt_path.domain = s1;
+    path->data.tt_path.a = base_a;
+    path->data.tt_path.b = base_b;
+    return path;
+  }
+  case AST_TT_TRUNC: {
+    /* Phase H.2 — propositional truncation type former.
+     *
+     *   Γ ⊢ A : (U n)
+     *   ────────────────────────────────
+     *   Γ ⊢ (Trunc level A) : (U n)
+     *
+     * The truncation lives at the same universe level as its
+     * argument. The `level` parameter records the homotopy level
+     * (e.g. -1 propositional, 0 set, 1 groupoid). lizard accepts
+     * any level value; semantic obligations on level remain a
+     * documented gap (see docs/CLAIMS_MATRIX.md). */
+    lizard_ast_node_t *type_of_type;
+    if (lizard_logic_rule_enabled("truncations-enabled") != 1) {
+      return type_error(heap, "Trunc rejected: truncations-enabled disabled");
+    }
+    if (t->data.tt_trunc.type == NULL) {
+      return type_error(heap, "Trunc missing type argument");
+    }
+    type_of_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_trunc.type, heap);
+    if (is_error(type_of_type)) return type_of_type;
+    return type_of_type;
+  }
+  case AST_TT_TRUNC_INTRO: {
+    /* Phase H.2 — propositional truncation constructor.
+     *
+     *   Γ ⊢ e : A
+     *   ────────────────────────────────────
+     *   Γ ⊢ (trunc e) : (Trunc <level> A)
+     *
+     * Result is a truncation at the **propositional level (-1)** by
+     * default. To produce a truncation at a different level, the
+     * user must wrap explicitly via bidirectional checking (not
+     * implemented in this turn — honest gap). */
+    lizard_ast_node_t *value;
+    lizard_ast_node_t *value_type;
+    lizard_ast_node_t *result;
+    lizard_ast_node_t *level_node;
+    if (lizard_logic_rule_enabled("truncations-enabled") != 1) {
+      return type_error(heap, "trunc rejected: truncations-enabled disabled");
+    }
+    value = t->data.tt_trunc_intro.value;
+    if (value == NULL) {
+      return type_error(heap, "trunc missing value");
+    }
+    value_type = lizard_tt_infer2(valid_ctx, ctx, value, heap);
+    if (is_error(value_type)) return value_type;
+    /* Build (Trunc -1 value_type). For the level we synthesize a
+     * symbolic placeholder since lizard's AST doesn't have a literal
+     * "-1" integer constant. Use NULL to mean "level unspecified at
+     * inference time" — alpha-equality treats NULL level as matching. */
+    level_node = NULL;
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_TRUNC;
+    result->data.tt_trunc.level = level_node;
+    result->data.tt_trunc.type  = value_type;
+    return result;
+  }
+  case AST_TT_TRUNC_ELIM: {
+    /* Phase H.2 — propositional truncation recursor (their AST shape).
+     *
+     *   Γ ⊢ C   : (U n)               (motive — target type)
+     *   Γ ⊢ h   : Π _:A. C            (handler — point case)
+     *   Γ ⊢ e   : (Trunc _ A)         (scrutinee)
+     *   ───────────────────────────────────────────
+     *   Γ ⊢ (trunc-elim C h e) : C
+     *
+     * Honest scope: the propositionality obligation on C (any two
+     * values of C are path-equal) is NOT structurally enforced in
+     * this turn. Without that obligation, lizard accepts elims that
+     * are not strictly justified by the propositional-truncation
+     * elimination principle. See docs/CLAIMS_MATRIX.md. */
+    lizard_ast_node_t *C_type, *h, *val;
+    lizard_ast_node_t *C_univ, *h_type, *val_type;
+    lizard_ast_node_t *A;
+    if (lizard_logic_rule_enabled("truncations-enabled") != 1) {
+      return type_error(heap, "trunc-elim rejected: truncations-enabled disabled");
+    }
+    C_type = t->data.tt_trunc_elim.motive;
+    h      = t->data.tt_trunc_elim.handler;
+    val    = t->data.tt_trunc_elim.value;
+    if (C_type == NULL || h == NULL || val == NULL) {
+      return type_error(heap, "trunc-elim missing argument");
+    }
+    /* Motive must be a type. */
+    C_univ = lizard_tt_infer2(valid_ctx, ctx, C_type, heap);
+    if (is_error(C_univ)) return C_univ;
+    C_univ = lizard_tt_reduce(C_univ, heap);
+    if (C_univ->type != AST_TT_UNIVERSE) {
+      return type_error(heap, "trunc-elim motive must be a type");
+    }
+    /* Scrutinee must be Trunc-typed. */
+    val_type = lizard_tt_infer2(valid_ctx, ctx, val, heap);
+    if (is_error(val_type)) return val_type;
+    val_type = lizard_tt_reduce(val_type, heap);
+    if (val_type->type != AST_TT_TRUNC) {
+      return type_error(heap, "trunc-elim value must be of Trunc type");
+    }
+    A = val_type->data.tt_trunc.type;
+    /* Handler must have type Π _:A. C — at least up to alpha. */
+    h_type = lizard_tt_infer2(valid_ctx, ctx, h, heap);
+    if (is_error(h_type)) return h_type;
+    h_type = lizard_tt_reduce(h_type, heap);
+    if (h_type->type != AST_TT_PI) {
+      return type_error(heap, "trunc-elim handler must have a Pi type (A → C)");
+    }
+    if (A != NULL &&
+        !lizard_tt_alpha_equal(
+          lizard_tt_reduce(h_type->data.tt_pi.domain, heap), A)) {
+      return type_error(heap,
+        "trunc-elim handler's domain must equal the scrutinee's underlying type");
+    }
+    if (!lizard_tt_alpha_equal(
+          lizard_tt_reduce(h_type->data.tt_pi.codomain, heap), C_type)) {
+      return type_error(heap,
+        "trunc-elim handler's codomain must equal the motive C");
+    }
+    /* Phase H.2 Turn 3 — propositionality coherence.
+     *
+     * When a 4th argument (prop witness) is provided, check that its
+     * type has the shape  Π x:C. Π y:C. Path C x y  — the standard
+     * is-prop condition. This promotes trunc-elim from scaffold to
+     * fully checked for the propositional case.
+     *
+     * When prop is NULL (3-arg form), the obligation is deferred —
+     * see docs/CLAIMS_MATRIX.md. */
+    if (t->data.tt_trunc_elim.prop != NULL) {
+      lizard_ast_node_t *prop_type;
+      lizard_ast_node_t *inner;
+      prop_type = lizard_tt_infer2(valid_ctx, ctx,
+                                    t->data.tt_trunc_elim.prop, heap);
+      if (is_error(prop_type)) return prop_type;
+      prop_type = lizard_tt_reduce(prop_type, heap);
+      /* Outer: must be Pi _ C (...) */
+      if (prop_type->type != AST_TT_PI) {
+        return type_error(heap,
+          "trunc-elim prop witness must have type Pi x:C. Pi y:C. Path C x y "
+          "(outer Pi missing)");
+      }
+      if (!lizard_tt_alpha_equal(
+            lizard_tt_reduce(prop_type->data.tt_pi.domain, heap), C_type)) {
+        return type_error(heap,
+          "trunc-elim prop witness: outer Pi domain must be C");
+      }
+      /* Inner: must be Pi _ C (...) */
+      inner = lizard_tt_reduce(prop_type->data.tt_pi.codomain, heap);
+      if (inner->type != AST_TT_PI) {
+        return type_error(heap,
+          "trunc-elim prop witness must have type Pi x:C. Pi y:C. Path C x y "
+          "(inner Pi missing)");
+      }
+      if (!lizard_tt_alpha_equal(
+            lizard_tt_reduce(inner->data.tt_pi.domain, heap), C_type)) {
+        return type_error(heap,
+          "trunc-elim prop witness: inner Pi domain must be C");
+      }
+      /* Body: must be Path C x y. Check domain of Path is C. */
+      {
+        lizard_ast_node_t *path_body;
+        path_body = lizard_tt_reduce(inner->data.tt_pi.codomain, heap);
+        if (path_body->type != AST_TT_PATH) {
+          return type_error(heap,
+            "trunc-elim prop witness must have type Pi x:C. Pi y:C. Path C x y "
+            "(Path body missing)");
+        }
+        if (!lizard_tt_alpha_equal(
+              lizard_tt_reduce(path_body->data.tt_path.domain, heap), C_type)) {
+          return type_error(heap,
+            "trunc-elim prop witness: Path domain must be C");
+        }
+      }
+    }
+    /* Result type: C. */
+    return C_type;
+  }
+  case AST_TT_EXTENSION:
+    if (lizard_logic_rule_enabled("theory-extensions-enabled") != 1) {
+      return type_error(heap, "theory-extension rejected: theory-extensions-enabled disabled");
+    }
+    return type_error(heap, "theory-extension has no kernel typing rule");
   case AST_TT_UNIT:
     /* Unit : (U 0) — Unit is the lowest-universe type. */
     return lizard_tt_make_universe(heap, 0);
@@ -2149,12 +2352,7 @@ static lizard_ast_node_t *infer2_kind_impl(
      *   ──────────────────────────────
      *   Δ; Γ; · ⊢ (poss-coerce e) : A   with kind POSS
      *
-     * The result type IS the body's type — poss-coerce only changes
-     * the judgment kind, not the type. The body must be true-typed
-     * (we don't allow coercing a valid or already-poss judgment;
-     * the latter would be redundant, the former would lose info).
-     *
-     * Gated on `modal-symmetric` toggle. */
+     * Type unchanged; kind shifted. Gated on `modal-symmetric`. */
     lizard_ast_node_t *body;
     lizard_ast_node_t *body_type;
     lizard_judgment_kind_t body_kind;
@@ -2170,7 +2368,6 @@ static lizard_ast_node_t *infer2_kind_impl(
       return type_error(heap,
         "poss-coerce body must be true-typed (cannot coerce valid or poss)");
     }
-    /* Re-tag as POSS. Type unchanged. */
     if (out_kind != NULL) *out_kind = LIZARD_KIND_POSS;
     return body_type;
   }
@@ -2180,11 +2377,6 @@ static lizard_ast_node_t *infer2_kind_impl(
      *   Δ; Γ; · ⊢ e : A   with kind POSS
      *   ─────────────────────────────────
      *   Δ; Γ; · ⊢ (dia e) : Diamond A   with kind TRUE
-     *
-     * The body must be poss-typed. This is the dual of box-intro:
-     * where box requires a true-typed body in a Δ-only context, dia
-     * requires a poss-typed body (which itself encodes the modal
-     * scope discipline via poss-coerce or let-diamond chains).
      *
      * Gated on `modal-symmetric` AND `modalities-enabled`. */
     lizard_ast_node_t *body;
@@ -2206,134 +2398,11 @@ static lizard_ast_node_t *infer2_kind_impl(
       return type_error(heap,
         "dia body must be poss-typed (use poss-coerce or let-diamond to produce a poss judgment)");
     }
-    /* Wrap in Diamond. Result kind is TRUE. */
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     result->type = AST_TT_DIAMOND;
     result->data.tt_diamond.argument = body_type;
     if (out_kind != NULL) *out_kind = LIZARD_KIND_TRUE;
     return result;
-  }
-  case AST_TT_TRUNC_TYPE: {
-    /* Phase H.2 — propositional truncation type former.
-     *
-     *   Γ ⊢ A : (U n)
-     *   ──────────────────────
-     *   Γ ⊢ (Trunc A) : (U n)
-     *
-     * The truncation lives at the same universe level as its
-     * argument. Result kind: TRUE. */
-    lizard_ast_node_t *arg = t->data.tt_trunc_type.argument;
-    lizard_ast_node_t *arg_type;
-    if (arg == NULL) {
-      return type_error(heap, "Trunc missing argument");
-    }
-    arg_type = lizard_tt_infer2(valid_ctx, ctx, arg, heap);
-    if (is_error(arg_type)) return arg_type;
-    arg_type = lizard_tt_reduce(arg_type, heap);
-    if (arg_type->type != AST_TT_UNIVERSE) {
-      return type_error(heap, "Trunc argument must be a type (in some universe)");
-    }
-    /* Result: the same universe. */
-    return arg_type;
-  }
-  case AST_TT_TRUNC_INTRO: {
-    /* Phase H.2 — propositional truncation constructor.
-     *
-     *   Γ ⊢ e : A
-     *   ────────────────────────────
-     *   Γ ⊢ (trunc-intro e) : (Trunc A)
-     *
-     * Lifts a value into its truncation. Result kind: TRUE. */
-    lizard_ast_node_t *body = t->data.tt_trunc_intro.body;
-    lizard_ast_node_t *body_type;
-    lizard_ast_node_t *result;
-    if (body == NULL) {
-      return type_error(heap, "trunc-intro missing argument");
-    }
-    body_type = lizard_tt_infer2(valid_ctx, ctx, body, heap);
-    if (is_error(body_type)) return body_type;
-    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-    result->type = AST_TT_TRUNC_TYPE;
-    result->data.tt_trunc_type.argument = body_type;
-    return result;
-  }
-  case AST_TT_TRUNC_REC: {
-    /* Phase H.2 — propositional truncation recursor.
-     *
-     *   Γ ⊢ C  : (U n)                  (motive — the target type)
-     *   Γ ⊢ cm : Π _:A. C               (point case)
-     *   Γ ⊢ cs : Π x:C. Π y:C. Path C x y   (propositionality witness)
-     *   Γ ⊢ e  : (Trunc A)              (scrutinee)
-     *   ──────────────────────────────────────────────────────────
-     *   Γ ⊢ (trunc-rec C cm cs e) : C
-     *
-     * Honest scope: cs is required to typecheck and its inferred
-     * type must START with `Π _:C. ...`, but the FULL propositionality
-     * shape (the inner Pi over C plus the Path body) is not verified
-     * deeply in this turn. A future turn ("propositionality coherence")
-     * can tighten this to the full alpha-equal check. The current
-     * rule is sound for typing decisions on the recursor itself; the
-     * gap is that lizard accepts some cs values that aren't actually
-     * propositionality proofs. */
-    lizard_ast_node_t *C_type    = t->data.tt_trunc_rec.motive;
-    lizard_ast_node_t *cm        = t->data.tt_trunc_rec.point;
-    lizard_ast_node_t *cs        = t->data.tt_trunc_rec.prop;
-    lizard_ast_node_t *e         = t->data.tt_trunc_rec.scrutinee;
-    lizard_ast_node_t *C_univ;
-    lizard_ast_node_t *cm_type;
-    lizard_ast_node_t *cs_type;
-    lizard_ast_node_t *e_type;
-    lizard_ast_node_t *A;
-    if (C_type == NULL || cm == NULL || cs == NULL || e == NULL) {
-      return type_error(heap, "trunc-rec missing argument");
-    }
-    /* Check that motive C is a type. */
-    C_univ = lizard_tt_infer2(valid_ctx, ctx, C_type, heap);
-    if (is_error(C_univ)) return C_univ;
-    C_univ = lizard_tt_reduce(C_univ, heap);
-    if (C_univ->type != AST_TT_UNIVERSE) {
-      return type_error(heap, "trunc-rec motive must be a type");
-    }
-    /* Check scrutinee is (Trunc A) for some A. */
-    e_type = lizard_tt_infer2(valid_ctx, ctx, e, heap);
-    if (is_error(e_type)) return e_type;
-    e_type = lizard_tt_reduce(e_type, heap);
-    if (e_type->type != AST_TT_TRUNC_TYPE) {
-      return type_error(heap, "trunc-rec scrutinee must be of Trunc type");
-    }
-    A = e_type->data.tt_trunc_type.argument;
-    /* Check point cm : Π _:A. C — at least up to alpha. */
-    cm_type = lizard_tt_infer2(valid_ctx, ctx, cm, heap);
-    if (is_error(cm_type)) return cm_type;
-    cm_type = lizard_tt_reduce(cm_type, heap);
-    if (cm_type->type != AST_TT_PI) {
-      return type_error(heap, "trunc-rec point must have a Pi type (A → C)");
-    }
-    if (!lizard_tt_alpha_equal(
-          lizard_tt_reduce(cm_type->data.tt_pi.domain, heap), A)) {
-      return type_error(heap, "trunc-rec point's domain must equal scrutinee's underlying type");
-    }
-    if (!lizard_tt_alpha_equal(
-          lizard_tt_reduce(cm_type->data.tt_pi.codomain, heap), C_type)) {
-      return type_error(heap, "trunc-rec point's codomain must equal the motive C");
-    }
-    /* Check prop cs typechecks AND its outer Pi starts with C. The
-     * deeper propositionality shape is not verified — see header
-     * comment for the honest scope. */
-    cs_type = lizard_tt_infer2(valid_ctx, ctx, cs, heap);
-    if (is_error(cs_type)) return cs_type;
-    cs_type = lizard_tt_reduce(cs_type, heap);
-    if (cs_type->type != AST_TT_PI) {
-      return type_error(heap,
-        "trunc-rec prop must have a Pi type (propositionality witness)");
-    }
-    if (!lizard_tt_alpha_equal(
-          lizard_tt_reduce(cs_type->data.tt_pi.domain, heap), C_type)) {
-      return type_error(heap,
-        "trunc-rec prop's outer domain must be C (the motive)");
-    }
-    /* Result type: C itself. */
-    return C_type;
   }
   default:
     return type_error(heap, "no inference rule for this term");

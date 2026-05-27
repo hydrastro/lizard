@@ -1,7 +1,7 @@
 #ifndef LIZARD_PRIMITIVES_H
 #define LIZARD_PRIMITIVES_H
 
-#include "lizard.h"
+#include "lizard_internal.h"
 
 lizard_ast_node_t *lizard_primitive_plus(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap);
@@ -213,6 +213,31 @@ int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b);
 lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
                                         lizard_heap_t *heap);
 
+/* Optional proof-theory scaffolds. */
+lizard_ast_node_t *lizard_primitive_tt_s1(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_s1p(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_s1_base(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_s1_basep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_s1_loop(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_s1_loopp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_truncp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_level(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_introp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elimp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_motive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_handler(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_value(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_trunc_elim_prop(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_extension(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_extensionp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_extension_name(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_extension_args(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+
 #endif /* LIZARD_PRIMITIVES_H */
 
 /* ----- Type-theory notation primitives (no semantic checking) ----- */
@@ -268,19 +293,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym_body(lz_list_t *, lizar
 lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_poss_coercep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_poss_coerce_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-/* Phase H.2 — propositional truncation. */
-lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_typep(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_type_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_introp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_intro_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_recp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec_motive(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec_point(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec_prop(lz_list_t *, lizard_env_t *, lizard_heap_t *);
-lizard_ast_node_t *lizard_primitive_tt_trunc_rec_scrutinee(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);
