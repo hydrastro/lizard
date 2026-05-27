@@ -250,14 +250,21 @@ static const char *lambda_cube_required_axis(long dom_level, long cod_level,
 
 /* ----- The checker --------------------------------------------------- */
 
-lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
+lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
+                                    lizard_ast_node_t *ctx,
                                    lizard_ast_node_t *t,
                                    lizard_heap_t *heap) {
   if (t == NULL) return type_error(heap, "null term");
   switch (t->type) {
   case AST_SYMBOL: {
-    /* Variable: look up in context. */
+    /* Variable: look up in TRUTH context first, then valid context.
+     * Phase M.5.2 Turn 2: valid hypotheses (from unbox) are also
+     * visible to ordinary code; they're a superset of truth in
+     * what they admit, restricted only when entering a box. */
     lizard_ast_node_t *tp = ctx_lookup(ctx, t->data.variable);
+    if (tp == NULL && valid_ctx != NULL) {
+      tp = ctx_lookup(valid_ctx, t->data.variable);
+    }
     if (tp == NULL) {
       return type_error(heap, "unbound variable");
     }
@@ -334,7 +341,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "Pi binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     /* Reduce to check it's a universe. */
     dom_univ = lizard_tt_reduce(dom_univ, heap);
@@ -347,7 +354,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "Pi domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_UNIVERSE &&
@@ -417,7 +424,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "pi-fresh binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     dom_univ = lizard_tt_reduce(dom_univ, heap);
     if (dom_univ->type != AST_TT_UNIVERSE &&
@@ -429,7 +436,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "pi-fresh domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_UNIVERSE &&
@@ -476,7 +483,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "sigma-fresh binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     dom_univ = lizard_tt_reduce(dom_univ, heap);
     if (dom_univ->type != AST_TT_UNIVERSE &&
@@ -488,7 +495,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "sigma-fresh domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_UNIVERSE &&
@@ -542,7 +549,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "co-pi-fresh binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     dom_univ = lizard_tt_reduce(dom_univ, heap);
     /* For co-pi-fresh, we accept couniverse expressions, NOT universe
@@ -554,7 +561,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "co-pi-fresh domain not a couniverse");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_COUNIVERSE &&
@@ -599,7 +606,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "co-sigma-fresh binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     dom_univ = lizard_tt_reduce(dom_univ, heap);
     if (dom_univ->type != AST_TT_COUNIVERSE &&
@@ -609,7 +616,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "co-sigma-fresh domain not a couniverse");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_COUNIVERSE &&
@@ -654,7 +661,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (arg == NULL) {
       return type_error(heap, "Box missing argument");
     }
-    arg_univ = lizard_tt_infer(ctx, arg, heap);
+    arg_univ = lizard_tt_infer2(valid_ctx, ctx, arg, heap);
     if (is_error(arg_univ)) return arg_univ;
     arg_univ = lizard_tt_reduce(arg_univ, heap);
     if (arg_univ->type != AST_TT_UNIVERSE &&
@@ -677,7 +684,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (arg == NULL) {
       return type_error(heap, "Diamond missing argument");
     }
-    arg_univ = lizard_tt_infer(ctx, arg, heap);
+    arg_univ = lizard_tt_infer2(valid_ctx, ctx, arg, heap);
     if (is_error(arg_univ)) return arg_univ;
     arg_univ = lizard_tt_reduce(arg_univ, heap);
     if (arg_univ->type != AST_TT_UNIVERSE &&
@@ -690,16 +697,110 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     }
     return arg_univ;
   }
+  case AST_TT_BOX_INTRO: {
+    /* Phase M.5.2 Turn 2 — strict S4 box-intro:
+     *
+     *   Δ; · ⊢ e : T
+     *   ─────────────────────
+     *   Δ; Γ ⊢ (box e) : (Box T)
+     *
+     * The truth context Γ is DROPPED when checking the box body.
+     * Only Δ (the valid context) is visible inside. This is what
+     * enforces "box represents necessity": you can't box a term
+     * that uses an ordinary hypothesis, only one that uses valid
+     * (= necessarily true) hypotheses.
+     *
+     * Implementation: recurse with valid_ctx as the new truth-ctx,
+     * and an empty valid-ctx. The valid hypotheses become available
+     * as the only visible hypotheses inside the box; nothing else is
+     * visible.
+     *
+     * If `modal-strict-typing` is disabled, falls back to Turn 1
+     * loose typing. */
+    lizard_ast_node_t *body = t->data.tt_box_intro.body;
+    lizard_ast_node_t *body_type;
+    lizard_ast_node_t *result;
+    lizard_ast_node_t *body_ctx;
+    lizard_ast_node_t *empty_valid;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "box rejected: modalities-enabled disabled");
+    }
+    if (body == NULL) {
+      return type_error(heap, "box missing argument");
+    }
+    if (lizard_logic_rule_enabled("modal-strict-typing") == 0) {
+      /* Turn 1 loose typing: full ctx available inside box. */
+      body_type = lizard_tt_infer2(valid_ctx, ctx, body, heap);
+    } else {
+      /* Strict S4: drop truth, promote valid. */
+      body_ctx = valid_ctx;
+      empty_valid = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      empty_valid->type = AST_NIL;
+      body_type = lizard_tt_infer2(empty_valid, body_ctx, body, heap);
+    }
+    if (is_error(body_type)) return body_type;
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_BOX;
+    result->data.tt_box.argument = body_type;
+    return result;
+  }
+  case AST_TT_BOX_ELIM: {
+    /* Phase M.5.2 typing for unbox:
+     *
+     *   Γ ⊢ b : (Box T)    Γ, x:T ⊢ body : U
+     *   ────────────────────────────────────
+     *   Γ ⊢ (unbox x b body) : U
+     *
+     * Phase M.5.2 Turn 2 — strict S4 unbox:
+     *
+     *   Δ; Γ ⊢ b : Box T    Δ, x:T; Γ ⊢ body : U
+     *   ────────────────────────────────────────
+     *   Δ; Γ ⊢ unbox x b body : U
+     *
+     * The unboxed variable x lands in the VALID context Δ. This is
+     * what enables it to be used inside a future `box`: valid
+     * hypotheses survive entry into a box, truth hypotheses don't.
+     *
+     * If `modal-strict-typing` is disabled, falls back to Turn 1
+     * loose behavior (extends truth instead). */
+    lizard_ast_node_t *binder = t->data.tt_box_elim.binder;
+    lizard_ast_node_t *scrut = t->data.tt_box_elim.scrutinee;
+    lizard_ast_node_t *body = t->data.tt_box_elim.body;
+    lizard_ast_node_t *scrut_type;
+    lizard_ast_node_t *new_valid_ctx, *new_truth_ctx;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "unbox rejected: modalities-enabled disabled");
+    }
+    if (binder == NULL || binder->type != AST_SYMBOL) {
+      return type_error(heap, "unbox binder not a symbol");
+    }
+    scrut_type = lizard_tt_infer2(valid_ctx, ctx, scrut, heap);
+    if (is_error(scrut_type)) return scrut_type;
+    scrut_type = lizard_tt_reduce(scrut_type, heap);
+    if (scrut_type->type != AST_TT_BOX) {
+      return type_error(heap, "unbox scrutinee not of Box type");
+    }
+    if (lizard_logic_rule_enabled("modal-strict-typing") == 0) {
+      /* Turn 1 loose: extend truth context with x:T. */
+      new_truth_ctx = ctx_extend(ctx, binder->data.variable,
+                                 scrut_type->data.tt_box.argument, heap);
+      return lizard_tt_infer2(valid_ctx, new_truth_ctx, body, heap);
+    }
+    /* Strict S4: extend VALID context with x:T; truth ctx unchanged. */
+    new_valid_ctx = ctx_extend(valid_ctx, binder->data.variable,
+                               scrut_type->data.tt_box.argument, heap);
+    return lizard_tt_infer2(new_valid_ctx, ctx, body, heap);
+  }
   case AST_TT_APP: {
     /* (@ f a) : B[a/x] where f : (Pi x A B) and a checks against A. */
     lizard_ast_node_t *f_type;
-    f_type = lizard_tt_infer(ctx, t->data.tt_app.fun, heap);
+    f_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_app.fun, heap);
     if (is_error(f_type)) return f_type;
     f_type = lizard_tt_reduce(f_type, heap);
     if (f_type->type != AST_TT_PI) {
       return type_error(heap, "application of non-function");
     }
-    if (!lizard_tt_check(ctx, t->data.tt_app.arg, f_type->data.tt_pi.domain,
+    if (!lizard_tt_check2(valid_ctx, ctx, t->data.tt_app.arg, f_type->data.tt_pi.domain,
                          heap)) {
       return type_error(heap, "application argument type mismatch");
     }
@@ -714,7 +815,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   }
   case AST_TT_ANNOT: {
     /* (annot term T) — check term against T, return T. */
-    if (!lizard_tt_check(ctx, t->data.tt_annot.term, t->data.tt_annot.type,
+    if (!lizard_tt_check2(valid_ctx, ctx, t->data.tt_annot.term, t->data.tt_annot.type,
                          heap)) {
       return type_error(heap, "annotation type mismatch");
     }
@@ -736,7 +837,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A == NULL || a == NULL || b == NULL) {
       return type_error(heap, "Id missing field");
     }
-    A_univ = lizard_tt_infer(ctx, A, heap);
+    A_univ = lizard_tt_infer2(valid_ctx, ctx, A, heap);
     if (is_error(A_univ)) return A_univ;
     A_univ = lizard_tt_reduce(A_univ, heap);
     /* A's type must be a universe expression. */
@@ -748,10 +849,10 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Id domain not a type");
     }
-    if (!lizard_tt_check(ctx, a, A, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, a, A, heap)) {
       return type_error(heap, "Id left endpoint doesn't check against domain");
     }
-    if (!lizard_tt_check(ctx, b, A, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, b, A, heap)) {
       return type_error(heap, "Id right endpoint doesn't check against domain");
     }
     return A_univ;
@@ -767,7 +868,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *a = t->data.tt_refl.value;
     lizard_ast_node_t *A;
     if (a == NULL) return type_error(heap, "refl missing value");
-    A = lizard_tt_infer(ctx, a, heap);
+    A = lizard_tt_infer2(valid_ctx, ctx, a, heap);
     if (is_error(A)) return A;
     /* Build (Id A a a) */
     {
@@ -794,7 +895,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (binder == NULL || binder->type != AST_SYMBOL) {
       return type_error(heap, "Sigma binder not a symbol");
     }
-    dom_univ = lizard_tt_infer(ctx, dom, heap);
+    dom_univ = lizard_tt_infer2(valid_ctx, ctx, dom, heap);
     if (is_error(dom_univ)) return dom_univ;
     dom_univ = lizard_tt_reduce(dom_univ, heap);
     if (dom_univ->type != AST_TT_UNIVERSE &&
@@ -806,7 +907,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "Sigma domain not a type");
     }
     new_ctx = ctx_extend(ctx, binder->data.variable, dom, heap);
-    cod_univ = lizard_tt_infer(new_ctx, cod, heap);
+    cod_univ = lizard_tt_infer2(valid_ctx, new_ctx, cod, heap);
     if (is_error(cod_univ)) return cod_univ;
     cod_univ = lizard_tt_reduce(cod_univ, heap);
     if (cod_univ->type != AST_TT_UNIVERSE &&
@@ -836,7 +937,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *B = t->data.tt_sum.right;
     lizard_ast_node_t *A_univ, *B_univ;
     if (A == NULL || B == NULL) return type_error(heap, "Sum missing field");
-    A_univ = lizard_tt_infer(ctx, A, heap);
+    A_univ = lizard_tt_infer2(valid_ctx, ctx, A, heap);
     if (is_error(A_univ)) return A_univ;
     A_univ = lizard_tt_reduce(A_univ, heap);
     if (A_univ->type != AST_TT_UNIVERSE &&
@@ -847,7 +948,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sum left not a type");
     }
-    B_univ = lizard_tt_infer(ctx, B, heap);
+    B_univ = lizard_tt_infer2(valid_ctx, ctx, B, heap);
     if (is_error(B_univ)) return B_univ;
     B_univ = lizard_tt_reduce(B_univ, heap);
     if (B_univ->type != AST_TT_UNIVERSE &&
@@ -876,7 +977,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *p = t->data.tt_proj.target;
     lizard_ast_node_t *p_type;
     if (p == NULL) return type_error(heap, "fst missing target");
-    p_type = lizard_tt_infer(ctx, p, heap);
+    p_type = lizard_tt_infer2(valid_ctx, ctx, p, heap);
     if (is_error(p_type)) return p_type;
     p_type = lizard_tt_reduce(p_type, heap);
     if (p_type->type != AST_TT_SIGMA) {
@@ -895,7 +996,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *p_type;
     lizard_ast_node_t *fst_p;
     if (p == NULL) return type_error(heap, "snd missing target");
-    p_type = lizard_tt_infer(ctx, p, heap);
+    p_type = lizard_tt_infer2(valid_ctx, ctx, p, heap);
     if (is_error(p_type)) return p_type;
     p_type = lizard_tt_reduce(p_type, heap);
     if (p_type->type != AST_TT_SIGMA) {
@@ -957,7 +1058,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "J missing field");
     }
     /* Step 1: infer path's type. */
-    path_type = lizard_tt_infer(ctx, path, heap);
+    path_type = lizard_tt_infer2(valid_ctx, ctx, path, heap);
     if (is_error(path_type)) return path_type;
     path_type = lizard_tt_reduce(path_type, heap);
     if (path_type->type != AST_TT_ID) {
@@ -979,7 +1080,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     m_app_a_refl->data.tt_app.fun = m_app_a;
     m_app_a_refl->data.tt_app.arg = refl_a;
     /* Step 4: check refl_case against ((motive a) (refl a)). */
-    if (!lizard_tt_check(ctx, refl_case, m_app_a_refl, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, refl_case, m_app_a_refl, heap)) {
       return type_error(heap, "J refl-case doesn't match motive at refl");
     }
     /* Step 5: build the result ((motive b) path). */
@@ -1011,7 +1112,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (motive == NULL || path == NULL || value == NULL) {
       return type_error(heap, "xport missing field");
     }
-    path_type = lizard_tt_infer(ctx, path, heap);
+    path_type = lizard_tt_infer2(valid_ctx, ctx, path, heap);
     if (is_error(path_type)) return path_type;
     path_type = lizard_tt_reduce(path_type, heap);
     if (path_type->type != AST_TT_ID) {
@@ -1019,7 +1120,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     }
     a = path_type->data.tt_id.a;
     a_prime = path_type->data.tt_id.b;
-    motive_type = lizard_tt_infer(ctx, motive, heap);
+    motive_type = lizard_tt_infer2(valid_ctx, ctx, motive, heap);
     if (is_error(motive_type)) return motive_type;
     motive_type = lizard_tt_reduce(motive_type, heap);
     if (motive_type->type != AST_TT_PI) {
@@ -1029,7 +1130,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     m_app_a->type = AST_TT_APP;
     m_app_a->data.tt_app.fun = motive;
     m_app_a->data.tt_app.arg = a;
-    if (!lizard_tt_check(ctx, value, m_app_a, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, value, m_app_a, heap)) {
       return type_error(heap, "xport value doesn't match motive at a");
     }
     m_app_a_prime = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -1056,13 +1157,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (s == NULL || l == NULL || r == NULL) {
       return type_error(heap, "Case missing field");
     }
-    s_type = lizard_tt_infer(ctx, s, heap);
+    s_type = lizard_tt_infer2(valid_ctx, ctx, s, heap);
     if (is_error(s_type)) return s_type;
     s_type = lizard_tt_reduce(s_type, heap);
     if (s_type->type != AST_TT_SUM) {
       return type_error(heap, "Case scrutinee is not a Sum");
     }
-    l_type = lizard_tt_infer(ctx, l, heap);
+    l_type = lizard_tt_infer2(valid_ctx, ctx, l, heap);
     if (is_error(l_type)) return l_type;
     l_type = lizard_tt_reduce(l_type, heap);
     if (l_type->type != AST_TT_PI) {
@@ -1074,7 +1175,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
             lizard_tt_reduce(s_type->data.tt_sum.left, heap))) {
       return type_error(heap, "Case left branch domain doesn't match Sum left");
     }
-    r_type = lizard_tt_infer(ctx, r, heap);
+    r_type = lizard_tt_infer2(valid_ctx, ctx, r, heap);
     if (is_error(r_type)) return r_type;
     r_type = lizard_tt_reduce(r_type, heap);
     if (r_type->type != AST_TT_PI) {
@@ -1110,13 +1211,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *f_type, *p_type;
     lizard_ast_node_t *A, *B, *a, *a_prime, *fa, *fa_prime, *result;
     if (f == NULL || p == NULL) return type_error(heap, "ap missing field");
-    f_type = lizard_tt_infer(ctx, f, heap);
+    f_type = lizard_tt_infer2(valid_ctx, ctx, f, heap);
     if (is_error(f_type)) return f_type;
     f_type = lizard_tt_reduce(f_type, heap);
     if (f_type->type != AST_TT_PI) {
       return type_error(heap, "ap: function is not a Pi");
     }
-    p_type = lizard_tt_infer(ctx, p, heap);
+    p_type = lizard_tt_infer2(valid_ctx, ctx, p, heap);
     if (is_error(p_type)) return p_type;
     p_type = lizard_tt_reduce(p_type, heap);
     if (p_type->type != AST_TT_ID) {
@@ -1165,8 +1266,8 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   case AST_TT_I_AND:
   case AST_TT_I_OR: {
     /* (I-and i j), (I-or i j) : I when both i, j : I */
-    lizard_ast_node_t *l_type = lizard_tt_infer(ctx, t->data.tt_i_binop.left, heap);
-    lizard_ast_node_t *r_type = lizard_tt_infer(ctx, t->data.tt_i_binop.right, heap);
+    lizard_ast_node_t *l_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_i_binop.left, heap);
+    lizard_ast_node_t *r_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_i_binop.right, heap);
     if (is_error(l_type)) return l_type;
     if (is_error(r_type)) return r_type;
     l_type = lizard_tt_reduce(l_type, heap);
@@ -1182,7 +1283,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   }
   case AST_TT_I_NEG: {
     /* (I-neg i) : I when i : I */
-    lizard_ast_node_t *o_type = lizard_tt_infer(ctx, t->data.tt_i_neg.operand, heap);
+    lizard_ast_node_t *o_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_i_neg.operand, heap);
     if (is_error(o_type)) return o_type;
     o_type = lizard_tt_reduce(o_type, heap);
     if (o_type->type != AST_TT_INTERVAL) {
@@ -1208,7 +1309,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A == NULL || a == NULL || b == NULL) {
       return type_error(heap, "Path missing field");
     }
-    A_univ = lizard_tt_infer(ctx, A, heap);
+    A_univ = lizard_tt_infer2(valid_ctx, ctx, A, heap);
     if (is_error(A_univ)) return A_univ;
     A_univ = lizard_tt_reduce(A_univ, heap);
     if (A_univ->type != AST_TT_UNIVERSE &&
@@ -1219,10 +1320,10 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         A_univ->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Path domain not a type");
     }
-    if (!lizard_tt_check(ctx, a, A, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, a, A, heap)) {
       return type_error(heap, "Path left endpoint doesn't check");
     }
-    if (!lizard_tt_check(ctx, b, A, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, b, A, heap)) {
       return type_error(heap, "Path right endpoint doesn't check");
     }
     return A_univ;
@@ -1238,13 +1339,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
      * computational equalities that the engine takes care of via
      * path-beta on concrete endpoints. Here we just infer A. */
     lizard_ast_node_t *p_type, *i_type;
-    p_type = lizard_tt_infer(ctx, t->data.tt_path_app.path, heap);
+    p_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_path_app.path, heap);
     if (is_error(p_type)) return p_type;
     p_type = lizard_tt_reduce(p_type, heap);
     if (p_type->type != AST_TT_PATH) {
       return type_error(heap, "path-app of non-Path");
     }
-    i_type = lizard_tt_infer(ctx, t->data.tt_path_app.point, heap);
+    i_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_path_app.point, heap);
     if (is_error(i_type)) return i_type;
     i_type = lizard_tt_reduce(i_type, heap);
     if (i_type->type != AST_TT_INTERVAL) {
@@ -1266,13 +1367,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   case AST_TT_F_EQ: {
     /* (F-eq i j) is a face when i, j : I. Its type is the face sort. */
     lizard_ast_node_t *l_type, *r_type;
-    l_type = lizard_tt_infer(ctx, t->data.tt_f_eq.left, heap);
+    l_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_f_eq.left, heap);
     if (is_error(l_type)) return l_type;
     l_type = lizard_tt_reduce(l_type, heap);
     if (l_type->type != AST_TT_INTERVAL) {
       return type_error(heap, "F-eq argument not in I");
     }
-    r_type = lizard_tt_infer(ctx, t->data.tt_f_eq.right, heap);
+    r_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_f_eq.right, heap);
     if (is_error(r_type)) return r_type;
     r_type = lizard_tt_reduce(r_type, heap);
     if (r_type->type != AST_TT_INTERVAL) {
@@ -1284,7 +1385,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   case AST_TT_F_OR: {
     /* Boolean ops on faces produce faces. */
     lizard_ast_node_t *l_type, *r_type;
-    l_type = lizard_tt_infer(ctx, t->data.tt_f_binop.left, heap);
+    l_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_f_binop.left, heap);
     if (is_error(l_type)) return l_type;
     l_type = lizard_tt_reduce(l_type, heap);
     /* Face sort is (U 0); allow any universe expression. */
@@ -1296,7 +1397,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         l_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "F-and/F-or arg not a face");
     }
-    r_type = lizard_tt_infer(ctx, t->data.tt_f_binop.right, heap);
+    r_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_f_binop.right, heap);
     if (is_error(r_type)) return r_type;
     r_type = lizard_tt_reduce(r_type, heap);
     if (r_type->type != AST_TT_UNIVERSE &&
@@ -1316,9 +1417,9 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
      *   Γ ⊢ (Partial φ A) : (U n)
      */
     lizard_ast_node_t *face_type, *A_type;
-    face_type = lizard_tt_infer(ctx, t->data.tt_partial.face, heap);
+    face_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_partial.face, heap);
     if (is_error(face_type)) return face_type;
-    A_type = lizard_tt_infer(ctx, t->data.tt_partial.type, heap);
+    A_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_partial.type, heap);
     if (is_error(A_type)) return A_type;
     A_type = lizard_tt_reduce(A_type, heap);
     if (A_type->type != AST_TT_UNIVERSE &&
@@ -1340,7 +1441,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
      * The partial element u must inhabit Partial φ A. We construct
      * the expected partial type and check u against it. */
     lizard_ast_node_t *A_type, *face_type, *expected_partial;
-    A_type = lizard_tt_infer(ctx, t->data.tt_sub.type, heap);
+    A_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_sub.type, heap);
     if (is_error(A_type)) return A_type;
     A_type = lizard_tt_reduce(A_type, heap);
     if (A_type->type != AST_TT_UNIVERSE &&
@@ -1351,13 +1452,13 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Sub type argument not a type");
     }
-    face_type = lizard_tt_infer(ctx, t->data.tt_sub.face, heap);
+    face_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_sub.face, heap);
     if (is_error(face_type)) return face_type;
     expected_partial = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     expected_partial->type = AST_TT_PARTIAL;
     expected_partial->data.tt_partial.face = t->data.tt_sub.face;
     expected_partial->data.tt_partial.type = t->data.tt_sub.type;
-    if (!lizard_tt_check(ctx, t->data.tt_sub.partial, expected_partial, heap)) {
+    if (!lizard_tt_check2(valid_ctx, ctx, t->data.tt_sub.partial, expected_partial, heap)) {
       return type_error(heap, "Sub partial doesn't check");
     }
     return A_type;
@@ -1378,7 +1479,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
       return type_error(heap, "comp missing field");
     }
     {
-      lizard_ast_node_t *face_type = lizard_tt_infer(ctx, face, heap);
+      lizard_ast_node_t *face_type = lizard_tt_infer2(valid_ctx, ctx, face, heap);
       if (is_error(face_type)) return face_type;
     }
     if (t->type == AST_TT_COMP) {
@@ -1432,10 +1533,10 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   case AST_TT_EQUIV_TYPE: {
     /* (Equiv A B) : (U n) when A, B : (U n). */
     lizard_ast_node_t *A_type, *B_type;
-    A_type = lizard_tt_infer(ctx, t->data.tt_equiv_type.domain, heap);
+    A_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_equiv_type.domain, heap);
     if (is_error(A_type)) return A_type;
     A_type = lizard_tt_reduce(A_type, heap);
-    B_type = lizard_tt_infer(ctx, t->data.tt_equiv_type.codomain, heap);
+    B_type = lizard_tt_infer2(valid_ctx, ctx, t->data.tt_equiv_type.codomain, heap);
     if (is_error(B_type)) return B_type;
     if (A_type->type != AST_TT_UNIVERSE &&
         A_type->type != AST_TT_U_SUC &&
@@ -1453,7 +1554,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *A = t->data.tt_equiv_op.operand;
     lizard_ast_node_t *result;
     if (A == NULL) return type_error(heap, "id-equiv missing argument");
-    A_type = lizard_tt_infer(ctx, A, heap);
+    A_type = lizard_tt_infer2(valid_ctx, ctx, A, heap);
     if (is_error(A_type)) return A_type;
     A_type = lizard_tt_reduce(A_type, heap);
     if (A_type->type != AST_TT_UNIVERSE &&
@@ -1477,7 +1578,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *e = t->data.tt_equiv_op.operand;
     char *wildcard;
     if (e == NULL) return type_error(heap, "equiv-fun missing argument");
-    e_type = lizard_tt_infer(ctx, e, heap);
+    e_type = lizard_tt_infer2(valid_ctx, ctx, e, heap);
     if (is_error(e_type)) return e_type;
     e_type = lizard_tt_reduce(e_type, heap);
     if (e_type->type != AST_TT_EQUIV_TYPE) {
@@ -1503,7 +1604,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *e = t->data.tt_equiv_op.operand;
     char *wildcard;
     if (e == NULL) return type_error(heap, "equiv-inv missing argument");
-    e_type = lizard_tt_infer(ctx, e, heap);
+    e_type = lizard_tt_infer2(valid_ctx, ctx, e, heap);
     if (is_error(e_type)) return e_type;
     e_type = lizard_tt_reduce(e_type, heap);
     if (e_type->type != AST_TT_EQUIV_TYPE) {
@@ -1534,7 +1635,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     if (A == NULL || face == NULL || T == NULL) {
       return type_error(heap, "Glue missing field");
     }
-    A_type = lizard_tt_infer(ctx, A, heap);
+    A_type = lizard_tt_infer2(valid_ctx, ctx, A, heap);
     if (is_error(A_type)) return A_type;
     A_type = lizard_tt_reduce(A_type, heap);
     if (A_type->type != AST_TT_UNIVERSE &&
@@ -1545,10 +1646,10 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
         A_type->type != AST_TT_UNIVERSE_SET) {
       return type_error(heap, "Glue base not a type");
     }
-    T_type = lizard_tt_infer(ctx, T, heap);
+    T_type = lizard_tt_infer2(valid_ctx, ctx, T, heap);
     if (is_error(T_type)) return T_type;
     {
-      lizard_ast_node_t *face_type = lizard_tt_infer(ctx, face, heap);
+      lizard_ast_node_t *face_type = lizard_tt_infer2(valid_ctx, ctx, face, heap);
       if (is_error(face_type)) return face_type;
     }
     return A_type;
@@ -1562,7 +1663,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *e_type;
     lizard_ast_node_t *e = t->data.tt_unglue.equiv;
     if (e == NULL) return type_error(heap, "unglue missing equiv");
-    e_type = lizard_tt_infer(ctx, e, heap);
+    e_type = lizard_tt_infer2(valid_ctx, ctx, e, heap);
     if (is_error(e_type)) return e_type;
     e_type = lizard_tt_reduce(e_type, heap);
     if (e_type->type != AST_TT_EQUIV_TYPE) {
@@ -1583,7 +1684,7 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
     lizard_ast_node_t *e_type, *result, *univ;
     lizard_ast_node_t *e = t->data.tt_ua.equiv;
     if (e == NULL) return type_error(heap, "ua missing equiv");
-    e_type = lizard_tt_infer(ctx, e, heap);
+    e_type = lizard_tt_infer2(valid_ctx, ctx, e, heap);
     if (is_error(e_type)) return e_type;
     e_type = lizard_tt_reduce(e_type, heap);
     if (e_type->type != AST_TT_EQUIV_TYPE) {
@@ -1662,7 +1763,8 @@ lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
   }
 }
 
-int lizard_tt_check(lizard_ast_node_t *ctx,
+int lizard_tt_check2(lizard_ast_node_t *valid_ctx,
+                     lizard_ast_node_t *ctx,
                     lizard_ast_node_t *t,
                     lizard_ast_node_t *T,
                     lizard_heap_t *heap) {
@@ -1690,7 +1792,7 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
         renamed_var->data.variable = lname;
         cod = lizard_tt_subst(cod, pname, renamed_var, heap);
       }
-      return lizard_tt_check(new_ctx, t->data.tt_lambda.body, cod, heap);
+      return lizard_tt_check2(valid_ctx, new_ctx, t->data.tt_lambda.body, cod, heap);
     }
   }
   /* refl typing rule:
@@ -1717,7 +1819,7 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
     b = T_norm->data.tt_id.b;
     if (x == NULL || A == NULL || a == NULL || b == NULL) return 0;
     /* The point x must inhabit A. */
-    if (!lizard_tt_check(ctx, x, A, heap)) return 0;
+    if (!lizard_tt_check2(valid_ctx, ctx, x, A, heap)) return 0;
     /* The endpoints a and b must both be convertible to x. */
     x_norm = lizard_tt_reduce(x, heap);
     a_norm = lizard_tt_reduce(a, heap);
@@ -1748,11 +1850,11 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
     if (a == NULL || b == NULL || A == NULL || B == NULL) return 0;
     if (T_norm->data.tt_sigma.binder == NULL ||
         T_norm->data.tt_sigma.binder->type != AST_SYMBOL) return 0;
-    if (!lizard_tt_check(ctx, a, A, heap)) return 0;
+    if (!lizard_tt_check2(valid_ctx, ctx, a, A, heap)) return 0;
     B_sub = lizard_tt_subst(B,
                             T_norm->data.tt_sigma.binder->data.variable,
                             a, heap);
-    if (!lizard_tt_check(ctx, b, B_sub, heap)) return 0;
+    if (!lizard_tt_check2(valid_ctx, ctx, b, B_sub, heap)) return 0;
     return 1;
   }
   /* inl/inr typing rules:
@@ -1767,13 +1869,13 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
   if (t->type == AST_TT_INL) {
     lizard_ast_node_t *T_norm = lizard_tt_reduce(T, heap);
     if (T_norm->type != AST_TT_SUM) return 0;
-    return lizard_tt_check(ctx, t->data.tt_inj.value,
+    return lizard_tt_check2(valid_ctx, ctx, t->data.tt_inj.value,
                            T_norm->data.tt_sum.left, heap);
   }
   if (t->type == AST_TT_INR) {
     lizard_ast_node_t *T_norm = lizard_tt_reduce(T, heap);
     if (T_norm->type != AST_TT_SUM) return 0;
-    return lizard_tt_check(ctx, t->data.tt_inj.value,
+    return lizard_tt_check2(valid_ctx, ctx, t->data.tt_inj.value,
                            T_norm->data.tt_sum.right, heap);
   }
   /* path-abs typing rule:
@@ -1804,7 +1906,7 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
     i_type->type = AST_TT_INTERVAL;
     new_ctx = ctx_extend(ctx, binder->data.variable, i_type, heap);
     /* Check body : A in extended context */
-    if (!lizard_tt_check(new_ctx, t->data.tt_path_abs.body, A, heap)) {
+    if (!lizard_tt_check2(valid_ctx, new_ctx, t->data.tt_path_abs.body, A, heap)) {
       return 0;
     }
     /* Endpoint checks: body[i0/i] ≡ a, body[i1/i] ≡ b */
@@ -1837,15 +1939,15 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
   if (t->type == AST_TT_GLUE_INTRO) {
     lizard_ast_node_t *T_norm = lizard_tt_reduce(T, heap);
     if (T_norm->type != AST_TT_GLUE) return 0;
-    if (!lizard_tt_check(ctx, t->data.tt_glue_intro.t,
+    if (!lizard_tt_check2(valid_ctx, ctx, t->data.tt_glue_intro.t,
                          T_norm->data.tt_glue.t, heap)) return 0;
-    if (!lizard_tt_check(ctx, t->data.tt_glue_intro.a,
+    if (!lizard_tt_check2(valid_ctx, ctx, t->data.tt_glue_intro.a,
                          T_norm->data.tt_glue.base, heap)) return 0;
     return 1;
   }
   /* General case: infer the term's type and check convertible to T. */
   {
-    lizard_ast_node_t *inferred = lizard_tt_infer(ctx, t, heap);
+    lizard_ast_node_t *inferred = lizard_tt_infer2(valid_ctx, ctx, t, heap);
     lizard_ast_node_t *T_norm;
     if (is_error(inferred)) return 0;
     inferred = lizard_tt_reduce(inferred, heap);
@@ -1881,21 +1983,79 @@ static lizard_ast_node_t *nth_arg_chk(lz_list_t *args, int n) {
 lizard_ast_node_t *lizard_primitive_tt_infer(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *nil;
   (void)env;
   if (!two_args_chk(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  return lizard_tt_infer(nth_arg_chk(args, 0), nth_arg_chk(args, 1), heap);
+  /* Backward-compat: single-context (infer ctx expr) passes an empty
+   * valid context. M.5.2 Turn 2 introduces (infer-modal valid truth
+   * expr) for code that uses the modal discipline directly. */
+  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  return lizard_tt_infer2(nil, nth_arg_chk(args, 0), nth_arg_chk(args, 1), heap);
 }
 
 lizard_ast_node_t *lizard_primitive_tt_check(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *nil;
   (void)env;
   if (!three_args_chk(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  return lizard_make_bool(heap, lizard_tt_check(nth_arg_chk(args, 0),
+  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  return lizard_make_bool(heap, lizard_tt_check2(nil, nth_arg_chk(args, 0),
                                                  nth_arg_chk(args, 1),
                                                  nth_arg_chk(args, 2), heap));
+}
+
+/* (infer-modal valid-ctx truth-ctx expr) — M.5.2 Turn 2.
+ * The two-context inference primitive. The strict S4 modal rules
+ * use both contexts: box-intro drops the truth context, unbox
+ * extends the valid context. */
+lizard_ast_node_t *lizard_primitive_tt_infer_modal(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  (void)env;
+  if (!three_args_chk(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  return lizard_tt_infer2(nth_arg_chk(args, 0),
+                          nth_arg_chk(args, 1),
+                          nth_arg_chk(args, 2), heap);
+}
+
+lizard_ast_node_t *lizard_primitive_tt_check_modal(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  (void)env;
+  if (!nth_arg_chk(args, 3)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  return lizard_make_bool(heap,
+    lizard_tt_check2(nth_arg_chk(args, 0),
+                     nth_arg_chk(args, 1),
+                     nth_arg_chk(args, 2),
+                     nth_arg_chk(args, 3), heap));
+}
+
+/* Backward-compat wrappers. The C-level kernel API keeps the single-
+ * context functions for older callers. They use an empty valid ctx. */
+lizard_ast_node_t *lizard_tt_infer(lizard_ast_node_t *ctx,
+                                   lizard_ast_node_t *t,
+                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  return lizard_tt_infer2(nil, ctx, t, heap);
+}
+
+int lizard_tt_check(lizard_ast_node_t *ctx,
+                    lizard_ast_node_t *t,
+                    lizard_ast_node_t *T,
+                    lizard_heap_t *heap) {
+  lizard_ast_node_t *nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  return lizard_tt_check2(nil, ctx, t, T, heap);
 }

@@ -125,6 +125,26 @@ typedef enum {
    */
   AST_TT_BOX,
   AST_TT_DIAMOND,
+  /* (box e) and (unbox x b e) — Phase M.5.2 introduction and
+   * elimination forms for the Box modality.
+   *
+   * Introduction: (box e) has type (Box T) when e has type T.
+   * Elimination:  (unbox x b body) binds the unboxed contents of
+   *               b (a Box value) as x within body. Read as
+   *               "let unbox x = b in body".
+   *
+   * Beta rule: (unbox x (box e) body) → body[e/x].
+   *
+   * M.5.2 turn 1 uses PLACEHOLDER typing rules that don't enforce
+   * a specific modal logic. Turn 2 will add the dual context
+   * discipline that makes this concretely S4. Until then, these
+   * forms compute correctly (via the beta rule) but don't restrict
+   * what's typeable.
+   *
+   * Gated on `modalities-enabled` (same toggle as Box/Diamond).
+   */
+  AST_TT_BOX_INTRO,
+  AST_TT_BOX_ELIM,
   AST_TT_APP,          /* (@ f a) — explicit application form */
   AST_TT_SUM,          /* (Sum A B) — coproduct type */
   AST_TT_UNIVERSE,     /* (U n) — universe at integer level */
@@ -544,6 +564,19 @@ struct lizard_ast_node {
     struct {
       lizard_ast_node_t *argument;
     } tt_diamond;
+    /* Phase M.5.2: introduction and elimination for Box.
+     *
+     * box_intro: (box e) — holds the term being boxed.
+     * box_elim:  (unbox x b body) — binds x to the unboxed
+     *            contents of b inside body. */
+    struct {
+      lizard_ast_node_t *body;
+    } tt_box_intro;
+    struct {
+      lizard_ast_node_t *binder;     /* x — the variable for the unboxed value */
+      lizard_ast_node_t *scrutinee;  /* b — the Box-typed term being eliminated */
+      lizard_ast_node_t *body;       /* body — uses x freely */
+    } tt_box_elim;
     struct {
       lizard_ast_node_t *fun;
       lizard_ast_node_t *arg;

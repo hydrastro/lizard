@@ -1376,6 +1376,8 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_CO_SIGMA_FRESH: name = "co-sigma-fresh"; break;
   case AST_TT_BOX:            name = "Box";            break;
   case AST_TT_DIAMOND:        name = "Diamond";        break;
+  case AST_TT_BOX_INTRO:      name = "box";            break;
+  case AST_TT_BOX_ELIM:       name = "unbox";          break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2510,6 +2512,38 @@ lizard_ast_node_t *lizard_primitive_tt_diamond(lz_list_t *args,
   return n;
 }
 
+/* (box e) — Phase M.5.2 Box introduction. */
+lizard_ast_node_t *lizard_primitive_tt_box_intro(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_BOX_INTRO;
+  n->data.tt_box_intro.body = nth_arg(args, 0);
+  return n;
+}
+
+/* (unbox x b body) — Phase M.5.2 Box elimination. */
+lizard_ast_node_t *lizard_primitive_tt_box_elim(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!three_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_BOX_ELIM;
+  n->data.tt_box_elim.binder = nth_arg(args, 0);
+  n->data.tt_box_elim.scrutinee = nth_arg(args, 1);
+  n->data.tt_box_elim.body = nth_arg(args, 2);
+  return n;
+}
+
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -2992,6 +3026,8 @@ TT_PREDICATE(tt_co_pi_freshp,    AST_TT_CO_PI_FRESH)
 TT_PREDICATE(tt_co_sigma_freshp, AST_TT_CO_SIGMA_FRESH)
 TT_PREDICATE(tt_boxp,     AST_TT_BOX)
 TT_PREDICATE(tt_diamondp, AST_TT_DIAMOND)
+TT_PREDICATE(tt_box_introp, AST_TT_BOX_INTRO)
+TT_PREDICATE(tt_box_elimp,  AST_TT_BOX_ELIM)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3041,6 +3077,10 @@ TT_ACCESSOR(tt_sum_left,     AST_TT_SUM,   x->data.tt_sum.left)
 TT_ACCESSOR(tt_sum_right,    AST_TT_SUM,   x->data.tt_sum.right)
 TT_ACCESSOR(tt_box_arg,      AST_TT_BOX,     x->data.tt_box.argument)
 TT_ACCESSOR(tt_diamond_arg,  AST_TT_DIAMOND, x->data.tt_diamond.argument)
+TT_ACCESSOR(tt_box_intro_body, AST_TT_BOX_INTRO, x->data.tt_box_intro.body)
+TT_ACCESSOR(tt_box_elim_binder,    AST_TT_BOX_ELIM, x->data.tt_box_elim.binder)
+TT_ACCESSOR(tt_box_elim_scrutinee, AST_TT_BOX_ELIM, x->data.tt_box_elim.scrutinee)
+TT_ACCESSOR(tt_box_elim_body,      AST_TT_BOX_ELIM, x->data.tt_box_elim.body)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4710,6 +4750,15 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "Diamond",       lizard_primitive_tt_diamond);
   install_one(heap, env, "Diamond?",      lizard_primitive_tt_diamondp);
   install_one(heap, env, "Diamond-arg",   lizard_primitive_tt_diamond_arg);
+  /* Phase M.5.2 — Box intro and elim. */
+  install_one(heap, env, "box",            lizard_primitive_tt_box_intro);
+  install_one(heap, env, "box?",           lizard_primitive_tt_box_introp);
+  install_one(heap, env, "box-body",       lizard_primitive_tt_box_intro_body);
+  install_one(heap, env, "unbox",          lizard_primitive_tt_box_elim);
+  install_one(heap, env, "unbox?",         lizard_primitive_tt_box_elimp);
+  install_one(heap, env, "unbox-binder",   lizard_primitive_tt_box_elim_binder);
+  install_one(heap, env, "unbox-scrutinee",lizard_primitive_tt_box_elim_scrutinee);
+  install_one(heap, env, "unbox-body",     lizard_primitive_tt_box_elim_body);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);
@@ -5003,6 +5052,9 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
    * Currently covers: variables, Pi, Lambda, application, U, annotation. */
   install_one(heap, env, "infer",      lizard_primitive_tt_infer);
   install_one(heap, env, "check",      lizard_primitive_tt_check);
+  /* M.5.2 Turn 2 — two-context inference. */
+  install_one(heap, env, "infer-modal", lizard_primitive_tt_infer_modal);
+  install_one(heap, env, "check-modal", lizard_primitive_tt_check_modal);
   /* Judgmental equality engine + flag system. The engine implements
    * a small confluent rewriting system for the identity-type
    * fragment. Each rule is gated by a flag, all #t by default. */

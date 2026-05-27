@@ -453,6 +453,19 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_box.argument, name);
   case AST_TT_DIAMOND:
     return contains_free_var(t->data.tt_diamond.argument, name);
+  case AST_TT_BOX_INTRO:
+    return contains_free_var(t->data.tt_box_intro.body, name);
+  case AST_TT_BOX_ELIM: {
+    /* The binder shadows in body but not in scrutinee. */
+    if (contains_free_var(t->data.tt_box_elim.scrutinee, name)) return 1;
+    if (t->data.tt_box_elim.binder &&
+        t->data.tt_box_elim.binder->type == AST_SYMBOL &&
+        strcmp(t->data.tt_box_elim.binder->data.variable, name) == 0) {
+      /* Shadowed in body. */
+      return 0;
+    }
+    return contains_free_var(t->data.tt_box_elim.body, name);
+  }
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -836,6 +849,38 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_DIAMOND;
       n->data.tt_diamond.argument = new_arg;
+      return n;
+    }
+  }
+  case AST_TT_BOX_INTRO: {
+    lizard_ast_node_t *new_body = subst_rec(t->data.tt_box_intro.body, x, v, heap);
+    if (new_body == t->data.tt_box_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_INTRO;
+      n->data.tt_box_intro.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_BOX_ELIM: {
+    /* Substitute in scrutinee always; in body only if binder doesn't
+     * shadow x. */
+    lizard_ast_node_t *new_scrut = subst_rec(t->data.tt_box_elim.scrutinee, x, v, heap);
+    lizard_ast_node_t *new_binder;
+    lizard_ast_node_t *new_body = subst_under_binder(
+        t->data.tt_box_elim.binder, t->data.tt_box_elim.body, x, v, heap,
+        &new_binder);
+    if (new_scrut == t->data.tt_box_elim.scrutinee &&
+        new_body == t->data.tt_box_elim.body &&
+        new_binder == t->data.tt_box_elim.binder) {
+      return t;
+    }
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_ELIM;
+      n->data.tt_box_elim.binder = new_binder;
+      n->data.tt_box_elim.scrutinee = new_scrut;
+      n->data.tt_box_elim.body = new_body;
       return n;
     }
   }
@@ -1550,6 +1595,30 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_BOX_INTRO: {
+    lizard_ast_node_t *body = subst_interval(t->data.tt_box_intro.body, x, v, heap);
+    if (body == t->data.tt_box_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_INTRO;
+      n->data.tt_box_intro.body = body;
+      return n;
+    }
+  }
+  case AST_TT_BOX_ELIM: {
+    lizard_ast_node_t *scrut = subst_interval(t->data.tt_box_elim.scrutinee, x, v, heap);
+    lizard_ast_node_t *body = subst_interval(t->data.tt_box_elim.body, x, v, heap);
+    if (scrut == t->data.tt_box_elim.scrutinee &&
+        body == t->data.tt_box_elim.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_ELIM;
+      n->data.tt_box_elim.binder = t->data.tt_box_elim.binder;
+      n->data.tt_box_elim.scrutinee = scrut;
+      n->data.tt_box_elim.body = body;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -1757,6 +1826,23 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_box.argument, b->data.tt_box.argument, ea, eb);
   case AST_TT_DIAMOND:
     return alpha_equal_rec(a->data.tt_diamond.argument, b->data.tt_diamond.argument, ea, eb);
+  case AST_TT_BOX_INTRO:
+    return alpha_equal_rec(a->data.tt_box_intro.body, b->data.tt_box_intro.body, ea, eb);
+  case AST_TT_BOX_ELIM: {
+    binder_env_t na, nb;
+    if (!alpha_equal_rec(a->data.tt_box_elim.scrutinee,
+                         b->data.tt_box_elim.scrutinee, ea, eb)) return 0;
+    na.name = (a->data.tt_box_elim.binder &&
+               a->data.tt_box_elim.binder->type == AST_SYMBOL)
+                  ? a->data.tt_box_elim.binder->data.variable : NULL;
+    na.next = ea;
+    nb.name = (b->data.tt_box_elim.binder &&
+               b->data.tt_box_elim.binder->type == AST_SYMBOL)
+                  ? b->data.tt_box_elim.binder->data.variable : NULL;
+    nb.next = eb;
+    return alpha_equal_rec(a->data.tt_box_elim.body, b->data.tt_box_elim.body,
+                           &na, &nb);
+  }
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2115,6 +2201,12 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_box.argument, b->data.tt_box.argument);
   case AST_TT_DIAMOND:
     return lizard_tt_structurally_equal(a->data.tt_diamond.argument, b->data.tt_diamond.argument);
+  case AST_TT_BOX_INTRO:
+    return lizard_tt_structurally_equal(a->data.tt_box_intro.body, b->data.tt_box_intro.body);
+  case AST_TT_BOX_ELIM:
+    return lizard_tt_structurally_equal(a->data.tt_box_elim.binder, b->data.tt_box_elim.binder) &&
+           lizard_tt_structurally_equal(a->data.tt_box_elim.scrutinee, b->data.tt_box_elim.scrutinee) &&
+           lizard_tt_structurally_equal(a->data.tt_box_elim.body, b->data.tt_box_elim.body);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3268,6 +3360,48 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
       n->type = AST_TT_DIAMOND;
       n->data.tt_diamond.argument = arg;
       result = n;
+    }
+    break;
+  }
+  case AST_TT_BOX_INTRO: {
+    lizard_ast_node_t *body = normalize_rec(t->data.tt_box_intro.body, heap, memo);
+    if (body == t->data.tt_box_intro.body) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_BOX_INTRO;
+      n->data.tt_box_intro.body = body;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_BOX_ELIM: {
+    /* Phase M.5.2 beta rule:
+     *   (unbox x (box e) body) → body[e/x]
+     * Otherwise, normalize subterms. */
+    lizard_ast_node_t *scrut = normalize_rec(t->data.tt_box_elim.scrutinee, heap, memo);
+    if (scrut->type == AST_TT_BOX_INTRO &&
+        t->data.tt_box_elim.binder &&
+        t->data.tt_box_elim.binder->type == AST_SYMBOL) {
+      lizard_ast_node_t *substituted = subst_rec(
+          t->data.tt_box_elim.body,
+          t->data.tt_box_elim.binder->data.variable,
+          scrut->data.tt_box_intro.body,
+          heap);
+      result = normalize_rec(substituted, heap, memo);
+    } else {
+      lizard_ast_node_t *body = normalize_rec(t->data.tt_box_elim.body, heap, memo);
+      if (scrut == t->data.tt_box_elim.scrutinee &&
+          body == t->data.tt_box_elim.body) {
+        result = t;
+      } else {
+        lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+        n->type = AST_TT_BOX_ELIM;
+        n->data.tt_box_elim.binder = t->data.tt_box_elim.binder;
+        n->data.tt_box_elim.scrutinee = scrut;
+        n->data.tt_box_elim.body = body;
+        result = n;
+      }
     }
     break;
   }

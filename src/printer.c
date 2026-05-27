@@ -360,6 +360,20 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_diamond.argument);
     fprintf(fp, ")");
     return;
+  case AST_TT_BOX_INTRO:
+    fprintf(fp, "(box ");
+    lizard_fprint_value(fp, node->data.tt_box_intro.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_BOX_ELIM:
+    fprintf(fp, "(unbox ");
+    lizard_fprint_value(fp, node->data.tt_box_elim.binder);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_box_elim.scrutinee);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_box_elim.body);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

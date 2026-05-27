@@ -233,6 +233,15 @@ lizard_ast_node_t *lizard_primitive_tt_box_arg(lz_list_t *, lizard_env_t *, liza
 lizard_ast_node_t *lizard_primitive_tt_diamond(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_diamondp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_diamond_arg(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+/* Phase M.5.2 — Box intro and elim. */
+lizard_ast_node_t *lizard_primitive_tt_box_intro(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_introp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_intro_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_elim(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_elimp(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_elim_binder(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_elim_scrutinee(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_box_elim_body(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_sum(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_universe(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -487,8 +496,34 @@ int lizard_tt_check(lizard_ast_node_t *ctx,
                     lizard_ast_node_t *t,
                     lizard_ast_node_t *T,
                     lizard_heap_t *heap);
+/* Phase M.5.2 Turn 2 — modal kernel API with two contexts.
+ *
+ * The valid context (Δ) holds hypotheses introduced by `unbox` —
+ * "necessarily true" hypotheses available even inside a future
+ * `box`. The truth context (Γ) holds ordinary hypotheses introduced
+ * by Pi / Sigma / let / case — only available outside `box`.
+ *
+ * The S4 box-intro rule:  Δ; · ⊢ e : T  ⊢  Δ; Γ ⊢ box e : Box T
+ * drops Γ when checking the box body — only Δ is visible inside.
+ *
+ * The S4 unbox rule:      Δ, x:T; Γ ⊢ body : U  given Δ; Γ ⊢ b : Box T
+ * extends Δ (not Γ) with the unboxed variable.
+ *
+ * Backward-compat: the existing single-context functions are now
+ * wrappers that pass nil for the valid context. */
+lizard_ast_node_t *lizard_tt_infer2(lizard_ast_node_t *valid_ctx,
+                                    lizard_ast_node_t *truth_ctx,
+                                    lizard_ast_node_t *t,
+                                    lizard_heap_t *heap);
+int lizard_tt_check2(lizard_ast_node_t *valid_ctx,
+                     lizard_ast_node_t *truth_ctx,
+                     lizard_ast_node_t *t,
+                     lizard_ast_node_t *T,
+                     lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_tt_infer(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_check(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_infer_modal(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+lizard_ast_node_t *lizard_primitive_tt_check_modal(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 
 /* Cubical layer — interval, paths, connection ops. */
 lizard_ast_node_t *lizard_primitive_tt_interval(lz_list_t *, lizard_env_t *, lizard_heap_t *);
