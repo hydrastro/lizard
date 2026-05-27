@@ -412,6 +412,27 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     lizard_fprint_value(fp, node->data.tt_poss_coerce.body);
     fprintf(fp, ")");
     return;
+  case AST_TT_TRUNC_TYPE:
+    fprintf(fp, "(Trunc ");
+    lizard_fprint_value(fp, node->data.tt_trunc_type.argument);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_TRUNC_INTRO:
+    fprintf(fp, "(trunc-intro ");
+    lizard_fprint_value(fp, node->data.tt_trunc_intro.body);
+    fprintf(fp, ")");
+    return;
+  case AST_TT_TRUNC_REC:
+    fprintf(fp, "(trunc-rec ");
+    lizard_fprint_value(fp, node->data.tt_trunc_rec.motive);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_rec.point);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_rec.prop);
+    fprintf(fp, " ");
+    lizard_fprint_value(fp, node->data.tt_trunc_rec.scrutinee);
+    fprintf(fp, ")");
+    return;
   case AST_TT_APP:
     fprintf(fp, "(@ ");
     lizard_fprint_value(fp, node->data.tt_app.fun);

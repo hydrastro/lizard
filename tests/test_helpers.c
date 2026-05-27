@@ -10,11 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The library has a process-global `heap` defined in runtime.c. Tests
- * link against the library and need to publish the per-test heap to
- * the same global so internal primitives find it. */
-extern lizard_heap_t *heap;
-
 void lizard_test_env_init(lizard_test_env_t *e) {
   mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
                           lizard_heap_free_wrapper);

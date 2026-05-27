@@ -15,11 +15,16 @@
 #define HISTORY_SIZE 100
 #define KEY_UP 'A'
 #define KEY_DOWN 'B'
+#define LIZARD_VERSION "0.1.0-dev"
+
+static void print_usage(const char *argv0) {
+  printf("usage: %s [--help] [--version] [--eval EXPR] [file]\n", argv0);
+  printf("Run Lizard interactively, evaluate EXPR, or evaluate a file/stdin in script mode.\n");
+}
 
 static char *history[HISTORY_SIZE] = {0};
 static int history_count = 0;
 static int history_index = 0;
-lizard_heap_t *heap;
 
 static char *lizard_repl_strdup(const char *s) {
   size_t n;
@@ -257,15 +262,94 @@ static char *read_input(void) {
 
 /* primitive registration is now provided by liblizard so tests can use it */
 
-int main(void) {
-  char *input;
-  int i;
+static int eval_source(lizard_env_t *global_env, const char *source,
+                       int interactive) {
   lz_list_t *tokens;
   lz_list_t *ast_list;
   lz_list_node_t *node;
   lizard_ast_list_node_t *expr_node;
   lizard_ast_node_t *expanded_ast;
   lizard_ast_node_t *result;
+
+  tokens = lizard_tokenize(source);
+  if (tokens == NULL) {
+    fprintf(stderr, "tokenization failed\n");
+    return 1;
+  }
+  ast_list = lizard_parse(tokens, heap);
+  if (ast_list == NULL) {
+    fprintf(stderr, "parse failed\n");
+    return 1;
+  }
+  node = ast_list->head;
+  while (node != ast_list->nil) {
+    expr_node = (lizard_ast_list_node_t *)node;
+    expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
+    result = lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
+    if (interactive) {
+      printf("=> ");
+      lizard_print_value(result);
+      printf("\n");
+    } else if (result && result->type == AST_ERROR) {
+      lizard_print_value(result);
+      printf("\n");
+    } else if (result && result->type != AST_NIL) {
+      printf("=> ");
+      lizard_print_value(result);
+      printf("\n");
+    }
+    node = node->next;
+  }
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  char *input;
+  int i;
+  int argi;
+  int interactive;
+  int exit_code;
+  const char *eval_expr;
+  const char *file_path;
+
+  eval_expr = NULL;
+  file_path = NULL;
+  exit_code = 0;
+
+  for (argi = 1; argi < argc; argi++) {
+    if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
+      print_usage(argv[0]);
+      return 0;
+    }
+    if (strcmp(argv[argi], "--version") == 0) {
+      printf("lizard %s\n", LIZARD_VERSION);
+      return 0;
+    }
+    if (strcmp(argv[argi], "--eval") == 0 || strcmp(argv[argi], "-e") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--eval expects an expression\n");
+        return 2;
+      }
+      eval_expr = argv[argi];
+      continue;
+    }
+    if (file_path == NULL) {
+      file_path = argv[argi];
+    } else {
+      print_usage(argv[0]);
+      return 2;
+    }
+  }
+  if (eval_expr != NULL && file_path != NULL) {
+    fprintf(stderr, "--eval and file input are mutually exclusive\n");
+    return 2;
+  }
+  if (file_path != NULL && freopen(file_path, "r", stdin) == NULL) {
+    perror(file_path);
+    return 1;
+  }
+
   mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
                           lizard_heap_free_wrapper);
   heap = lizard_heap_create(1024 * 1024, 16 * 1024 * 1024);
@@ -275,57 +359,37 @@ int main(void) {
 
     lizard_install_primitives(heap, global_env);
 
-    while (1) {
-      if (isatty(STDIN_FILENO)) {
-        printf("lizard> ");
-        fflush(stdout);
-      }
-      input = read_input();
-      if (input == NULL) {
-        break;
-      }
-      if (strcmp(input, "quit") == 0 || feof(stdin)) {
-        free(input);
-        break;
-      }
-      if (input[0] == '\0') {
-        free(input);
-        continue;
-      }
-      tokens = lizard_tokenize(input);
-      ast_list = lizard_parse(tokens, heap);
-      node = ast_list->head;
-      while (node != ast_list->nil) {
-        expr_node = (lizard_ast_list_node_t *)node;
-        expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
-        result =
-            lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
-        if (isatty(STDIN_FILENO)) {
-          /* Interactive REPL: echo every result. */
-          printf("=> ");
-          lizard_print_value(result);
-          printf("\n");
-        } else if (result && result->type == AST_ERROR) {
-          /* Script mode: errors always surface. */
-          lizard_print_value(result);
-          printf("\n");
-        } else if (result && result->type != AST_NIL) {
-          /* Script mode: print non-nil results so files of bare
-             expressions (e.g. (+ 1 2)) still show their values.
-             Skip nil so (display ...)/(newline)/(define ...) don't
-             produce a noisy `=> ()` after the real output. */
-          printf("=> ");
-          lizard_print_value(result);
-          printf("\n");
+    if (eval_expr != NULL) {
+      exit_code = eval_source(global_env, eval_expr, 0);
+    } else {
+      while (1) {
+        interactive = isatty(STDIN_FILENO);
+        if (interactive) {
+          printf("lizard> ");
+          fflush(stdout);
         }
-        node = node->next;
+        input = read_input();
+        if (input == NULL) {
+          break;
+        }
+        if (strcmp(input, "quit") == 0 || feof(stdin)) {
+          free(input);
+          break;
+        }
+        if (input[0] == '\0') {
+          free(input);
+          continue;
+        }
+        if (eval_source(global_env, input, interactive) != 0) {
+          exit_code = 1;
+        }
+        free(input);
       }
-      free(input);
     }
   }
   for (i = 0; i < HISTORY_SIZE; i++) {
     free(history[i]);
   }
   lizard_heap_destroy(heap);
-  return 0;
+  return exit_code;
 }

@@ -3,6 +3,8 @@
 
 #include "lizard.h"
 
+extern lizard_heap_t *heap;
+
 size_t align_size(size_t size);
 lizard_heap_segment_t *lizard_create_heap_segment(size_t size);
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size);

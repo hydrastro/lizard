@@ -487,6 +487,15 @@ static int contains_free_var(lizard_ast_node_t *t, const char *name) {
     return contains_free_var(t->data.tt_diamond_intro_sym.body, name);
   case AST_TT_POSS_COERCE:
     return contains_free_var(t->data.tt_poss_coerce.body, name);
+  case AST_TT_TRUNC_TYPE:
+    return contains_free_var(t->data.tt_trunc_type.argument, name);
+  case AST_TT_TRUNC_INTRO:
+    return contains_free_var(t->data.tt_trunc_intro.body, name);
+  case AST_TT_TRUNC_REC:
+    return contains_free_var(t->data.tt_trunc_rec.motive, name) ||
+           contains_free_var(t->data.tt_trunc_rec.point, name) ||
+           contains_free_var(t->data.tt_trunc_rec.prop, name) ||
+           contains_free_var(t->data.tt_trunc_rec.scrutinee, name);
   case AST_TT_APP:
     return contains_free_var(t->data.tt_app.fun, name) ||
            contains_free_var(t->data.tt_app.arg, name);
@@ -976,6 +985,45 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
       lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       n->type = AST_TT_POSS_COERCE;
       n->data.tt_poss_coerce.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_TRUNC_TYPE: {
+    lizard_ast_node_t *new_arg = subst_rec(t->data.tt_trunc_type.argument, x, v, heap);
+    if (new_arg == t->data.tt_trunc_type.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_TYPE;
+      n->data.tt_trunc_type.argument = new_arg;
+      return n;
+    }
+  }
+  case AST_TT_TRUNC_INTRO: {
+    lizard_ast_node_t *new_body = subst_rec(t->data.tt_trunc_intro.body, x, v, heap);
+    if (new_body == t->data.tt_trunc_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_INTRO;
+      n->data.tt_trunc_intro.body = new_body;
+      return n;
+    }
+  }
+  case AST_TT_TRUNC_REC: {
+    lizard_ast_node_t *m  = subst_rec(t->data.tt_trunc_rec.motive,    x, v, heap);
+    lizard_ast_node_t *p  = subst_rec(t->data.tt_trunc_rec.point,     x, v, heap);
+    lizard_ast_node_t *pr = subst_rec(t->data.tt_trunc_rec.prop,      x, v, heap);
+    lizard_ast_node_t *sc = subst_rec(t->data.tt_trunc_rec.scrutinee, x, v, heap);
+    if (m  == t->data.tt_trunc_rec.motive    && p  == t->data.tt_trunc_rec.point &&
+        pr == t->data.tt_trunc_rec.prop      && sc == t->data.tt_trunc_rec.scrutinee) {
+      return t;
+    }
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_REC;
+      n->data.tt_trunc_rec.motive    = m;
+      n->data.tt_trunc_rec.point     = p;
+      n->data.tt_trunc_rec.prop      = pr;
+      n->data.tt_trunc_rec.scrutinee = sc;
       return n;
     }
   }
@@ -1782,6 +1830,45 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
       return n;
     }
   }
+  case AST_TT_TRUNC_TYPE: {
+    lizard_ast_node_t *arg = subst_interval(t->data.tt_trunc_type.argument, x, v, heap);
+    if (arg == t->data.tt_trunc_type.argument) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_TYPE;
+      n->data.tt_trunc_type.argument = arg;
+      return n;
+    }
+  }
+  case AST_TT_TRUNC_INTRO: {
+    lizard_ast_node_t *body = subst_interval(t->data.tt_trunc_intro.body, x, v, heap);
+    if (body == t->data.tt_trunc_intro.body) return t;
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_INTRO;
+      n->data.tt_trunc_intro.body = body;
+      return n;
+    }
+  }
+  case AST_TT_TRUNC_REC: {
+    lizard_ast_node_t *m  = subst_interval(t->data.tt_trunc_rec.motive,    x, v, heap);
+    lizard_ast_node_t *p  = subst_interval(t->data.tt_trunc_rec.point,     x, v, heap);
+    lizard_ast_node_t *pr = subst_interval(t->data.tt_trunc_rec.prop,      x, v, heap);
+    lizard_ast_node_t *sc = subst_interval(t->data.tt_trunc_rec.scrutinee, x, v, heap);
+    if (m  == t->data.tt_trunc_rec.motive    && p  == t->data.tt_trunc_rec.point &&
+        pr == t->data.tt_trunc_rec.prop      && sc == t->data.tt_trunc_rec.scrutinee) {
+      return t;
+    }
+    {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_REC;
+      n->data.tt_trunc_rec.motive    = m;
+      n->data.tt_trunc_rec.point     = p;
+      n->data.tt_trunc_rec.prop      = pr;
+      n->data.tt_trunc_rec.scrutinee = sc;
+      return n;
+    }
+  }
   /* Phase H.1: HIT structures may carry interval-dependent subterms
    * in path endpoints and HIT_APP arguments. Recurse and rebuild. */
   case AST_TT_HIT_REF:
@@ -2033,6 +2120,15 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
     return alpha_equal_rec(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body, ea, eb);
   case AST_TT_POSS_COERCE:
     return alpha_equal_rec(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body, ea, eb);
+  case AST_TT_TRUNC_TYPE:
+    return alpha_equal_rec(a->data.tt_trunc_type.argument, b->data.tt_trunc_type.argument, ea, eb);
+  case AST_TT_TRUNC_INTRO:
+    return alpha_equal_rec(a->data.tt_trunc_intro.body, b->data.tt_trunc_intro.body, ea, eb);
+  case AST_TT_TRUNC_REC:
+    return alpha_equal_rec(a->data.tt_trunc_rec.motive,    b->data.tt_trunc_rec.motive,    ea, eb) &&
+           alpha_equal_rec(a->data.tt_trunc_rec.point,     b->data.tt_trunc_rec.point,     ea, eb) &&
+           alpha_equal_rec(a->data.tt_trunc_rec.prop,      b->data.tt_trunc_rec.prop,      ea, eb) &&
+           alpha_equal_rec(a->data.tt_trunc_rec.scrutinee, b->data.tt_trunc_rec.scrutinee, ea, eb);
   case AST_TT_APP:
     return alpha_equal_rec(a->data.tt_app.fun, b->data.tt_app.fun, ea, eb) &&
            alpha_equal_rec(a->data.tt_app.arg, b->data.tt_app.arg, ea, eb);
@@ -2413,6 +2509,15 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return lizard_tt_structurally_equal(a->data.tt_diamond_intro_sym.body, b->data.tt_diamond_intro_sym.body);
   case AST_TT_POSS_COERCE:
     return lizard_tt_structurally_equal(a->data.tt_poss_coerce.body, b->data.tt_poss_coerce.body);
+  case AST_TT_TRUNC_TYPE:
+    return lizard_tt_structurally_equal(a->data.tt_trunc_type.argument, b->data.tt_trunc_type.argument);
+  case AST_TT_TRUNC_INTRO:
+    return lizard_tt_structurally_equal(a->data.tt_trunc_intro.body, b->data.tt_trunc_intro.body);
+  case AST_TT_TRUNC_REC:
+    return lizard_tt_structurally_equal(a->data.tt_trunc_rec.motive,    b->data.tt_trunc_rec.motive)    &&
+           lizard_tt_structurally_equal(a->data.tt_trunc_rec.point,     b->data.tt_trunc_rec.point)     &&
+           lizard_tt_structurally_equal(a->data.tt_trunc_rec.prop,      b->data.tt_trunc_rec.prop)      &&
+           lizard_tt_structurally_equal(a->data.tt_trunc_rec.scrutinee, b->data.tt_trunc_rec.scrutinee);
   case AST_TT_APP:
     return lizard_tt_structurally_equal(a->data.tt_app.fun, b->data.tt_app.fun) &&
            lizard_tt_structurally_equal(a->data.tt_app.arg, b->data.tt_app.arg);
@@ -3729,6 +3834,72 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     /* Phase M.5.9 — poss-coerce is a judgment-shift, no operational
      * content. Reduces to its body. */
     result = normalize_rec(t->data.tt_poss_coerce.body, heap, memo);
+    break;
+  }
+  case AST_TT_TRUNC_TYPE: {
+    /* Phase H.2 — Trunc preserves shape; argument reduces under it. */
+    lizard_ast_node_t *arg = normalize_rec(t->data.tt_trunc_type.argument, heap, memo);
+    if (arg == t->data.tt_trunc_type.argument) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_TYPE;
+      n->data.tt_trunc_type.argument = arg;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_TRUNC_INTRO: {
+    /* Phase H.2 — trunc-intro preserves shape; body reduces. */
+    lizard_ast_node_t *body = normalize_rec(t->data.tt_trunc_intro.body, heap, memo);
+    if (body == t->data.tt_trunc_intro.body) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_INTRO;
+      n->data.tt_trunc_intro.body = body;
+      result = n;
+    }
+    break;
+  }
+  case AST_TT_TRUNC_REC: {
+    /* Phase H.2 — primary computation rule:
+     *
+     *   (trunc-rec C cm cs (trunc-intro x))  →  (@ cm x)
+     *
+     * This rule is DETERMINISTIC: the LHS pattern matches at most one
+     * way (trunc-rec applied to a literal trunc-intro). Other
+     * scrutinee shapes (variables, recursor results, etc.) don't fire
+     * and the recursor stays as a normal form.
+     *
+     * No overlap with any other reduction in the engine: trunc-rec is
+     * the unique elim form for Trunc, and no other rule produces a
+     * trunc-intro as its result. */
+    lizard_ast_node_t *m  = normalize_rec(t->data.tt_trunc_rec.motive,    heap, memo);
+    lizard_ast_node_t *p  = normalize_rec(t->data.tt_trunc_rec.point,     heap, memo);
+    lizard_ast_node_t *pr = normalize_rec(t->data.tt_trunc_rec.prop,      heap, memo);
+    lizard_ast_node_t *sc = normalize_rec(t->data.tt_trunc_rec.scrutinee, heap, memo);
+    if (sc->type == AST_TT_TRUNC_INTRO) {
+      /* Beta: result is (@ p sc.body). */
+      lizard_ast_node_t *app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      app->type = AST_TT_APP;
+      app->data.tt_app.fun = p;
+      app->data.tt_app.arg = sc->data.tt_trunc_intro.body;
+      result = normalize_rec(app, heap, memo);
+    } else if (m  == t->data.tt_trunc_rec.motive    &&
+               p  == t->data.tt_trunc_rec.point     &&
+               pr == t->data.tt_trunc_rec.prop      &&
+               sc == t->data.tt_trunc_rec.scrutinee) {
+      result = t;
+    } else {
+      lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      n->type = AST_TT_TRUNC_REC;
+      n->data.tt_trunc_rec.motive    = m;
+      n->data.tt_trunc_rec.point     = p;
+      n->data.tt_trunc_rec.prop      = pr;
+      n->data.tt_trunc_rec.scrutinee = sc;
+      result = n;
+    }
     break;
   }
   case AST_TT_ID: {

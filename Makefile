@@ -27,6 +27,8 @@
 #   make asan            shortcut for MODE=asan test
 #   make coverage        rebuild with coverage, run tests, write gcov reports
 #   make profile         release build + perf record on benchmark
+#   make doctor          run build/runtime/repository diagnostics
+#   make lint-tree       fail if generated or misplaced files are present
 #   make format          clang-format -i across src/ and tests/
 
 CC       ?= gcc
@@ -43,6 +45,7 @@ INC_DIR     := include
 TEST_DIR    := tests
 EXAMPLE_DIR := examples
 LIB_DIR     := lib
+RUN_ENV     ?=
 
 # --- flags ---------------------------------------------------------------
 CPPFLAGS ?=
@@ -87,11 +90,12 @@ LIB_SHARED := $(BUILD_DIR)/liblizard.so
 REPL_BIN   := $(BUILD_DIR)/lizard
 REPL_OBJ   := $(BUILD_DIR)/repl.o
 
-.PHONY: all check clean distclean install uninstall test examples \
+.PHONY: all check ci clean distclean doctor install uninstall lint-tree test examples \
         debug asan coverage profile format smoke help
 
 all: $(LIB_STATIC) $(LIB_SHARED) $(REPL_BIN)
 check: test examples
+ci: lint-tree test examples smoke
 
 debug:
 	$(MAKE) MODE=debug all
@@ -128,17 +132,17 @@ include tests/tests.mk
 examples: $(REPL_BIN)
 	@set -e; for f in $(EXAMPLE_DIR)/*.lisp; do \
 	  echo "=== $$f ==="; \
-	  $(REPL_BIN) < "$$f" || exit $$?; \
+	  $(RUN_ENV) $(REPL_BIN) < "$$f" || exit $$?; \
 	done
 
 # --- profiling / coverage -----------------------------------------------
 smoke: $(REPL_BIN)
-	@printf '(+ 40 2)\n' | $(REPL_BIN)
+	@$(RUN_ENV) $(REPL_BIN) --eval '(+ 40 2)'
 
 profile: MODE=release
 profile: $(REPL_BIN)
 	@command -v perf >/dev/null 2>&1 || { echo "perf not found"; exit 1; }
-	perf record --call-graph=dwarf -- $(REPL_BIN) < $(EXAMPLE_DIR)/22-benchmarks.lisp >/dev/null
+	perf record --call-graph=dwarf -- $(RUN_ENV) $(REPL_BIN) < $(EXAMPLE_DIR)/22-benchmarks.lisp >/dev/null
 	perf report
 
 coverage:
@@ -148,6 +152,12 @@ coverage:
 	@gcov -o $(BUILD_DIR) $(SRC_DIR)/*.c >/dev/null || true
 	@mv *.gcov coverage/ 2>/dev/null || true
 	@echo "Coverage reports written to coverage/*.gcov"
+
+doctor:
+	@./scripts/dev.sh doctor
+
+lint-tree:
+	@./scripts/clean.sh --check
 
 # --- install -------------------------------------------------------------
 install: all
@@ -183,6 +193,7 @@ distclean: clean
 	@./scripts/clean.sh
 
 help:
-	@echo "Targets:    all test examples check smoke clean distclean install uninstall format"
+	@echo "Targets:    all test examples check ci smoke doctor lint-tree clean distclean install uninstall format"
 	@echo "Modes:      make MODE=debug | make MODE=asan test | make MODE=coverage"
 	@echo "Tooling:    make debug | make asan | make coverage | make profile"
+	@echo "Runtime:    set RUN_ENV='LD_LIBRARY_PATH=/path/to/ds/lib' when needed"

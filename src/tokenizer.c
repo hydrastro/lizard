@@ -13,12 +13,38 @@ bool lizard_is_digit(const char *input, int i) {
   return false;
 }
 
+void lizard_source_position(const char *input, int offset, int *line,
+                            int *column) {
+  int i;
+  int l;
+  int c;
+  l = 1;
+  c = 1;
+  for (i = 0; input != NULL && input[i] != '\0' && i < offset; i++) {
+    if (input[i] == '\n') {
+      l++;
+      c = 1;
+    } else {
+      c++;
+    }
+  }
+  if (line != NULL) {
+    *line = l;
+  }
+  if (column != NULL) {
+    *column = c;
+  }
+}
+
 void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
-                      char *data) {
+                      char *data, int line, int column, int offset) {
 
   lizard_token_list_node_t *node;
   node = lizard_heap_alloc(sizeof(lizard_token_list_node_t));
   node->token.type = token_type;
+  node->token.line = line;
+  node->token.column = column;
+  node->token.offset = offset;
   switch (token_type) {
   case TOKEN_LEFT_PAREN:
   case TOKEN_RIGHT_PAREN:
@@ -39,9 +65,18 @@ void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
   list_append(list, &node->node);
 }
 
+static void lizard_add_token_at(lz_list_t *list, const char *input, int offset,
+                                lizard_token_type_t token_type, char *data) {
+  int line;
+  int column;
+  lizard_source_position(input, offset, &line, &column);
+  lizard_add_token(list, token_type, data, line, column, offset);
+}
+
 lz_list_t *lizard_tokenize(const char *input) {
   lz_list_t *list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   int i, j, k;
+  int token_start;
   char *buffer;
   i = 0;
   while (input[i] != '\0') {
@@ -58,12 +93,13 @@ lz_list_t *lizard_tokenize(const char *input) {
       continue;
     }
     if (input[i] == '(') {
-      lizard_add_token(list, TOKEN_LEFT_PAREN, NULL);
+      lizard_add_token_at(list, input, i, TOKEN_LEFT_PAREN, NULL);
       i++;
     } else if (input[i] == ')') {
-      lizard_add_token(list, TOKEN_RIGHT_PAREN, NULL);
+      lizard_add_token_at(list, input, i, TOKEN_RIGHT_PAREN, NULL);
       i++;
     } else if (input[i] == '"') {
+      token_start = i;
       j = i;
       i++;
       while (input[i] != '"' && input[i] != '\0') {
@@ -106,10 +142,11 @@ lz_list_t *lizard_tokenize(const char *input) {
         }
       }
       buffer[k] = '\0';
-      lizard_add_token(list, TOKEN_STRING, buffer);
+      lizard_add_token_at(list, input, token_start, TOKEN_STRING, buffer);
       i++;
 
     } else if (lizard_is_digit(input, i)) {
+      token_start = i;
       j = i;
       while (lizard_is_digit(input, i)) {
         i++;
@@ -119,9 +156,10 @@ lz_list_t *lizard_tokenize(const char *input) {
         buffer[k] = input[j];
       }
       buffer[k] = '\0';
-      lizard_add_token(list, TOKEN_NUMBER, buffer);
+      lizard_add_token_at(list, input, token_start, TOKEN_NUMBER, buffer);
 
     } else {
+      token_start = i;
       j = i;
       if (input[i] == '\'' || input[i] == '`' || input[i] == ',' ||
           input[i] == '!' || input[i] == '@' || input[i] == '#' ||
@@ -133,14 +171,14 @@ lz_list_t *lizard_tokenize(const char *input) {
           buffer[0] = input[i];
           buffer[1] = input[i + 1];
           buffer[2] = '\0';
-          lizard_add_token(list, TOKEN_SYMBOL, buffer);
+          lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
           i += 2;
         } else {
 
           buffer = lizard_heap_alloc(sizeof(char) * 2);
           buffer[0] = input[i];
           buffer[1] = '\0';
-          lizard_add_token(list, TOKEN_SYMBOL, buffer);
+          lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
           i++;
         }
       } else {
@@ -156,7 +194,7 @@ lz_list_t *lizard_tokenize(const char *input) {
           buffer[k] = input[j];
         }
         buffer[k] = '\0';
-        lizard_add_token(list, TOKEN_SYMBOL, buffer);
+        lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
       }
     }
   }

@@ -1384,6 +1384,9 @@ lizard_ast_node_t *lizard_primitive_type_of(lz_list_t *args, lizard_env_t *env,
   case AST_TT_DIAMOND_BIND:   name = "diamond-bind";   break;
   case AST_TT_DIAMOND_INTRO_SYM: name = "dia";         break;
   case AST_TT_POSS_COERCE:    name = "poss-coerce";    break;
+  case AST_TT_TRUNC_TYPE:     name = "Trunc";          break;
+  case AST_TT_TRUNC_INTRO:    name = "trunc-intro";    break;
+  case AST_TT_TRUNC_REC:      name = "trunc-rec";      break;
   case AST_TT_APP:         name = "@";           break;
   case AST_TT_SUM:         name = "Sum";         break;
   case AST_TT_UNIVERSE:    name = "U";           break;
@@ -2644,6 +2647,52 @@ lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *args,
   return n;
 }
 
+/* Phase H.2 — propositional truncation constructors. */
+lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC_TYPE;
+  n->data.tt_trunc_type.argument = nth_arg(args, 0);
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *args,
+                                                    lizard_env_t *env,
+                                                    lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC_INTRO;
+  n->data.tt_trunc_intro.body = nth_arg(args, 0);
+  return n;
+}
+
+lizard_ast_node_t *lizard_primitive_tt_trunc_rec(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env;
+  if (!four_args(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_TT_TRUNC_REC;
+  n->data.tt_trunc_rec.motive    = nth_arg(args, 0);
+  n->data.tt_trunc_rec.point     = nth_arg(args, 1);
+  n->data.tt_trunc_rec.prop      = nth_arg(args, 2);
+  n->data.tt_trunc_rec.scrutinee = nth_arg(args, 3);
+  return n;
+}
+
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -3134,6 +3183,9 @@ TT_PREDICATE(tt_box_appp,       AST_TT_BOX_APP)
 TT_PREDICATE(tt_diamond_bindp,  AST_TT_DIAMOND_BIND)
 TT_PREDICATE(tt_diamond_intro_symp, AST_TT_DIAMOND_INTRO_SYM)
 TT_PREDICATE(tt_poss_coercep,       AST_TT_POSS_COERCE)
+TT_PREDICATE(tt_trunc_typep,        AST_TT_TRUNC_TYPE)
+TT_PREDICATE(tt_trunc_introp,       AST_TT_TRUNC_INTRO)
+TT_PREDICATE(tt_trunc_recp,         AST_TT_TRUNC_REC)
 TT_PREDICATE(tt_appp,         AST_TT_APP)
 TT_PREDICATE(tt_sump,         AST_TT_SUM)
 TT_PREDICATE(tt_universep,    AST_TT_UNIVERSE)
@@ -3197,6 +3249,12 @@ TT_ACCESSOR(tt_diamond_bind_fun, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.fu
 TT_ACCESSOR(tt_diamond_bind_arg, AST_TT_DIAMOND_BIND, x->data.tt_diamond_bind.arg)
 TT_ACCESSOR(tt_diamond_intro_sym_body, AST_TT_DIAMOND_INTRO_SYM, x->data.tt_diamond_intro_sym.body)
 TT_ACCESSOR(tt_poss_coerce_body,       AST_TT_POSS_COERCE,       x->data.tt_poss_coerce.body)
+TT_ACCESSOR(tt_trunc_type_arg,         AST_TT_TRUNC_TYPE,        x->data.tt_trunc_type.argument)
+TT_ACCESSOR(tt_trunc_intro_body,       AST_TT_TRUNC_INTRO,       x->data.tt_trunc_intro.body)
+TT_ACCESSOR(tt_trunc_rec_motive,       AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.motive)
+TT_ACCESSOR(tt_trunc_rec_point,        AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.point)
+TT_ACCESSOR(tt_trunc_rec_prop,         AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.prop)
+TT_ACCESSOR(tt_trunc_rec_scrutinee,    AST_TT_TRUNC_REC,         x->data.tt_trunc_rec.scrutinee)
 TT_ACCESSOR(tt_id_domain,    AST_TT_ID,    x->data.tt_id.domain)
 TT_ACCESSOR(tt_id_a,         AST_TT_ID,    x->data.tt_id.a)
 TT_ACCESSOR(tt_id_b,         AST_TT_ID,    x->data.tt_id.b)
@@ -4901,6 +4959,19 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "poss-coerce",       lizard_primitive_tt_poss_coerce);
   install_one(heap, env, "poss-coerce?",      lizard_primitive_tt_poss_coercep);
   install_one(heap, env, "poss-coerce-body",  lizard_primitive_tt_poss_coerce_body);
+  /* Phase H.2 — propositional truncation. */
+  install_one(heap, env, "Trunc",              lizard_primitive_tt_trunc_type);
+  install_one(heap, env, "Trunc?",             lizard_primitive_tt_trunc_typep);
+  install_one(heap, env, "Trunc-arg",          lizard_primitive_tt_trunc_type_arg);
+  install_one(heap, env, "trunc-intro",        lizard_primitive_tt_trunc_intro);
+  install_one(heap, env, "trunc-intro?",       lizard_primitive_tt_trunc_introp);
+  install_one(heap, env, "trunc-intro-body",   lizard_primitive_tt_trunc_intro_body);
+  install_one(heap, env, "trunc-rec",          lizard_primitive_tt_trunc_rec);
+  install_one(heap, env, "trunc-rec?",         lizard_primitive_tt_trunc_recp);
+  install_one(heap, env, "trunc-rec-motive",   lizard_primitive_tt_trunc_rec_motive);
+  install_one(heap, env, "trunc-rec-point",    lizard_primitive_tt_trunc_rec_point);
+  install_one(heap, env, "trunc-rec-prop",     lizard_primitive_tt_trunc_rec_prop);
+  install_one(heap, env, "trunc-rec-scrutinee",lizard_primitive_tt_trunc_rec_scrutinee);
   install_one(heap, env, "@",             lizard_primitive_tt_at);
   install_one(heap, env, "Sum",           lizard_primitive_tt_sum);
   install_one(heap, env, "U",             lizard_primitive_tt_universe);

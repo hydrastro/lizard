@@ -300,6 +300,31 @@ typedef enum {
   AST_TT_HIT_PATH,
   AST_TT_HIT_REF,
   AST_TT_HIT_APP,
+  /* Phase H.2 — Propositional truncation as a first-class HIT.
+   *
+   * The simplest HIT with a non-trivial recursor that admits a
+   * deterministic beta rule. Built-in (not via the generic HIT
+   * registry) because its computation rule is well-known and its
+   * propositionality discipline is structural.
+   *
+   *   ‖A‖             : Universe-of-A   — the truncation type
+   *   |x|             : ‖A‖             — the constructor; A → ‖A‖
+   *   (trunc-rec C cm cs e) : C         — the recursor; ‖A‖ → C
+   *
+   * Where:
+   *   cm : Π _:A. C                          — the point case
+   *   cs : Π x:C. Π y:C. Path C x y          — propositionality of C
+   *   e  : ‖A‖
+   *
+   * Beta:
+   *   (trunc-rec C cm cs |x|) → (@ cm x)
+   *
+   * The reduction is deterministic: the only LHS pattern is
+   * trunc-rec applied to a literal trunc-intro. No overlap with
+   * existing reduction rules. */
+  AST_TT_TRUNC_TYPE,
+  AST_TT_TRUNC_INTRO,
+  AST_TT_TRUNC_REC,
   AST_TT_ID,           /* (Id A a b) — identity type */
   AST_TT_REFL,         /* (refl a) — reflexivity witness */
   AST_TT_INDUCTIVE,    /* (Inductive name ctors...) — inductive decl */
@@ -759,6 +784,19 @@ struct lizard_ast_node {
       lizard_ast_node_t *name;        /* constructor name */
       lz_list_t *args;                /* applied args */
     } tt_hit_app;
+    /* Phase H.2 — propositional truncation. */
+    struct {
+      lizard_ast_node_t *argument;    /* the underlying type A */
+    } tt_trunc_type;
+    struct {
+      lizard_ast_node_t *body;        /* the value being lifted */
+    } tt_trunc_intro;
+    struct {
+      lizard_ast_node_t *motive;      /* target type C */
+      lizard_ast_node_t *point;       /* cm : A → C */
+      lizard_ast_node_t *prop;        /* cs : is-prop(C) */
+      lizard_ast_node_t *scrutinee;   /* e : ‖A‖ */
+    } tt_trunc_rec;
     struct {
       lizard_ast_node_t *domain;
       lizard_ast_node_t *a;

@@ -3,8 +3,6 @@
 #include "lang.h"
 #include "lizard.h"
 
-extern lizard_heap_t *heap;
-
 static const char *lizard_error_messages_lang_en[LIZARD_ERROR_COUNT] = {
 #define X(fst, snd) snd,
     LIZARD_ERROR_MESSAGES_EN
