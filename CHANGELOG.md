@@ -1,3 +1,116 @@
+# Lizard v4 — type-theory expansion (in progress)
+
+This section logs the changes from v3 (post-restructure baseline) to
+the current head. The v3 section follows. For per-phase detail, see
+DESIGN.md and MODAL.md.
+
+## Type-theory: lambda cube (M.2, M.3)
+
+- **8 lambda-cube corners + CoC** are now reachable as named bundles:
+  `STLC`, `F`, `LF` (aliased `lambda-P`), `F-omega`, `lambda-P2`,
+  `lambda-P-omega`, `lambda-omega`, `CoC`. The cube axes
+  (`term-depends-on-type`, `type-depends-on-term`, `type-depends-on-type`)
+  are individually controllable via the logic-config registry.
+- **Reverse lookup** (`(current-logic)`) returns the most recently
+  named bundle when active toggles still match it, otherwise falls
+  back to a table walk. This resolves the "all toggles on matches
+  both CoC and S5" ambiguity that pre-M.5.7 had.
+
+## Substructural rules (M.4)
+
+- Toggles `weakening`, `contraction`, `exchange` (default-on).
+- Bundles: `linear-STLC` (no weakening, no contraction),
+  `affine-STLC` (no contraction), `relevant-STLC` (no weakening).
+
+## Universe lattice (L.1–L.5)
+
+- Pi-fresh and Sigma-fresh as dimension-creating type formers.
+- Couniverse and co-pi-fresh, co-sigma-fresh duals.
+- Shared fresh-dim counter starting at 1000 (also used for hygienic
+  fresh-name generation in box-app and diamond-bind dependent cases).
+- Lattice-universes and couniverse-lattice toggles.
+- `STLC-strict` and `CoC-plus-lattice` bundles.
+
+## HIT scaffolding (H.1)
+
+- AST nodes for `(declare-hit ...)`, `(hit-constructor ...)`,
+  `(hit-path ...)`, registry, predicates. **No computation rules
+  yet** — H.2 is pending.
+
+## Modal logic layer (M.5.1–M.5.9)
+
+See MODAL.md for the full write-up. Summary:
+
+- **M.5.1–M.5.3**: Box / Diamond type constructors with intro/elim,
+  beta reduction, strict S4 dual-context kernel, named bundles K, T,
+  S4, S5, modal-STLC.
+- **M.5.4**: `modal-4-axiom` toggle distinguishes T from S4.
+- **M.5.5**: `modal-5-axiom` toggle distinguishes S4 from S5.
+- **M.5.6**: K's distinguished elim. `t-axiom-enabled` toggle gates
+  unbox's extraction behavior. `box-app` realizes the K-axiom as a
+  term. K rejects extraction; all four logics now operationally
+  distinct.
+- **M.5.7**: Dependent Pi in `box-app` via T-axiom realization.
+  Reverse-lookup memory for `current-logic`.
+- **M.5.8**: Hygiene fix for box-app's fresh-name generator.
+  `diamond-bind` (Diamond's Kleisli composition / monadic bind), the
+  structural dual of `box-app` at the term level.
+- **M.5.9**: Symmetric S5 (Pfenning-Davies three-judgment form).
+  New AST nodes `(dia e)` and `(poss-coerce e)`. New toggle
+  `modal-symmetric`. Three-context kernel API
+  (`lizard_tt_infer3`/`check3`) and kind-aware variants
+  (`lizard_tt_infer2_kind`/`infer3_kind`). Judgment-kind enum
+  (TRUE/VALID/POSS) tracked through the kernel. `let-diamond`
+  propagates body kind to result; `box-intro` rejects POSS bodies
+  under symmetric mode.
+
+## Embedding C API (community contribution)
+
+- `include/lizard_api.h` — stable opaque embedding API.
+- `src/runtime.c`, `src/runtime.h` — `lizard_runtime_t`,
+  `lizard_context_t`, eval-string / eval-file, value-type
+  classification.
+- `lib/prelude.lisp` — installed system-wide under
+  `share/lizard/prelude.lisp` when `make install` is run.
+- `flake.nix` / `flake.lock` — Nix devshell.
+- `tests/api_test.c` — exercises the embedding API.
+- `docs/` directory with FEATURE_BACKLOG.md,
+  LIZARD_EVOLUTION_PLAN.md, STABLE_C_API.md,
+  COMPILER_RUNTIME_DEBUGGER_PLAN.md, C_API_SKETCH.md.
+- Top-level DESIGN.md, LIMITATIONS.md (this CHANGELOG file).
+
+## Scoreboard at v4 head
+
+```
+$ make test
+55 C unit tests passing  (lambda, lists, control, arith, macros,
+                          higher_order, closures, errors, exceptions,
+                          fastprims, hashes, quasiquote, reflection,
+                          strings, tco, varargs, vectors, bignum,
+                          tt_check, tt_test, tt_equality, tt_context,
+                          tt_identity, tt_comp, tt_cubical, tt_faces,
+                          tt_glue, tt_system, tt_hit, tt_lattice,
+                          tt_lattice_co, tt_lattice_fresh,
+                          tt_lattice_co_fresh, tt_lattice_set,
+                          tt_logic_bundles, tt_logic_features,
+                          tt_logic_structural, tt_logic_config,
+                          tt_logic_cube, tt_modalities,
+                          tt_modalities_intro_elim,
+                          tt_modalities_strict_s4, tt_modal_diamond,
+                          tt_modal_4_axiom, tt_modal_5_axiom,
+                          tt_modal_bundles, tt_modal_k_elim,
+                          tt_modal_s5_lookup_and_dep_pi,
+                          tt_symmetric_s5, tt_symmetric_s5_turn1,
+                          tt_symmetric_s5_turn2a,
+                          tt_symmetric_s5_turn2b, api_test,
+                          deep_recursion, syntax_rules)
+4/4 Lisp golden tests passing
+60+ examples covering Scheme core, cubical, lattice, modal layers
+Benchmark: ~0.4s
+```
+
+---
+
 # Lizard v3 — restructure + tests + features
 
 ## Structural changes

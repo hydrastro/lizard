@@ -99,15 +99,20 @@ int main(void) {
   r = lizard_test_eval(&e, "(logic-rule-enabled? 'modal-symmetric)");
   TEST_ASSERT_STR(lizard_test_format(r), "#f");
 
-  /* === Typing: Turn 1 explicit not-yet-implemented === */
+  /* === Typing: Turn 2b wires the real rules ===
+   * After Turn 2b, the symmetric forms have real typing rules.
+   * Updated assertions: dia of a true-typed body is rejected (must
+   * be poss); poss-coerce of a true-typed body produces the same
+   * type with POSS kind (the kind is internal; user sees the type). */
 
   lizard_test_eval(&e, "(set-logic 'S5)");
+  /* dia of a true-typed body: rejected. */
   r = lizard_test_eval(&e, "(infer (context) (dia (U 0)))");
   TEST_ASSERT_STR(lizard_test_format(r),
                   "Error: unknown AST node type in eval.");
+  /* poss-coerce of a true-typed body: produces the same type. */
   r = lizard_test_eval(&e, "(infer (context) (poss-coerce (U 0)))");
-  TEST_ASSERT_STR(lizard_test_format(r),
-                  "Error: unknown AST node type in eval.");
+  TEST_ASSERT_STR(lizard_test_format(r), "(U 1)");
 
   /* === Existing asymmetric forms still work === */
 

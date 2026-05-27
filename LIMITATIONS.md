@@ -16,14 +16,22 @@ pessimistic accounting.
 |---|---|
 | Scheme core | Solid. Standard features, tests pass, real-world usage in examples. |
 | λΠ type checker | Solid in scope. Bidirectional, cumulativity works, decidability not proved. |
+| Lambda cube (M.2) | All 8 corners + CoC available as bundles. STLC/F/LF/λ-P/F-omega/λ-omega/λ-P2/λ-P-omega/CoC. |
+| Named-logic bundles (M.3) | 19 bundles spanning cube + substructural + features + modal logics. |
+| Substructural rules (M.4) | weakening/contraction/exchange toggles + linear-STLC/affine-STLC/relevant-STLC bundles. |
+| Universe lattice (L.1–L.5) | Pi-fresh / co-pi-fresh dimension-creating, lattice and couniverse, shared fresh-dim counter. |
 | Observational HoTT engine | 23 reduction rules. Covers core Id manipulations + per-type-former Id and xport. |
 | Cubical core (Path, faces) | Solid. Connection operations and face entailment work. |
 | Kan composition | Working for the common per-type-former cases; some specific rules are partial (see below). |
 | Glue types | Single-face Glue. Reduction and typing work. |
 | ua | Type rule sound. Reduction for `id-equiv` is complete; general case is incomplete. |
+| HIT scaffolding (H.1) | AST nodes + registry for higher inductive types. **No computation rules.** |
+| Modal logic layer (M.5.1–M.5.9) | K, T, S4, S5 operationally distinct. Asymmetric forms (box/unbox/diamond/let-diamond/box-app/diamond-bind) and symmetric S5 forms (dia/poss-coerce) with Pfenning-Davies judgment-kind discipline. See MODAL.md. |
 | Soundness proof | None. |
 | Decidability of typechecking | Not proved. |
-| HITs | Not supported. |
+| Categorical laws (comonad/monad) | Operations definable; specific witnesses fire via beta; laws not generally proven. |
+| Strict single-Ω invariant | Encoded via kind propagation, not enforced syntactically. |
+| HITs with computation rules | Not yet (H.2 pending). |
 
 ## 1. Things deliberately out of scope
 

@@ -22,8 +22,6 @@
 #include "printer.h"
 #include "tokenizer.h"
 
-extern lizard_heap_t *heap; /* shared global; defined here for the tests */
-
 typedef struct {
   lizard_heap_t *heap;
   lizard_env_t *env;

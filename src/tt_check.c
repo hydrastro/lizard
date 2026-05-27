@@ -737,6 +737,7 @@ static lizard_ast_node_t *infer2_kind_impl(
     lizard_ast_node_t *body = t->data.tt_box_intro.body;
     lizard_ast_node_t *body_type;
     lizard_ast_node_t *result;
+    lizard_judgment_kind_t body_kind = LIZARD_KIND_TRUE;
     if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
       return type_error(heap, "box rejected: modalities-enabled disabled");
     }
@@ -745,7 +746,7 @@ static lizard_ast_node_t *infer2_kind_impl(
     }
     if (lizard_logic_rule_enabled("modal-strict-typing") == 0) {
       /* Turn 1 loose typing: full ctx available inside box. */
-      body_type = lizard_tt_infer2(valid_ctx, ctx, body, heap);
+      body_type = lizard_tt_infer2_kind(valid_ctx, ctx, body, heap, &body_kind);
     } else if (lizard_logic_rule_enabled("modal-4-axiom") == 0) {
       /* T modal logic: strict box-intro but NO 4-axiom. The 4-axiom
        * (□A → □□A) requires valid hypotheses to survive nested boxes.
@@ -758,16 +759,26 @@ static lizard_ast_node_t *infer2_kind_impl(
        * are visible one box deep but disappear at the next level. */
       lizard_ast_node_t *empty_valid = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       empty_valid->type = AST_NIL;
-      body_type = lizard_tt_infer2(empty_valid, valid_ctx, body, heap);
+      body_type = lizard_tt_infer2_kind(empty_valid, valid_ctx, body, heap, &body_kind);
     } else {
       /* S4 modal logic: strict box-intro WITH the 4-axiom.
        * Preserve Δ as valid, drop Γ to empty. Valid hypotheses
        * remain valid across arbitrary nested boxes. */
       lizard_ast_node_t *empty_truth = lizard_heap_alloc(sizeof(lizard_ast_node_t));
       empty_truth->type = AST_NIL;
-      body_type = lizard_tt_infer2(valid_ctx, empty_truth, body, heap);
+      body_type = lizard_tt_infer2_kind(valid_ctx, empty_truth, body, heap, &body_kind);
     }
     if (is_error(body_type)) return body_type;
+    /* M.5.9 Turn 2b — under modal-symmetric, body must be TRUE-typed.
+     * This rejects (box (poss-coerce e)) and similar attempts to box
+     * a poss judgment. For existing code (which all produces TRUE
+     * implicitly), this check is a no-op. */
+    if (lizard_logic_rule_enabled("modal-symmetric") != 0) {
+      if (body_kind != LIZARD_KIND_TRUE) {
+        return type_error(heap,
+          "symmetric box-intro body must be true-typed (cannot box a poss judgment)");
+      }
+    }
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     result->type = AST_TT_BOX;
     result->data.tt_box.argument = body_type;
@@ -915,14 +926,30 @@ static lizard_ast_node_t *infer2_kind_impl(
     }
     if (lizard_logic_rule_enabled("modal-5-axiom") == 0) {
       /* K/T/S4: extend truth context with x:T. */
+      lizard_judgment_kind_t body_kind = LIZARD_KIND_TRUE;
+      lizard_ast_node_t *body_type;
       new_truth_ctx = ctx_extend(ctx, binder->data.variable,
                                  scrut_type->data.tt_diamond.argument, heap);
-      return lizard_tt_infer2(valid_ctx, new_truth_ctx, body, heap);
+      body_type = lizard_tt_infer2_kind(valid_ctx, new_truth_ctx, body, heap, &body_kind);
+      if (is_error(body_type)) return body_type;
+      /* M.5.9 Turn 2b — kind propagates from body. If user wrote a
+       * poss-typed body (via poss-coerce or nested let-diamond),
+       * result is POSS. Otherwise, TRUE — matching M.5.5 contract. */
+      if (out_kind != NULL) *out_kind = body_kind;
+      return body_type;
     }
     /* S5: extend VALID context — the 5-axiom encoding. */
-    new_valid_ctx = ctx_extend(valid_ctx, binder->data.variable,
-                               scrut_type->data.tt_diamond.argument, heap);
-    return lizard_tt_infer2(new_valid_ctx, ctx, body, heap);
+    {
+      lizard_judgment_kind_t body_kind = LIZARD_KIND_TRUE;
+      lizard_ast_node_t *body_type;
+      new_valid_ctx = ctx_extend(valid_ctx, binder->data.variable,
+                                 scrut_type->data.tt_diamond.argument, heap);
+      body_type = lizard_tt_infer2_kind(new_valid_ctx, ctx, body, heap, &body_kind);
+      if (is_error(body_type)) return body_type;
+      /* M.5.9 Turn 2b — kind propagates from body. */
+      if (out_kind != NULL) *out_kind = body_kind;
+      return body_type;
+    }
   }
   case AST_TT_BOX_APP: {
     /* Phase M.5.6 + M.5.7 — K-axiom: Box (Pi x A B) → Box A → Box B.
@@ -2115,11 +2142,77 @@ static lizard_ast_node_t *infer2_kind_impl(
   case AST_TT_HIT_PATH:
     /* These are declaration metadata, not term-level entities. */
     return type_error(heap, "HIT declaration/record is not a term");
-  case AST_TT_DIAMOND_INTRO_SYM:
-  case AST_TT_POSS_COERCE:
-    /* Phase M.5.9 Turn 1 — AST nodes added with descents but no
-     * typing rule yet. Turn 2 will wire the symmetric-S5 rules. */
-    return type_error(heap, "symmetric-S5 typing rule not yet implemented (M.5.9 Turn 2)");
+  case AST_TT_POSS_COERCE: {
+    /* Phase M.5.9 Turn 2b — poss-coerce: shift from "true" to "poss".
+     *
+     *   Δ; Γ; · ⊢ e : A true
+     *   ──────────────────────────────
+     *   Δ; Γ; · ⊢ (poss-coerce e) : A   with kind POSS
+     *
+     * The result type IS the body's type — poss-coerce only changes
+     * the judgment kind, not the type. The body must be true-typed
+     * (we don't allow coercing a valid or already-poss judgment;
+     * the latter would be redundant, the former would lose info).
+     *
+     * Gated on `modal-symmetric` toggle. */
+    lizard_ast_node_t *body;
+    lizard_ast_node_t *body_type;
+    lizard_judgment_kind_t body_kind;
+    if (lizard_logic_rule_enabled("modal-symmetric") == 0) {
+      return type_error(heap,
+        "poss-coerce rejected: modal-symmetric is disabled");
+    }
+    body = t->data.tt_poss_coerce.body;
+    body_kind = LIZARD_KIND_TRUE;
+    body_type = lizard_tt_infer2_kind(valid_ctx, ctx, body, heap, &body_kind);
+    if (is_error(body_type)) return body_type;
+    if (body_kind != LIZARD_KIND_TRUE) {
+      return type_error(heap,
+        "poss-coerce body must be true-typed (cannot coerce valid or poss)");
+    }
+    /* Re-tag as POSS. Type unchanged. */
+    if (out_kind != NULL) *out_kind = LIZARD_KIND_POSS;
+    return body_type;
+  }
+  case AST_TT_DIAMOND_INTRO_SYM: {
+    /* Phase M.5.9 Turn 2b — symmetric Diamond intro.
+     *
+     *   Δ; Γ; · ⊢ e : A   with kind POSS
+     *   ─────────────────────────────────
+     *   Δ; Γ; · ⊢ (dia e) : Diamond A   with kind TRUE
+     *
+     * The body must be poss-typed. This is the dual of box-intro:
+     * where box requires a true-typed body in a Δ-only context, dia
+     * requires a poss-typed body (which itself encodes the modal
+     * scope discipline via poss-coerce or let-diamond chains).
+     *
+     * Gated on `modal-symmetric` AND `modalities-enabled`. */
+    lizard_ast_node_t *body;
+    lizard_ast_node_t *body_type;
+    lizard_ast_node_t *result;
+    lizard_judgment_kind_t body_kind;
+    if (lizard_logic_rule_enabled("modalities-enabled") == 0) {
+      return type_error(heap, "dia rejected: modalities-enabled disabled");
+    }
+    if (lizard_logic_rule_enabled("modal-symmetric") == 0) {
+      return type_error(heap,
+        "dia rejected: modal-symmetric is disabled (use diamond for asymmetric form)");
+    }
+    body = t->data.tt_diamond_intro_sym.body;
+    body_kind = LIZARD_KIND_TRUE;
+    body_type = lizard_tt_infer2_kind(valid_ctx, ctx, body, heap, &body_kind);
+    if (is_error(body_type)) return body_type;
+    if (body_kind != LIZARD_KIND_POSS) {
+      return type_error(heap,
+        "dia body must be poss-typed (use poss-coerce or let-diamond to produce a poss judgment)");
+    }
+    /* Wrap in Diamond. Result kind is TRUE. */
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_TT_DIAMOND;
+    result->data.tt_diamond.argument = body_type;
+    if (out_kind != NULL) *out_kind = LIZARD_KIND_TRUE;
+    return result;
+  }
   default:
     return type_error(heap, "no inference rule for this term");
   }

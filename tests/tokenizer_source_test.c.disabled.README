@@ -1,0 +1,6 @@
+/* This test exercises source-location tracking (token line/column).
+ * The current tokenizer doesn't track those — this is an aspirational
+ * test from a contributor's feature backlog. Re-enable when the
+ * tokenizer gains line/column tracking. The file is kept under
+ * .disabled so the test runner skips it. */
+

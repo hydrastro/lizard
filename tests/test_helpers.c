@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The library expects an external `heap` global (mem.c does extern
-   lizard_heap_t *heap). The REPL binary defines it; for tests we
-   define it here. */
-lizard_heap_t *heap = NULL;
+/* The library has a process-global `heap` defined in runtime.c. Tests
+ * link against the library and need to publish the per-test heap to
+ * the same global so internal primitives find it. */
+extern lizard_heap_t *heap;
 
 void lizard_test_env_init(lizard_test_env_t *e) {
   mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,

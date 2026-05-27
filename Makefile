@@ -42,6 +42,7 @@ SRC_DIR     := src
 INC_DIR     := include
 TEST_DIR    := tests
 EXAMPLE_DIR := examples
+LIB_DIR     := lib
 
 # --- flags ---------------------------------------------------------------
 CPPFLAGS ?=
@@ -77,7 +78,7 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := lizard env mem parser primitives tokenizer printer tt_equality tt_check
+LIB_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------
@@ -86,11 +87,11 @@ LIB_SHARED := $(BUILD_DIR)/liblizard.so
 REPL_BIN   := $(BUILD_DIR)/lizard
 REPL_OBJ   := $(BUILD_DIR)/repl.o
 
-.PHONY: all build clean distclean install uninstall test examples \
-        debug asan coverage profile format help
+.PHONY: all check clean distclean install uninstall test examples \
+        debug asan coverage profile format smoke help
 
 all: $(LIB_STATIC) $(LIB_SHARED) $(REPL_BIN)
-build: all
+check: test examples
 
 debug:
 	$(MAKE) MODE=debug all
@@ -131,6 +132,9 @@ examples: $(REPL_BIN)
 	done
 
 # --- profiling / coverage -----------------------------------------------
+smoke: $(REPL_BIN)
+	@printf '(+ 40 2)\n' | $(REPL_BIN)
+
 profile: MODE=release
 profile: $(REPL_BIN)
 	@command -v perf >/dev/null 2>&1 || { echo "perf not found"; exit 1; }
@@ -150,16 +154,21 @@ install: all
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/lib
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/include
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/bin
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/share/lizard
 	$(INSTALL) -m 0644 $(LIB_STATIC) $(DESTDIR)$(PREFIX)/lib/
 	$(INSTALL) -m 0755 $(LIB_SHARED) $(DESTDIR)$(PREFIX)/lib/
 	$(INSTALL) -m 0755 $(REPL_BIN)   $(DESTDIR)$(PREFIX)/bin/
 	$(INSTALL) -m 0644 $(INC_DIR)/lizard.h $(DESTDIR)$(PREFIX)/include/
+	$(INSTALL) -m 0644 $(INC_DIR)/lizard_api.h $(DESTDIR)$(PREFIX)/include/
+	$(INSTALL) -m 0644 $(LIB_DIR)/prelude.lisp $(DESTDIR)$(PREFIX)/share/lizard/
 
 uninstall:
 	$(RM) $(DESTDIR)$(PREFIX)/lib/liblizard.a
 	$(RM) $(DESTDIR)$(PREFIX)/lib/liblizard.so
 	$(RM) $(DESTDIR)$(PREFIX)/bin/lizard
 	$(RM) $(DESTDIR)$(PREFIX)/include/lizard.h
+	$(RM) $(DESTDIR)$(PREFIX)/include/lizard_api.h
+	$(RM) $(DESTDIR)$(PREFIX)/share/lizard/prelude.lisp
 
 # --- format --------------------------------------------------------------
 format:
@@ -174,6 +183,6 @@ distclean: clean
 	@./scripts/clean.sh
 
 help:
-	@echo "Targets:    all test examples clean distclean install uninstall format"
+	@echo "Targets:    all test examples check smoke clean distclean install uninstall format"
 	@echo "Modes:      make MODE=debug | make MODE=asan test | make MODE=coverage"
 	@echo "Tooling:    make debug | make asan | make coverage | make profile"
