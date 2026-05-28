@@ -540,3 +540,44 @@ susp-north/south/merid (suspension)
 ## New examples (research tracks)
 - `examples/110-syntax-rules.lisp` — Track R: macros with ellipsis
 - `examples/111-cubical-hits.lisp` — Track Q: interval algebra, HITs
+
+## lib/csp.lisp — Cooperative concurrency (Track C)
+
+Single-thread cooperative concurrency over atoms.
+
+**Channels:** make-channel, chan-send!, chan-recv!, chan-peek,
+chan-empty?, chan-size
+
+**Scheduler:** make-scheduler, spawn!, run-scheduler!, repeat-task
+(round-robin; tasks yield via (cons 'next thunk))
+
+**Futures:** make-future, force-future (compute-once), future-map
+
+**Agents:** make-agent, agent-send!, agent-send-all!, agent-state
+(actor-style state + message handler)
+
+```lisp
+(define acct (make-agent 100 (lambda (bal m) (+ bal (car (cdr m))))))
+(agent-send! acct '(deposit 50))      ; agent-state → 150
+(force-future (make-future thunk))     ; compute-once
+```
+
+## lib/inductive.lisp — Inductive families (Track K)
+
+Dependent types: Vec A n (length-indexed) and Fin n (bounded index).
+
+**Vec:** vnil, vcons, vhead, vtail, vappend, vmap, vzip, list->vec,
+vec->list, vec-len, vec-rec (eliminator)
+
+**Fin:** fzero, fsuc, make-fin, fin-bound, fin-index
+
+**Payoff:** vnth (total, safe indexing — Fin n indexes Vec A n)
+
+```lisp
+(vappend (list->vec '(1 2)) (list->vec '(3 4 5)))  ; Vec 2 ++ Vec 3 = Vec 5
+(vnth vec5 (make-fin 5 2))   ; total: Fin 5 always valid for Vec _ 5
+```
+
+## New examples (research tracks)
+- `examples/112-concurrency-csp.lisp` — Track C: channels, scheduler, agents
+- `examples/113-inductive-families.lisp` — Track K: Vec, Fin, dependent types
