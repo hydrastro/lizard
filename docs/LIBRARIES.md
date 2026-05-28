@@ -435,3 +435,108 @@ import-conflicts
 ## New examples
 - `examples/105-namespaces.lisp` — modules, selective import, renaming
 - `examples/106-tracing-debug.lisp` — call trees, counting, assertions
+
+## lib/logic.lisp — Prolog-style logic engine (EXTREME)
+
+Full logic programming: unification, a clause database, SLD
+resolution with backtracking, multiple solutions.
+
+**Terms:** variables (?X), atoms, compounds (functor arg...)
+
+**Database:** db-fact, db-rule
+
+**Core:** unify, walk, solve-goal, solve-goals
+
+**Query:** query, query-var, provable?, solution-count, resolve
+
+```lisp
+(define db (list (db-fact '(parent tom bob))
+                 (db-rule '(grandparent ?X ?Z)
+                          '((parent ?X ?Y) (parent ?Y ?Z)))))
+(query-var db '(grandparent tom ?gc) '?gc)   ; tom's grandchildren
+(provable? db '(parent tom bob))             ; #t
+```
+
+## lib/regex.lisp — Regular expression engine (EXTREME)
+
+Backtracking matcher with continuation-passing.
+
+**Patterns:** lit, any, seq, alt, star, plus, opt, set
+
+**Constructors:** rx-lit, rx-seq, rx-alt, rx-star, rx-plus, rx-opt,
+rx-set, rx-string
+
+**Match:** regex-match (full), regex-search (anywhere)
+
+```lisp
+(regex-match (rx-alt (rx-string "cat") (rx-string "dog")) "cat")  ; #t
+(regex-match (rx-seq (rx-star (rx-set "ab")) (rx-lit "c")) "ababc") ; #t
+```
+
+## lib/lambda-calc.lisp — Lambda calculus (EXTREME)
+
+Untyped lambda calculus with capture-avoiding substitution and
+normal-order beta reduction.
+
+**Terms:** variables, (lam x body), (app f a)
+
+**Core:** free-vars, lc-subst, beta-step, lc-normalize, lc-steps
+
+**Church:** church-term, church-decode, church-succ, church-plus,
+church-mult
+
+```lisp
+(lc-normalize (list 'app '(lam x x) 'y) 100)        ; y
+;; arithmetic by pure beta reduction:
+(church-decode (lc-normalize
+  (list 'app (list 'app church-plus (church-term 2)) (church-term 3)) 1000)) ; 5
+```
+
+## New examples (EXTREME drop)
+- `examples/107-logic-engine.lisp` — Prolog (family tree, append relation)
+- `examples/108-regex-engine.lisp` — pattern matching
+- `examples/109-lambda-calculus.lisp` — Church arithmetic
+
+## lib/syntax-rules.lisp — Macro engine with ellipsis (Track R headline)
+
+Pattern-based macros with `...` (ellipsis) — the key Track R feature.
+
+**Matching:** sr-match (patterns with vars, literals, _, ellipsis)
+
+**Expansion:** sr-expand (templates with ellipsis iteration)
+
+**Macros:** make-macro, macro-apply (multi-rule, first-match)
+
+```lisp
+(define m (make-macro '()
+  (list (list '(my-list e ...) '(list e ...)))))
+(macro-apply m '(my-list 1 2 3 4))     ; (list 1 2 3 4)
+
+;; recursive-shape macro with multiple rules:
+(make-macro '() (list
+  (list '(my-and) '#t)
+  (list '(my-and e) 'e)
+  (list '(my-and e rest ...) '(if e (my-and rest ...) #f))))
+```
+
+## lib/cubical.lisp — Cubical type theory & HITs (Track Q)
+
+Wraps the interval/path primitives into a HoTT toolkit.
+
+**Interval:** i-var, i-meet (∧), i-join (∨), i-not (~), i-reduce
+
+**Paths:** path, path-at, path-start, path-end, path-const,
+path-invert, path-ap, connection-and, connection-or
+
+**HITs:** s1-base/s1-loop/s1-rec (circle), interval-zero/one/seg,
+susp-north/south/merid (suspension)
+
+```lisp
+(i-reduce (i-not (i-not (i-var 'i))))   ; ~~i = i  (involution)
+(path-invert p)                          ; p⁻¹ = <i> p @ ~i
+(s1-loop)                                ; loop : base = base
+```
+
+## New examples (research tracks)
+- `examples/110-syntax-rules.lisp` — Track R: macros with ellipsis
+- `examples/111-cubical-hits.lisp` — Track Q: interval algebra, HITs
