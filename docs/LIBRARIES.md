@@ -651,3 +651,67 @@ Optimistic concurrency over versioned refs.
 - `examples/115-hygienic-macros.lisp` — Track R
 - `examples/116-hit-recursors.lisp` — Track Q
 - `examples/117-stm.lisp` — Track C
+
+## lib/hm-infer.lisp — Hindley-Milner type inference (Track K)
+
+Algorithm W with unification and let-polymorphism.
+
+**Types:** tvar, arrow, tpair; **Schemes:** mono, forall
+
+**Core:** unify, apply-subst, instantiate, generalize, infer, type-of,
+type->string
+
+```lisp
+(type->string (type-of '(lam x (lam y x))))            ; (t1 -> (t2 -> t1))
+(type->string (type-of '(let id (lam x x) (app id id)))) ; (t6 -> t6)
+```
+
+## lib/syntax-case.lisp — Procedural macros (Track R)
+
+Each clause's RHS is a procedure over the matched bindings.
+
+**Clauses:** sc-clause (pattern fender transformer)
+
+**Access:** sc-ref, sc-seq?; **Apply:** make-sc-macro, sc-apply, syntax-case
+
+```lisp
+(sc-clause '(square x) #t (lambda (b) (let ((x (sc-ref b 'x))) (list '* x x))))
+(sc-clause '(classify n) (lambda (b) (number? (sc-ref b 'n))) ...)  ; fender
+```
+
+## lib/univalence.lisp — Glue, univalence, Kan comp (Track Q)
+
+**Equivalences:** equiv-id, equiv-app-fwd/bwd, equiv-id-fwd
+
+**Glue:** glue, glue-on-true/false, glue-make, glue-unglue
+
+**Univalence:** univalence (ua), ua-id
+
+**Kan:** kan-comp, kan-hcomp, kan-fill, comp-const, transp
+
+```lisp
+(ua-id 'A)               ; ua of identity equivalence
+(glue-on-true 'A 'T 'e)  ; Glue on φ=1 → T
+```
+
+## lib/coroutine.lisp — CSP coroutines with blocking (Track C)
+
+True blocking via a parking scheduler (no host continuations).
+
+**Steps:** co-done, co-yield, co-send, co-recv
+
+**Channels:** co-channel; **Scheduler:** make-corun, co-spawn!, co-run!
+
+**Built-ins:** co-producer, co-consumer, co-transform
+
+```lisp
+(co-spawn! r (co-producer ch 5))
+(co-spawn! r (co-consumer ch 5))   ; consumer blocks until producer sends
+(co-run! r 1000)
+```
+
+## New examples (research tracks — extreme drop II)
+- `examples/118-type-inference.lisp` — Track K: Algorithm W
+- `examples/119-syntax-case.lisp` — Track R: procedural macros
+- `examples/120-univalence.lisp` — Track Q: Glue + univalence
+- `examples/121-coroutines.lisp` — Track C: blocking CSP
