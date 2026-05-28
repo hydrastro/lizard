@@ -104,3 +104,40 @@
           (cons x sorted)
           (cons (car sorted) (insert x (cdr sorted))))))
   (fold-left (lambda (acc x) (insert x acc)) '() lst))
+
+; ---- identity / const / flip ----
+(define (identity x) x)
+(define (const x) (lambda (_) x))
+(define (flip f) (lambda (a b) (f b a)))
+
+; ---- curry / uncurry ----
+(define (curry f) (lambda (a) (lambda (b) (f a b))))
+(define (uncurry f) (lambda (a b) ((f a) b)))
+
+; ---- repeat ----
+(define (repeat n x)
+  (if (= n 0) '()
+    (cons x (repeat (- n 1) x))))
+
+; ---- string helpers ----
+(define (string-repeat s n)
+  (string-join (repeat n s) ""))
+
+; ---- juxt (apply multiple fns to same arg) ----
+(define (juxt . fns)
+  (lambda (x) (map (lambda (f) (f x)) fns)))
+
+; ---- complement ----
+(define (complement pred)
+  (lambda (x) (not (pred x))))
+
+; ---- memoize (simple, list-based) ----
+(define (memoize f)
+  (define cache (atom '()))
+  (lambda (x)
+    (let ((cached (assoc x (deref cache))))
+      (if cached
+          (cdr cached)
+          (let ((result (f x)))
+            (swap! cache (lambda (c) (cons (cons x result) c)))
+            result)))))

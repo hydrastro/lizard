@@ -37,7 +37,13 @@ typedef enum {
   KT_REFL,         /* refl a : Id A a a */
   KT_J,            /* J-eliminator */
   KT_LET,          /* let x = e in body */
-  KT_ANNOT         /* (e : A) — type annotation */
+  KT_ANNOT,        /* (e : A) — type annotation */
+  KT_BOOL,         /* the type Bool */
+  KT_TRUE,         /* true : Bool */
+  KT_FALSE,        /* false : Bool */
+  KT_BOOL_REC,     /* if-then-else / Bool eliminator */
+  KT_UNIT,         /* the type Unit */
+  KT_STAR          /* * : Unit */
 } kterm_tag_t;
 
 /* ---- kernel term ---- */
@@ -65,6 +71,8 @@ typedef struct kterm {
              struct kterm *proof; } j;
     struct { const char *name; struct kterm *value; struct kterm *body; } let;
     struct { struct kterm *term; struct kterm *type; } annot;
+    struct { struct kterm *motive; struct kterm *true_case;
+             struct kterm *false_case; struct kterm *scrutinee; } bool_rec;
   } data;
 } kterm_t;
 

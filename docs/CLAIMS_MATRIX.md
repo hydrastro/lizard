@@ -25,3 +25,15 @@ feature changes from notation, to scaffold, to checked kernel feature.
 | Generic proof extensions | scaffold | `theory-extension` nodes let users plug in experiments behind opt-in rules. |
 | Proof assistant | not yet | Needs a trusted kernel boundary, elaborator, goals/holes, tactics, and library discipline. |
 | Soundness story | documented as future work | No formal proof is claimed. |
+
+## Phase 2+ additions
+
+| Feature | Status | Notes |
+|---|---|---|
+| Kernel Sigma/Pair/Proj | checked | Full computation rules for dependent pairs: proj1(pair(a,b))→a, proj2(pair(a,b))→b. Type inference for Sigma types. |
+| Kernel J-eliminator | checked | J C d A a b (refl a) → d a. The fundamental elimination principle for identity types. |
+| Proof state / tactics | basic | begin-proof, tactic-intro, tactic-exact, tactic-refl, qed. Proofs produce kernel-checkable certificates. |
+| Persistent hash maps | basic | phash-map, phash-get, phash-set, phash-keys, phash-count. Copy-on-write flat array (HAMT trie upgrade planned). |
+| Standard library | basic | sort, zip, partition, flatten, take, drop, any, every, enumerate, range, compose, ->, alist-ref, alist-set. |
+| Syntax objects | basic | datum->syntax, syntax->datum, syntax-e, syntax-source, syntax?. Foundation for hygiene. |
+| Persistent vectors | basic | pvec, pvec-ref, pvec-set, pvec-push, pvec-count, pvec->list. Copy-on-write (trie upgrade planned). |

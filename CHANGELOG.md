@@ -655,3 +655,49 @@ All tests passed.
   `callcc_active`), so nested call/cc would collide.
 - **`write` vs `display` on strings** — currently identical; R5RS
   says write should escape.
+
+## Phase 3: Deep feature expansion
+
+### Kernel completion
+- Sigma types: full inference + computation (proj1/proj2 reduce on pairs).
+- J-eliminator: `J C d A a b (refl a) → d a` — the fundamental identity
+  elimination principle.
+- `sexp_to_kterm` extended: `natrec`, `app`, `lam`, `Pi`, `Sigma`, `pair`,
+  `fst`, `snd`, `J`, `Id`, `refl` — the full dependent type theory toolkit.
+- `(kernel-reduce expr)` — normalize kernel terms to WHNF.
+- `(kernel-equal? a b)` — check definitional equality.
+
+### Proof state + tactics
+- `src/tactics.c` + `src/tactics.h` — proof state management.
+- `(begin-proof type)` — start proof with one goal.
+- `(tactic-intro name)` — introduce Pi binder.
+- `(tactic-exact term)` — provide exact proof term.
+- `(tactic-refl)` — solve Id a a goals.
+- `(qed)` — finish proof, extract term.
+
+### Track C: Atoms
+- `(atom val)`, `(deref a)`, `(swap! a f)`, `(reset! a v)`, `(atom? x)`.
+- Mutable reference cells with CAS-style swap.
+
+### Exceptions
+- `(raise val)` — raise an exception.
+- `(guard handler body)` — catch exceptions.
+
+### String operations
+- `string-ref`, `string-contains?`, `string-upcase`, `string-downcase`.
+- `string-split`, `string-join`.
+
+### Lazy evaluation
+- `(delay expr)` — create a promise (thunk).
+- `(force p)` — evaluate and cache.
+- `(promise? x)` — predicate.
+
+### Standard library (lib/match.lisp)
+- sort, zip, partition, flatten, take, drop, any, every, enumerate.
+- compose, ->, alist-ref, alist-set, range.
+- identity, const, flip, curry, uncurry, repeat, complement, memoize, juxt.
+
+### Persistent data structures
+- Persistent vectors: pvec, pvec-ref, pvec-set, pvec-push, pvec-count.
+- Persistent hash maps: phash-map, phash-get, phash-set, phash-keys.
+- Syntax objects: datum->syntax, syntax->datum, syntax-e, syntax-source.

@@ -201,6 +201,47 @@ lizard_ast_node_t *lizard_primitive_tactic_refl(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_qed(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+/* Track C.4: atoms. */
+lizard_ast_node_t *lizard_primitive_atom(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_deref(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_swap(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_reset(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_atomp(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Exceptions — raise already declared below. */
+lizard_ast_node_t *lizard_primitive_guard(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* String operations. */
+lizard_ast_node_t *lizard_primitive_string_ref(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_contains(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_upcase(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_downcase(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_split(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_join(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Lazy evaluation — delay/force declared in lizard_internal.h */
+lizard_ast_node_t *lizard_primitive_promisep(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Kernel reduction. */
+lizard_ast_node_t *lizard_primitive_kernel_reduce(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_equalp(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_phash_entries(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 
 lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
                                                 lizard_env_t *env,

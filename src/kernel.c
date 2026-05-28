@@ -82,6 +82,35 @@ kterm_t *kt_refl(lizard_heap_t *heap, kterm_t *value) {
   return t;
 }
 
+/* Sigma constructors. */
+static kterm_t *kt_sigma(lizard_heap_t *heap, const char *name,
+                          kterm_t *fst_type, kterm_t *snd_type) {
+  kterm_t *t = kt_alloc(heap, KT_SIGMA);
+  t->data.sigma.name = name;
+  t->data.sigma.fst_type = fst_type;
+  t->data.sigma.snd_type = snd_type;
+  return t;
+}
+
+static kterm_t *kt_pair(lizard_heap_t *heap, kterm_t *fst, kterm_t *snd) {
+  kterm_t *t = kt_alloc(heap, KT_PAIR);
+  t->data.pair.fst = fst;
+  t->data.pair.snd = snd;
+  return t;
+}
+
+static kterm_t *kt_proj1(lizard_heap_t *heap, kterm_t *target) {
+  kterm_t *t = kt_alloc(heap, KT_PROJ1);
+  t->data.proj.target = target;
+  return t;
+}
+
+static kterm_t *kt_proj2(lizard_heap_t *heap, kterm_t *target) {
+  kterm_t *t = kt_alloc(heap, KT_PROJ2);
+  t->data.proj.target = target;
+  return t;
+}
+
 /* ---- context ---- */
 
 kctx_t *kctx_create(lizard_heap_t *heap) {
@@ -117,16 +146,16 @@ kctx_entry_t *kctx_lookup(kctx_t *ctx, int index) {
 
 /* ---- substitution ---- */
 
-/* Shift de Bruijn indices >= cutoff by delta. */
 static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
   if (t == NULL) return NULL;
   switch (t->tag) {
   case KT_VAR:
-    if (t->data.var.index >= cutoff) {
+    if (t->data.var.index >= cutoff)
       return kt_var(heap, t->data.var.index + delta);
-    }
     return t;
   case KT_SORT: case KT_NAT: case KT_ZERO:
+  case KT_BOOL: case KT_TRUE: case KT_FALSE:
+  case KT_UNIT: case KT_STAR:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
@@ -147,8 +176,19 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
                        kt_shift(heap, t->data.id.b, cutoff, delta));
   case KT_REFL:
     return kt_refl(heap, kt_shift(heap, t->data.refl.value, cutoff, delta));
+  case KT_SIGMA:
+    return kt_sigma(heap, t->data.sigma.name,
+                    kt_shift(heap, t->data.sigma.fst_type, cutoff, delta),
+                    kt_shift(heap, t->data.sigma.snd_type, cutoff + 1, delta));
+  case KT_PAIR:
+    return kt_pair(heap, kt_shift(heap, t->data.pair.fst, cutoff, delta),
+                         kt_shift(heap, t->data.pair.snd, cutoff, delta));
+  case KT_PROJ1:
+    return kt_proj1(heap, kt_shift(heap, t->data.proj.target, cutoff, delta));
+  case KT_PROJ2:
+    return kt_proj2(heap, kt_shift(heap, t->data.proj.target, cutoff, delta));
   default:
-    return t;  /* conservative: unhandled terms pass through */
+    return t;
   }
 }
 
@@ -160,6 +200,8 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
     if (t->data.var.index > n) return kt_var(heap, t->data.var.index - 1);
     return t;
   case KT_SORT: case KT_NAT: case KT_ZERO:
+  case KT_BOOL: case KT_TRUE: case KT_FALSE:
+  case KT_UNIT: case KT_STAR:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
@@ -182,6 +224,18 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
                        kt_subst(heap, t->data.id.b, n, s));
   case KT_REFL:
     return kt_refl(heap, kt_subst(heap, t->data.refl.value, n, s));
+  case KT_SIGMA:
+    return kt_sigma(heap, t->data.sigma.name,
+                    kt_subst(heap, t->data.sigma.fst_type, n, s),
+                    kt_subst(heap, t->data.sigma.snd_type, n + 1,
+                              kt_shift(heap, s, 0, 1)));
+  case KT_PAIR:
+    return kt_pair(heap, kt_subst(heap, t->data.pair.fst, n, s),
+                         kt_subst(heap, t->data.pair.snd, n, s));
+  case KT_PROJ1:
+    return kt_proj1(heap, kt_subst(heap, t->data.proj.target, n, s));
+  case KT_PROJ2:
+    return kt_proj2(heap, kt_subst(heap, t->data.proj.target, n, s));
   default:
     return t;
   }
@@ -194,22 +248,18 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   switch (t->tag) {
   case KT_VAR: {
     kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
-    if (e != NULL && e->value != NULL) {
+    if (e != NULL && e->value != NULL)
       return kt_whnf(heap, ctx, e->value);
-    }
     return t;
   }
   case KT_APP: {
     kterm_t *fn = kt_whnf(heap, ctx, t->data.app.fun);
     if (fn->tag == KT_LAM) {
-      /* Beta reduction: (λ x. body) arg → body[arg/x] */
-      kterm_t *result = kt_subst(heap, fn->data.lam.body, 0,
-                                  t->data.app.arg);
+      kterm_t *result = kt_subst(heap, fn->data.lam.body, 0, t->data.app.arg);
       return kt_whnf(heap, ctx, result);
     }
-    if (fn != t->data.app.fun) {
+    if (fn != t->data.app.fun)
       return kt_app(heap, fn, t->data.app.arg);
-    }
     return t;
   }
   case KT_LET: {
@@ -218,13 +268,27 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   }
   case KT_ANNOT:
     return kt_whnf(heap, ctx, t->data.annot.term);
+  case KT_PROJ1: {
+    kterm_t *target = kt_whnf(heap, ctx, t->data.proj.target);
+    if (target->tag == KT_PAIR)
+      return kt_whnf(heap, ctx, target->data.pair.fst);
+    if (target != t->data.proj.target)
+      return kt_proj1(heap, target);
+    return t;
+  }
+  case KT_PROJ2: {
+    kterm_t *target = kt_whnf(heap, ctx, t->data.proj.target);
+    if (target->tag == KT_PAIR)
+      return kt_whnf(heap, ctx, target->data.pair.snd);
+    if (target != t->data.proj.target)
+      return kt_proj2(heap, target);
+    return t;
+  }
   case KT_NAT_REC: {
     kterm_t *scrut = kt_whnf(heap, ctx, t->data.nat_rec.scrutinee);
-    if (scrut->tag == KT_ZERO) {
+    if (scrut->tag == KT_ZERO)
       return kt_whnf(heap, ctx, t->data.nat_rec.zero_case);
-    }
     if (scrut->tag == KT_SUCC) {
-      /* natrec C z s (succ n) → s n (natrec C z s n) */
       kterm_t *rec = kt_alloc(heap, KT_NAT_REC);
       kterm_t *step;
       rec->data.nat_rec.motive = t->data.nat_rec.motive;
@@ -234,6 +298,24 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
       step = kt_app(heap, kt_app(heap, t->data.nat_rec.succ_case,
                                    scrut->data.succ.pred), rec);
       return kt_whnf(heap, ctx, step);
+    }
+    return t;
+  }
+  case KT_BOOL_REC: {
+    kterm_t *scrut = kt_whnf(heap, ctx, t->data.bool_rec.scrutinee);
+    if (scrut->tag == KT_TRUE)
+      return kt_whnf(heap, ctx, t->data.bool_rec.true_case);
+    if (scrut->tag == KT_FALSE)
+      return kt_whnf(heap, ctx, t->data.bool_rec.false_case);
+    return t;
+  }
+  case KT_J: {
+    /* J C d A a b (refl a) → d a */
+    kterm_t *pf = kt_whnf(heap, ctx, t->data.j.proof);
+    if (pf->tag == KT_REFL) {
+      /* J-beta: J C d A a a (refl a) → d a */
+      return kt_whnf(heap, ctx, kt_app(heap, t->data.j.base_case,
+                                         pf->data.refl.value));
     }
     return t;
   }
@@ -257,6 +339,8 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   case KT_SORT:
     return na->data.sort.level == nb->data.sort.level;
   case KT_NAT: case KT_ZERO:
+  case KT_BOOL: case KT_TRUE: case KT_FALSE:
+  case KT_UNIT: case KT_STAR:
     return 1;
   case KT_SUCC:
     return kt_equal(heap, ctx, na->data.succ.pred, nb->data.succ.pred);
@@ -264,11 +348,20 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
     return kt_equal(heap, ctx, na->data.pi.domain, nb->data.pi.domain) &&
            kt_equal(heap, ctx, na->data.pi.codomain, nb->data.pi.codomain);
   case KT_LAM:
-    /* Eta-expand or compare bodies under extended context. */
     return kt_equal(heap, ctx, na->data.lam.body, nb->data.lam.body);
   case KT_APP:
     return kt_equal(heap, ctx, na->data.app.fun, nb->data.app.fun) &&
            kt_equal(heap, ctx, na->data.app.arg, nb->data.app.arg);
+  case KT_SIGMA:
+    return kt_equal(heap, ctx, na->data.sigma.fst_type, nb->data.sigma.fst_type) &&
+           kt_equal(heap, ctx, na->data.sigma.snd_type, nb->data.sigma.snd_type);
+  case KT_PAIR:
+    return kt_equal(heap, ctx, na->data.pair.fst, nb->data.pair.fst) &&
+           kt_equal(heap, ctx, na->data.pair.snd, nb->data.pair.snd);
+  case KT_PROJ1:
+    return kt_equal(heap, ctx, na->data.proj.target, nb->data.proj.target);
+  case KT_PROJ2:
+    return kt_equal(heap, ctx, na->data.proj.target, nb->data.proj.target);
   case KT_ID:
     return kt_equal(heap, ctx, na->data.id.type, nb->data.id.type) &&
            kt_equal(heap, ctx, na->data.id.a, nb->data.id.a) &&
@@ -287,28 +380,37 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   switch (t->tag) {
   case KT_VAR: {
     kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
-    if (e == NULL) return NULL;
-    return e->type;
+    return e ? e->type : NULL;
   }
   case KT_SORT:
-    /* Sort(i) : Sort(i+1) */
     return kt_sort(heap, t->data.sort.level + 1);
   case KT_NAT:
     return kt_sort(heap, 0);
   case KT_ZERO:
     return kt_nat(heap);
+  case KT_BOOL:
+    return kt_sort(heap, 0);
+  case KT_TRUE: case KT_FALSE: {
+    kterm_t *b = kt_alloc(heap, KT_BOOL);
+    return b;
+  }
+  case KT_UNIT:
+    return kt_sort(heap, 0);
+  case KT_STAR: {
+    kterm_t *u = kt_alloc(heap, KT_UNIT);
+    return u;
+  }
   case KT_SUCC: {
     kterm_t *pt = kt_infer(heap, ctx, t->data.succ.pred);
     if (pt == NULL) return NULL;
     pt = kt_whnf(heap, ctx, pt);
-    if (pt->tag != KT_NAT) return NULL;
-    return kt_nat(heap);
+    return (pt->tag == KT_NAT) ? kt_nat(heap) : NULL;
   }
   case KT_PI: {
-    /* Check domain is a sort, codomain is a sort under extension. */
     kterm_t *dt = kt_infer(heap, ctx, t->data.pi.domain);
     kterm_t *ct2;
     kctx_t *ext;
+    int l, r;
     if (dt == NULL) return NULL;
     dt = kt_whnf(heap, ctx, dt);
     if (dt->tag != KT_SORT) return NULL;
@@ -317,12 +419,48 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     if (ct2 == NULL) return NULL;
     ct2 = kt_whnf(heap, ext, ct2);
     if (ct2->tag != KT_SORT) return NULL;
-    /* max of the two levels */
-    {
-      int l = dt->data.sort.level;
-      int r = ct2->data.sort.level;
-      return kt_sort(heap, l > r ? l : r);
-    }
+    l = dt->data.sort.level;
+    r = ct2->data.sort.level;
+    return kt_sort(heap, l > r ? l : r);
+  }
+  case KT_SIGMA: {
+    kterm_t *dt = kt_infer(heap, ctx, t->data.sigma.fst_type);
+    kterm_t *ct2;
+    kctx_t *ext;
+    int l, r;
+    if (dt == NULL) return NULL;
+    dt = kt_whnf(heap, ctx, dt);
+    if (dt->tag != KT_SORT) return NULL;
+    ext = kctx_extend(heap, ctx, t->data.sigma.name, t->data.sigma.fst_type, NULL);
+    ct2 = kt_infer(heap, ext, t->data.sigma.snd_type);
+    if (ct2 == NULL) return NULL;
+    ct2 = kt_whnf(heap, ext, ct2);
+    if (ct2->tag != KT_SORT) return NULL;
+    l = dt->data.sort.level;
+    r = ct2->data.sort.level;
+    return kt_sort(heap, l > r ? l : r);
+  }
+  case KT_PAIR: {
+    kterm_t *ft = kt_infer(heap, ctx, t->data.pair.fst);
+    kterm_t *st = kt_infer(heap, ctx, t->data.pair.snd);
+    if (ft == NULL || st == NULL) return NULL;
+    return kt_sigma(heap, "_", ft, kt_shift(heap, st, 0, 1));
+  }
+  case KT_PROJ1: {
+    kterm_t *tt = kt_infer(heap, ctx, t->data.proj.target);
+    if (tt == NULL) return NULL;
+    tt = kt_whnf(heap, ctx, tt);
+    if (tt->tag != KT_SIGMA) return NULL;
+    return tt->data.sigma.fst_type;
+  }
+  case KT_PROJ2: {
+    kterm_t *tt = kt_infer(heap, ctx, t->data.proj.target);
+    kterm_t *fst;
+    if (tt == NULL) return NULL;
+    tt = kt_whnf(heap, ctx, tt);
+    if (tt->tag != KT_SIGMA) return NULL;
+    fst = kt_proj1(heap, t->data.proj.target);
+    return kt_subst(heap, tt->data.sigma.snd_type, 0, fst);
   }
   case KT_LAM: {
     kctx_t *ext = kctx_extend(heap, ctx, t->data.lam.name,
@@ -333,16 +471,13 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   }
   case KT_APP: {
     kterm_t *fn_type = kt_infer(heap, ctx, t->data.app.fun);
+    kterm_t *arg_type;
     if (fn_type == NULL) return NULL;
     fn_type = kt_whnf(heap, ctx, fn_type);
     if (fn_type->tag != KT_PI) return NULL;
-    /* Check argument type matches domain. */
-    {
-      kterm_t *arg_type = kt_infer(heap, ctx, t->data.app.arg);
-      if (arg_type == NULL) return NULL;
-      if (!kt_equal(heap, ctx, arg_type, fn_type->data.pi.domain)) return NULL;
-    }
-    /* Result type: codomain with argument substituted. */
+    arg_type = kt_infer(heap, ctx, t->data.app.arg);
+    if (arg_type == NULL) return NULL;
+    if (!kt_equal(heap, ctx, arg_type, fn_type->data.pi.domain)) return NULL;
     return kt_subst(heap, fn_type->data.pi.codomain, 0, t->data.app.arg);
   }
   case KT_ID: {
@@ -360,8 +495,7 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   case KT_ANNOT: {
     kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
                                   t->data.annot.type);
-    if (r != KERNEL_OK) return NULL;
-    return t->data.annot.type;
+    return (r == KERNEL_OK) ? t->data.annot.type : NULL;
   }
   default:
     return NULL;
@@ -372,9 +506,8 @@ kernel_result_t kt_check(lizard_heap_t *heap, kctx_t *ctx,
                           kterm_t *term, kterm_t *expected_type) {
   kterm_t *inferred = kt_infer(heap, ctx, term);
   if (inferred == NULL) return KERNEL_TYPE_ERROR;
-  if (!kt_equal(heap, ctx, inferred, expected_type)) {
+  if (!kt_equal(heap, ctx, inferred, expected_type))
     return KERNEL_TYPE_ERROR;
-  }
   return KERNEL_OK;
 }
 
@@ -388,45 +521,62 @@ void kt_fprint(FILE *fp, kterm_t *t) {
   case KT_NAT: fprintf(fp, "Nat"); break;
   case KT_ZERO: fprintf(fp, "0"); break;
   case KT_SUCC:
-    fprintf(fp, "(succ ");
-    kt_fprint(fp, t->data.succ.pred);
-    fprintf(fp, ")");
+    fprintf(fp, "(succ "); kt_fprint(fp, t->data.succ.pred); fprintf(fp, ")");
     break;
   case KT_PI:
     fprintf(fp, "(Pi (%s : ", t->data.pi.name ? t->data.pi.name : "_");
     kt_fprint(fp, t->data.pi.domain);
-    fprintf(fp, ") ");
-    kt_fprint(fp, t->data.pi.codomain);
-    fprintf(fp, ")");
+    fprintf(fp, ") "); kt_fprint(fp, t->data.pi.codomain); fprintf(fp, ")");
+    break;
+  case KT_SIGMA:
+    fprintf(fp, "(Sigma (%s : ", t->data.sigma.name ? t->data.sigma.name : "_");
+    kt_fprint(fp, t->data.sigma.fst_type);
+    fprintf(fp, ") "); kt_fprint(fp, t->data.sigma.snd_type); fprintf(fp, ")");
     break;
   case KT_LAM:
     fprintf(fp, "(lam (%s : ", t->data.lam.name ? t->data.lam.name : "_");
     kt_fprint(fp, t->data.lam.domain);
-    fprintf(fp, ") ");
-    kt_fprint(fp, t->data.lam.body);
-    fprintf(fp, ")");
+    fprintf(fp, ") "); kt_fprint(fp, t->data.lam.body); fprintf(fp, ")");
     break;
   case KT_APP:
-    fprintf(fp, "(");
-    kt_fprint(fp, t->data.app.fun);
-    fprintf(fp, " ");
-    kt_fprint(fp, t->data.app.arg);
-    fprintf(fp, ")");
+    fprintf(fp, "("); kt_fprint(fp, t->data.app.fun);
+    fprintf(fp, " "); kt_fprint(fp, t->data.app.arg); fprintf(fp, ")");
+    break;
+  case KT_PAIR:
+    fprintf(fp, "(pair "); kt_fprint(fp, t->data.pair.fst);
+    fprintf(fp, " "); kt_fprint(fp, t->data.pair.snd); fprintf(fp, ")");
+    break;
+  case KT_PROJ1:
+    fprintf(fp, "(fst "); kt_fprint(fp, t->data.proj.target); fprintf(fp, ")");
+    break;
+  case KT_PROJ2:
+    fprintf(fp, "(snd "); kt_fprint(fp, t->data.proj.target); fprintf(fp, ")");
     break;
   case KT_ID:
-    fprintf(fp, "(Id ");
-    kt_fprint(fp, t->data.id.type);
-    fprintf(fp, " ");
-    kt_fprint(fp, t->data.id.a);
-    fprintf(fp, " ");
-    kt_fprint(fp, t->data.id.b);
-    fprintf(fp, ")");
+    fprintf(fp, "(Id "); kt_fprint(fp, t->data.id.type);
+    fprintf(fp, " "); kt_fprint(fp, t->data.id.a);
+    fprintf(fp, " "); kt_fprint(fp, t->data.id.b); fprintf(fp, ")");
     break;
   case KT_REFL:
-    fprintf(fp, "(refl ");
-    kt_fprint(fp, t->data.refl.value);
-    fprintf(fp, ")");
+    fprintf(fp, "(refl "); kt_fprint(fp, t->data.refl.value); fprintf(fp, ")");
     break;
+  case KT_J:
+    fprintf(fp, "(J ...)");
+    break;
+  case KT_NAT_REC:
+    fprintf(fp, "(natrec ...)");
+    break;
+
+  case KT_BOOL: fprintf(fp, "Bool"); break;
+  case KT_TRUE: fprintf(fp, "true"); break;
+  case KT_FALSE: fprintf(fp, "false"); break;
+  case KT_UNIT: fprintf(fp, "Unit"); break;
+  case KT_STAR: fprintf(fp, "*"); break;
+  case KT_BOOL_REC:
+    fprintf(fp, "(if "); kt_fprint(fp, t->data.bool_rec.scrutinee);
+    fprintf(fp, " "); kt_fprint(fp, t->data.bool_rec.true_case);
+    fprintf(fp, " "); kt_fprint(fp, t->data.bool_rec.false_case);
+    fprintf(fp, ")"); break;
   default:
     fprintf(fp, "<kterm:%d>", t->tag);
     break;

@@ -120,6 +120,28 @@ int tactic_apply(proof_state_t *ps, kterm_t *f) {
   return 0;
 }
 
+int tactic_assumption(proof_state_t *ps) {
+  proof_goal_t *g = proof_current_goal(ps);
+  kctx_entry_t *e;
+  int idx;
+  if (g == NULL) return -1;
+  /* Search the context for a variable whose type matches the goal. */
+  idx = 0;
+  for (e = g->ctx->entries; e != NULL; e = e->next) {
+    if (kt_equal(ps->heap, g->ctx, e->type, g->type)) {
+      /* Found! Use this variable as the proof. */
+      if (e->value != NULL) {
+        g->solution = e->value;
+      } else {
+        g->solution = kt_var(ps->heap, idx);
+      }
+      return 0;
+    }
+    idx++;
+  }
+  return -1;
+}
+
 /* ---- QED ---- */
 
 /* Build the final proof term by substituting solved goals into

@@ -2501,6 +2501,26 @@ static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
     const char *s = e->data.variable;
     if (strcmp(s, "Nat") == 0) return kt_nat(heap);
     if (strcmp(s, "zero") == 0) return kt_zero(heap);
+      if (strcmp(s, "Bool") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_BOOL; return b;
+      }
+      if (strcmp(s, "true") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_TRUE; return b;
+      }
+      if (strcmp(s, "false") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_FALSE; return b;
+      }
+      if (strcmp(s, "Unit") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_UNIT; return b;
+      }
+      if (strcmp(s, "*") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_STAR; return b;
+      }
     /* de Bruijn variable: #0, #1, etc. */
     if (s[0] == '#' && s[1] >= '0' && s[1] <= '9') {
       return kt_var(heap, s[1] - '0');
@@ -2579,6 +2599,202 @@ static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
         codomain = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
         if (domain && codomain) return kt_pi(heap, pname, domain, codomain);
         return NULL;
+      }
+      /* (Sigma (name type) body) — same binder parsing as Pi. */
+      if (strcmp(name, "Sigma") == 0 && parts != NULL) {
+        lz_list_node_t *binder_node = parts->head->next;
+        lz_list_node_t *body_node;
+        lizard_ast_node_t *binder;
+        const char *pname = "_";
+        kterm_t *fst_type = NULL, *snd_type;
+        if (binder_node == parts->nil) return NULL;
+        body_node = binder_node->next;
+        if (body_node == parts->nil) return NULL;
+        binder = ((lizard_ast_list_node_t *)binder_node)->ast;
+        if (binder->type == AST_APPLICATION && binder->data.application_arguments) {
+          lz_list_node_t *bn = binder->data.application_arguments->head;
+          if (bn != binder->data.application_arguments->nil) {
+            lizard_ast_node_t *nm = ((lizard_ast_list_node_t *)bn)->ast;
+            if (nm->type == AST_SYMBOL) pname = nm->data.variable;
+            bn = bn->next;
+            if (bn != binder->data.application_arguments->nil) {
+              fst_type = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)bn)->ast);
+            }
+          }
+        }
+        if (fst_type == NULL) return NULL;
+        snd_type = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        if (snd_type == NULL) return NULL;
+        {
+          kterm_t *sig = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(sig, 0, sizeof(*sig));
+          sig->tag = KT_SIGMA;
+          sig->data.sigma.name = pname;
+          sig->data.sigma.fst_type = fst_type;
+          sig->data.sigma.snd_type = snd_type;
+          return sig;
+        }
+      }
+      /* (pair a b) */
+      if (strcmp(name, "pair") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2;
+        kterm_t *a, *b;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next;
+        if (n2 == parts->nil) return NULL;
+        a = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        b = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        if (a && b) {
+          kterm_t *p = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(p, 0, sizeof(*p));
+          p->tag = KT_PAIR;
+          p->data.pair.fst = a;
+          p->data.pair.snd = b;
+          return p;
+        }
+        return NULL;
+      }
+      /* (fst e) */
+      if (strcmp(name, "fst") == 0 && parts != NULL) {
+        kterm_t *inner = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        if (inner) {
+          kterm_t *p = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(p, 0, sizeof(*p));
+          p->tag = KT_PROJ1;
+          p->data.proj.target = inner;
+          return p;
+        }
+        return NULL;
+      }
+      /* (snd e) */
+      if (strcmp(name, "snd") == 0 && parts != NULL) {
+        kterm_t *inner = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        if (inner) {
+          kterm_t *p = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(p, 0, sizeof(*p));
+          p->tag = KT_PROJ2;
+          p->data.proj.target = inner;
+          return p;
+        }
+        return NULL;
+      }
+      /* (lam (x A) body) */
+      if (strcmp(name, "lam") == 0 && parts != NULL) {
+        lz_list_node_t *binder_node = parts->head->next;
+        lz_list_node_t *body_node;
+        lizard_ast_node_t *binder;
+        const char *pname = "_";
+        kterm_t *domain = NULL, *body;
+        if (binder_node == parts->nil) return NULL;
+        body_node = binder_node->next;
+        if (body_node == parts->nil) return NULL;
+        binder = ((lizard_ast_list_node_t *)binder_node)->ast;
+        if (binder->type == AST_APPLICATION && binder->data.application_arguments) {
+          lz_list_node_t *bn = binder->data.application_arguments->head;
+          if (bn != binder->data.application_arguments->nil) {
+            lizard_ast_node_t *nm = ((lizard_ast_list_node_t *)bn)->ast;
+            if (nm->type == AST_SYMBOL) pname = nm->data.variable;
+            bn = bn->next;
+            if (bn != binder->data.application_arguments->nil) {
+              domain = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)bn)->ast);
+            }
+          }
+        }
+        if (domain == NULL) return NULL;
+        body = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        if (body == NULL) return NULL;
+        return kt_lam(heap, pname, domain, body);
+      }
+      /* (app f a) — explicit application. */
+      if (strcmp(name, "app") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2;
+        kterm_t *f, *a;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next;
+        if (n2 == parts->nil) return NULL;
+        f = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        a = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        if (f && a) return kt_app(heap, f, a);
+        return NULL;
+      }
+      /* (natrec motive zero-case succ-case scrutinee) */
+      if (strcmp(name, "natrec") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2, *n3, *n4;
+        kterm_t *mot, *zc, *sc, *scrut;
+        kterm_t *nr;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next; if (n2 == parts->nil) return NULL;
+        n3 = n2->next; if (n3 == parts->nil) return NULL;
+        n4 = n3->next; if (n4 == parts->nil) return NULL;
+        mot   = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        zc    = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        sc    = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n3)->ast);
+        scrut = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n4)->ast);
+        if (!mot || !zc || !sc || !scrut) return NULL;
+        nr = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(nr, 0, sizeof(*nr));
+        nr->tag = KT_NAT_REC;
+        nr->data.nat_rec.motive = mot;
+        nr->data.nat_rec.zero_case = zc;
+        nr->data.nat_rec.succ_case = sc;
+        nr->data.nat_rec.scrutinee = scrut;
+        return nr;
+      }
+      /* (if scrutinee true-case false-case) — Bool eliminator. */
+      if (strcmp(name, "if") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2, *n3;
+        kterm_t *scrut, *tc, *fc, *br;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next; if (n2 == parts->nil) return NULL;
+        n3 = n2->next; if (n3 == parts->nil) return NULL;
+        scrut = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        tc    = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        fc    = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n3)->ast);
+        if (!scrut || !tc || !fc) return NULL;
+        br = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(br, 0, sizeof(*br));
+        br->tag = KT_BOOL_REC;
+        br->data.bool_rec.motive = NULL;
+        br->data.bool_rec.true_case = tc;
+        br->data.bool_rec.false_case = fc;
+        br->data.bool_rec.scrutinee = scrut;
+        return br;
+      }
+      /* (J motive base-case type a b proof) */
+      if (strcmp(name, "J") == 0 && parts != NULL) {
+        lz_list_node_t *n1 = parts->head->next;
+        lz_list_node_t *n2, *n3, *n4, *n5, *n6;
+        kterm_t *mot, *bc, *ty, *a, *b, *pf;
+        kterm_t *j;
+        if (n1 == parts->nil) return NULL;
+        n2 = n1->next; if (n2 == parts->nil) return NULL;
+        n3 = n2->next; if (n3 == parts->nil) return NULL;
+        n4 = n3->next; if (n4 == parts->nil) return NULL;
+        n5 = n4->next; if (n5 == parts->nil) return NULL;
+        n6 = n5->next; if (n6 == parts->nil) return NULL;
+        mot = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n1)->ast);
+        bc  = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n2)->ast);
+        ty  = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n3)->ast);
+        a   = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n4)->ast);
+        b   = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n5)->ast);
+        pf  = sexp_to_kterm(heap, ((lizard_ast_list_node_t *)n6)->ast);
+        if (!mot || !bc || !ty || !a || !b || !pf) return NULL;
+        j = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(j, 0, sizeof(*j));
+        j->tag = KT_J;
+        j->data.j.motive = mot;
+        j->data.j.base_case = bc;
+        j->data.j.type = ty;
+        j->data.j.a = a;
+        j->data.j.b = b;
+        j->data.j.proof = pf;
+        return j;
       }
     }
   }
@@ -2761,6 +2977,507 @@ lizard_ast_node_t *lizard_primitive_qed(lz_list_t *args,
   printf("\n");
   current_proof = NULL;
   return lizard_make_bool(heap, 1);
+}
+
+/* ============================================================
+ * Track C.4: Atoms — mutable reference cells.
+ *
+ * Atoms are cons cells with car = sentinel symbol "%atom"
+ * and cdr = the current value. swap! mutates cdr in place.
+ * ============================================================ */
+
+static int is_atom(lizard_ast_node_t *node) {
+  return node != NULL && node->type == AST_PAIR &&
+         node->data.pair.car != NULL &&
+         node->data.pair.car->type == AST_SYMBOL &&
+         strcmp(node->data.pair.car->data.variable, "%atom") == 0;
+}
+
+/* (atom val) — create a mutable atom. */
+lizard_ast_node_t *lizard_primitive_atom(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *val, *tag, *cell;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  val = ((lizard_ast_list_node_t *)args->head)->ast;
+  tag = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  tag->type = AST_SYMBOL;
+  tag->data.variable = "%atom";
+  cell = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  cell->type = AST_PAIR;
+  cell->data.pair.car = tag;
+  cell->data.pair.cdr = val;
+  return cell;
+}
+
+/* (deref a) — read the atom's current value. */
+lizard_ast_node_t *lizard_primitive_deref(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!is_atom(a))
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return a->data.pair.cdr;
+}
+
+/* (swap! a f) — apply f to the current value, store result. */
+lizard_ast_node_t *lizard_primitive_swap(lz_list_t *args,
+                                          lizard_env_t *env,
+                                          lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *fn, *new_val;
+  lz_list_t *call_args;
+  lizard_ast_list_node_t *n;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a  = ((lizard_ast_list_node_t *)args->head)->ast;
+  fn = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (!is_atom(a))
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  call_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+  n->ast = a->data.pair.cdr;
+  list_append(call_args, &n->node);
+  new_val = lizard_apply(fn, call_args, env, heap, lizard_identity_cont);
+  if (new_val && new_val->type == AST_ERROR) return new_val;
+  a->data.pair.cdr = new_val;
+  return new_val;
+}
+
+/* (reset! a val) — set the atom to a new value. */
+lizard_ast_node_t *lizard_primitive_reset(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *val;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a   = ((lizard_ast_list_node_t *)args->head)->ast;
+  val = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (!is_atom(a))
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  a->data.pair.cdr = val;
+  return val;
+}
+
+/* (atom? x) — predicate. */
+lizard_ast_node_t *lizard_primitive_atomp(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      is_atom(((lizard_ast_list_node_t *)args->head)->ast));
+}
+
+/* ============================================================
+ * Exceptions: raise / guard
+ *
+ * (guard handler-fn body) — evaluate body; if it returns an error,
+ * invoke (handler-fn error) instead.
+ * ============================================================ */
+
+/* (guard handler-fn expr) — evaluate expr; if error, call handler. */
+lizard_ast_node_t *lizard_primitive_guard(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *handler, *body, *result;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  handler = ((lizard_ast_list_node_t *)args->head)->ast;
+  body    = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  result = lizard_eval(body, env, heap, lizard_identity_cont);
+  /* If result is an error, invoke handler. */
+  if (result != NULL && result->type == AST_ERROR) {
+    lz_list_t *call_args;
+    lizard_ast_list_node_t *n;
+    call_args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+    n = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+    n->ast = result;
+    list_append(call_args, &n->node);
+    return lizard_apply(handler, call_args, env, heap, lizard_identity_cont);
+  }
+  return result;
+}
+
+/* ============================================================
+ * More string operations
+ * ============================================================ */
+
+/* (string-ref s i) — character at index as a 1-char string. */
+lizard_ast_node_t *lizard_primitive_string_ref(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *s, *idx, *result;
+  long i;
+  char *buf;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  s   = ((lizard_ast_list_node_t *)args->head)->ast;
+  idx = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (s->type != AST_STRING || idx->type != AST_NUMBER)
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  i = mpz_get_si(idx->data.number);
+  if (i < 0 || (size_t)i >= strlen(s->data.string))
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  buf = (char *)lizard_heap_alloc(2);
+  buf[0] = s->data.string[i];
+  buf[1] = '\0';
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  result->data.string = buf;
+  return result;
+}
+
+/* (string-contains? s sub) — #t if sub is found in s. */
+lizard_ast_node_t *lizard_primitive_string_contains(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *s, *sub;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  s   = ((lizard_ast_list_node_t *)args->head)->ast;
+  sub = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (s->type != AST_STRING || sub->type != AST_STRING)
+    return lizard_make_bool(heap, 0);
+  return lizard_make_bool(heap, strstr(s->data.string, sub->data.string) != NULL);
+}
+
+/* (string-upcase s) — uppercase copy. */
+lizard_ast_node_t *lizard_primitive_string_upcase(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *s, *result;
+  char *buf;
+  size_t i, len;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  s = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (s->type != AST_STRING)
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  len = strlen(s->data.string);
+  buf = (char *)lizard_heap_alloc(len + 1);
+  for (i = 0; i < len; i++) {
+    char c = s->data.string[i];
+    buf[i] = (c >= 'a' && c <= 'z') ? (char)(c - 32) : c;
+  }
+  buf[len] = '\0';
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  result->data.string = buf;
+  return result;
+}
+
+/* (string-downcase s) — lowercase copy. */
+lizard_ast_node_t *lizard_primitive_string_downcase(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *s, *result;
+  char *buf;
+  size_t i, len;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  s = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (s->type != AST_STRING)
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  len = strlen(s->data.string);
+  buf = (char *)lizard_heap_alloc(len + 1);
+  for (i = 0; i < len; i++) {
+    char c = s->data.string[i];
+    buf[i] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+  }
+  buf[len] = '\0';
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  result->data.string = buf;
+  return result;
+}
+
+/* (string-split s delim) — split string into list of strings. */
+lizard_ast_node_t *lizard_primitive_string_split(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *s_node, *d_node, *result, *node, *str;
+  const char *s, *d, *start, *found;
+  size_t dlen;
+  char *buf;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  s_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  d_node = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (s_node->type != AST_STRING || d_node->type != AST_STRING)
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  s = s_node->data.string;
+  d = d_node->data.string;
+  dlen = strlen(d);
+  if (dlen == 0) return lizard_make_nil(heap);
+  result = lizard_make_nil(heap);
+  /* Build in reverse, then reverse. */
+  start = s;
+  while ((found = strstr(start, d)) != NULL) {
+    size_t len = (size_t)(found - start);
+    buf = (char *)lizard_heap_alloc(len + 1);
+    memcpy(buf, start, len);
+    buf[len] = '\0';
+    str = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    str->type = AST_STRING;
+    str->data.string = buf;
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = str;
+    node->data.pair.cdr = result;
+    result = node;
+    start = found + dlen;
+  }
+  /* Last segment. */
+  {
+    size_t len = strlen(start);
+    buf = (char *)lizard_heap_alloc(len + 1);
+    memcpy(buf, start, len);
+    buf[len] = '\0';
+    str = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    str->type = AST_STRING;
+    str->data.string = buf;
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = str;
+    node->data.pair.cdr = result;
+    result = node;
+  }
+  /* Reverse to get correct order. */
+  {
+    lizard_ast_node_t *rev = lizard_make_nil(heap);
+    while (result->type == AST_PAIR) {
+      node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      node->type = AST_PAIR;
+      node->data.pair.car = result->data.pair.car;
+      node->data.pair.cdr = rev;
+      rev = node;
+      result = result->data.pair.cdr;
+    }
+    result = rev;
+  }
+  return result;
+}
+
+/* (string-join lst delim) — join list of strings with delimiter. */
+lizard_ast_node_t *lizard_primitive_string_join(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *lst, *d_node, *result;
+  const char *d;
+  size_t total, dlen;
+  char *buf, *p;
+  int first;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  lst    = ((lizard_ast_list_node_t *)args->head)->ast;
+  d_node = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (d_node->type != AST_STRING)
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  d = d_node->data.string;
+  dlen = strlen(d);
+  /* Calculate total length. */
+  total = 0;
+  first = 1;
+  {
+    lizard_ast_node_t *cur = lst;
+    while (cur != NULL && cur->type == AST_PAIR) {
+      if (cur->data.pair.car->type == AST_STRING) {
+        if (!first) total += dlen;
+        total += strlen(cur->data.pair.car->data.string);
+        first = 0;
+      }
+      cur = cur->data.pair.cdr;
+    }
+  }
+  buf = (char *)lizard_heap_alloc(total + 1);
+  p = buf;
+  first = 1;
+  {
+    lizard_ast_node_t *cur = lst;
+    while (cur != NULL && cur->type == AST_PAIR) {
+      if (cur->data.pair.car->type == AST_STRING) {
+        size_t slen;
+        if (!first) { memcpy(p, d, dlen); p += dlen; }
+        slen = strlen(cur->data.pair.car->data.string);
+        memcpy(p, cur->data.pair.car->data.string, slen);
+        p += slen;
+        first = 0;
+      }
+      cur = cur->data.pair.cdr;
+    }
+  }
+  *p = '\0';
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  result->data.string = buf;
+  return result;
+}
+
+/* ============================================================
+ * Lazy evaluation: delay/force already in lizard.c.
+ * promise? is the only new addition.
+ * ============================================================ */
+
+/* (promise? x) — predicate. */
+lizard_ast_node_t *lizard_primitive_promisep(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_PROMISE);
+}
+
+/* ============================================================
+ * Kernel reduction + equality primitives
+ * ============================================================ */
+
+/* Helper: format kernel term to a heap-allocated string. */
+static const char *kt_to_string(lizard_heap_t *heap, kterm_t *t) {
+  char buf[512];
+  FILE *fp = tmpfile();
+  long pos;
+  size_t got;
+  char *sbuf;
+  if (fp == NULL) return "<kterm>";
+  kt_fprint(fp, t);
+  fflush(fp);
+  pos = ftell(fp);
+  if (pos <= 0 || (size_t)pos >= sizeof(buf)) {
+    fclose(fp);
+    return "<kterm>";
+  }
+  rewind(fp);
+  got = fread(buf, 1, (size_t)pos, fp);
+  buf[got] = '\0';
+  fclose(fp);
+  sbuf = (char *)lizard_heap_alloc(strlen(buf) + 1);
+  strcpy(sbuf, buf);
+  return sbuf;
+}
+
+/* (kernel-reduce expr) — normalize a kernel term. */
+lizard_ast_node_t *lizard_primitive_kernel_reduce(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *expr, *result;
+  kterm_t *term, *reduced;
+  kctx_t *ctx;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  term = sexp_to_kterm(heap, expr);
+  if (term == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  reduced = kt_whnf(heap, ctx, term);
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_STRING;
+  result->data.string = kt_to_string(heap, reduced);
+  return result;
+}
+
+/* (kernel-equal? a b) — check definitional equality of two terms. */
+lizard_ast_node_t *lizard_primitive_kernel_equalp(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *ea, *eb;
+  kterm_t *a, *b;
+  kctx_t *ctx;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  ea = ((lizard_ast_list_node_t *)args->head)->ast;
+  eb = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  a = sexp_to_kterm(heap, ea);
+  b = sexp_to_kterm(heap, eb);
+  if (a == NULL || b == NULL)
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  return lizard_make_bool(heap, kt_equal(heap, ctx, a, b));
+}
+
+/* (tactic-assumption) — search context for a matching hypothesis. */
+lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
+                                                       lizard_env_t *env,
+                                                       lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_assumption(current_proof);
+  if (r < 0) {
+    printf("tactic-assumption: no matching hypothesis found.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (phash-values m) — list of values. */
+lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *result, *node;
+  hamt_flat_t *h;
+  int i;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (map_node->type != AST_HAMT) return lizard_make_nil(heap);
+  h = (hamt_flat_t *)map_node->data.hamt.root;
+  result = lizard_make_nil(heap);
+  for (i = h->count - 1; i >= 0; i--) {
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = h->entries[i].val;
+    node->data.pair.cdr = result;
+    result = node;
+  }
+  return result;
+}
+
+/* (phash-entries m) — list of (key . value) pairs. */
+lizard_ast_node_t *lizard_primitive_phash_entries(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *map_node, *result, *node, *pair;
+  hamt_flat_t *h;
+  int i;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  map_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (map_node->type != AST_HAMT) return lizard_make_nil(heap);
+  h = (hamt_flat_t *)map_node->data.hamt.root;
+  result = lizard_make_nil(heap);
+  for (i = h->count - 1; i >= 0; i--) {
+    pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    pair->type = AST_PAIR;
+    pair->data.pair.car = h->entries[i].key;
+    pair->data.pair.cdr = h->entries[i].val;
+    node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = pair;
+    node->data.pair.cdr = result;
+    result = node;
+  }
+  return result;
 }
 
 static void install_one(lizard_heap_t *heap, lizard_env_t *env,
@@ -6872,6 +7589,32 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "tactic-exact",     lizard_primitive_tactic_exact);
   install_one(heap, env, "tactic-refl",      lizard_primitive_tactic_refl);
   install_one(heap, env, "qed",              lizard_primitive_qed);
+  install_one(heap, env, "tactic-assumption",lizard_primitive_tactic_assumption);
+  /* Track C: hash map utilities. */
+  install_one(heap, env, "phash-values",     lizard_primitive_phash_values);
+  install_one(heap, env, "phash-entries",    lizard_primitive_phash_entries);
+  /* Track C.4: atoms. */
+  install_one(heap, env, "atom",             lizard_primitive_atom);
+  install_one(heap, env, "deref",            lizard_primitive_deref);
+  install_one(heap, env, "swap!",            lizard_primitive_swap);
+  install_one(heap, env, "reset!",           lizard_primitive_reset);
+  install_one(heap, env, "atom?",            lizard_primitive_atomp);
+  /* Exceptions — raise/try already registered below; guard is new. */
+  install_one(heap, env, "guard",            lizard_primitive_guard);
+  /* String operations. */
+  install_one(heap, env, "string-ref",       lizard_primitive_string_ref);
+  install_one(heap, env, "string-contains?", lizard_primitive_string_contains);
+  install_one(heap, env, "string-upcase",    lizard_primitive_string_upcase);
+  install_one(heap, env, "string-downcase",  lizard_primitive_string_downcase);
+  install_one(heap, env, "string-split",     lizard_primitive_string_split);
+  install_one(heap, env, "string-join",      lizard_primitive_string_join);
+  /* Lazy evaluation — delay/force from lizard.c, promise? is new. */
+  install_one(heap, env, "delay",            lizard_primitive_delay);
+  install_one(heap, env, "force",            lizard_primitive_force);
+  install_one(heap, env, "promise?",         lizard_primitive_promisep);
+  /* Kernel reduction. */
+  install_one(heap, env, "kernel-reduce",    lizard_primitive_kernel_reduce);
+  install_one(heap, env, "kernel-equal?",    lizard_primitive_kernel_equalp);
   install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
   install_one(heap, env, "expt",            lizard_primitive_expt);
   install_one(heap, env, "gcd",             lizard_primitive_gcd);

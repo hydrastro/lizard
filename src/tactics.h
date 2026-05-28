@@ -58,6 +58,10 @@ int tactic_reflexivity(proof_state_t *ps);
  * Returns 0 on success. */
 int tactic_apply(proof_state_t *ps, kterm_t *f);
 
+/* Tactic: assumption — search the context for a hypothesis whose
+ * type matches the goal. Returns 0 on success, -1 if not found. */
+int tactic_assumption(proof_state_t *ps);
+
 /* QED: check that all goals are solved and return the proof term.
  * Returns the term on success, NULL if goals remain. */
 kterm_t *proof_qed(proof_state_t *ps);
