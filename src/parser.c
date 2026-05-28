@@ -5,13 +5,80 @@
 #include "primitives.h"
 #include "tokenizer.h"
 
+#include <setjmp.h>
+#include <stdlib.h>
+
+/* --- Phase 1A: recoverable parser diagnostics ---------------------------
+ * Historically the parser called exit(1) on any syntax error, killing the
+ * whole process. We now record a diagnostic and longjmp back to a recovery
+ * point established in lizard_parse(), which returns NULL so callers (the
+ * REPL, the embedding API) can recover. If no recovery point is active
+ * (e.g. a direct call outside lizard_parse), the legacy fatal behavior is
+ * preserved so nothing regresses.
+ *
+ * Each call site passes its message and the offending token; the helper
+ * records {status, span, message} as DATA in lz_parse_diag and longjmps to
+ * the recovery point in lizard_parse(). It does NOT print: presentation is
+ * the caller's job (the REPL / embedding API reads the diagnostic). Only the
+ * legacy fallback path (no active recovery point) prints, then exits. */
+
+#if defined(__GNUC__)
+#define LZ_NORETURN __attribute__((noreturn))
+#else
+#define LZ_NORETURN
+#endif
+
+static jmp_buf lz_parse_recovery;
+static int lz_parse_active = 0;
+static int lz_parse_failed = 0;
+static lizard_diagnostic_t lz_parse_diag;
+
+static void lizard_parser_fail(const char *msg,
+                               const lizard_token_t *tok) {
+  lz_parse_failed = 1;
+  lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
+  lz_parse_diag.span.filename = tok != NULL ? tok->filename : NULL;
+  if (tok != NULL) {
+    lz_parse_diag.span.start_line = tok->line;
+    lz_parse_diag.span.start_column = tok->column;
+    lz_parse_diag.span.end_line = tok->line;
+    lz_parse_diag.span.end_column = tok->column;
+    lz_parse_diag.span.start_offset = tok->offset;
+    lz_parse_diag.span.end_offset = tok->offset;
+  } else {
+    lz_parse_diag.span.start_line = 0;
+    lz_parse_diag.span.start_column = 0;
+    lz_parse_diag.span.end_line = 0;
+    lz_parse_diag.span.end_column = 0;
+    lz_parse_diag.span.start_offset = 0;
+    lz_parse_diag.span.end_offset = 0;
+  }
+  if (msg != NULL) {
+    strncpy(lz_parse_diag.message, msg, sizeof(lz_parse_diag.message) - 1);
+    lz_parse_diag.message[sizeof(lz_parse_diag.message) - 1] = '\0';
+  } else {
+    lz_parse_diag.message[0] = '\0';
+  }
+  if (lz_parse_active) {
+    longjmp(lz_parse_recovery, 1);
+  }
+  /* This path should be unreachable: public parser entry points establish
+   * a recovery point before parsing. Keep a defensive abort instead of
+   * continuing after a syntax error. */
+  abort();
+}
+
+const lizard_diagnostic_t *lizard_parser_last_diagnostic(void) {
+  return lz_parse_failed ? &lz_parse_diag : NULL;
+}
+
 
 static void lizard_set_node_span_from_token(lizard_ast_node_t *node,
                                             const lizard_token_t *token) {
   if (node == NULL || token == NULL) {
     return;
   }
-  node->span.filename = NULL;
+  node->span.filename = token->filename;
   node->span.start_line = token->line;
   node->span.start_column = token->column;
   node->span.end_line = token->line;
@@ -29,9 +96,10 @@ lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   return canonical_empty_list;
 }
 
-lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
-                                           lz_list_node_t **current_node_pointer,
-                                           int *depth, lizard_heap_t *heap) {
+static lizard_ast_node_t *lizard_parse_expression_inner(lz_list_t *token_list,
+                                                     lz_list_node_t **current_node_pointer,
+                                                     int *depth,
+                                                     lizard_heap_t *heap) {
   lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
       *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
       *transformer;
@@ -56,8 +124,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     *current_node_pointer = current_node->next;
     current_node = current_node->next;
     if (current_node == token_list->nil) {
-      fprintf(stderr, "Error: unexpected EOF after '('\n");
-      exit(1);
+      lizard_parser_fail("unexpected EOF after '('", current_token);
     }
     current_token = &CAST(current_node, lizard_token_list_node_t)->token;
     *depth = *depth + 1;
@@ -88,14 +155,12 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing assignment variable.\n");
-          exit(1);
+          lizard_parser_fail("missing assignment variable.", current_token);
         }
         var_node = lizard_parse_expression(token_list, current_node_pointer,
                                            depth, heap);
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing assignment value.\n");
-          exit(1);
+          lizard_parser_fail("missing assignment value.", current_token);
         }
         val_node = lizard_parse_expression(token_list, current_node_pointer,
                                            depth, heap);
@@ -105,8 +170,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -122,13 +186,11 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (var_node->type == AST_APPLICATION) {
           lz_list_t *app_args = var_node->data.application_arguments;
           if (app_args->head == app_args->nil) {
-            fprintf(stderr, "Error: invalid function definition syntax.\n");
-            exit(1);
+            lizard_parser_fail("invalid function definition syntax.", current_token);
           }
           name_node = (lizard_ast_list_node_t *)app_args->head;
           if (name_node->ast->type != AST_SYMBOL) {
-            fprintf(stderr, "Error: function name must be a symbol.\n");
-            exit(1);
+            lizard_parser_fail("function name must be a symbol.", current_token);
           }
           fn_name = name_node->ast->data.variable;
 
@@ -163,8 +225,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
             while (1) {
               current_node = *current_node_pointer;
               if (current_node == token_list->nil) {
-                fprintf(stderr, "Error: missing closing paren in define.\n");
-                exit(1);
+                lizard_parser_fail("missing closing paren in define.", current_token);
               }
               if (CAST(current_node, lizard_token_list_node_t)->token.type ==
                   TOKEN_RIGHT_PAREN) {
@@ -180,8 +241,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
               saw_body = 1;
             }
             if (!saw_body) {
-              fprintf(stderr, "Error: function body is empty.\n");
-              exit(1);
+              lizard_parser_fail("function body is empty.", current_token);
             }
           }
           current_node = *current_node_pointer;
@@ -197,8 +257,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
           if (current_node == token_list->nil ||
               CAST(current_node, lizard_token_list_node_t)->token.type !=
                   TOKEN_RIGHT_PAREN) {
-            fprintf(stderr, "Error: missing closing paren in define.\n");
-            exit(1);
+            lizard_parser_fail("missing closing paren in define.", current_token);
           }
           *current_node_pointer = current_node->next;
           current_node = current_node->next;
@@ -216,16 +275,14 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
           if (current_node == token_list->nil ||
               CAST(current_node, lizard_token_list_node_t)->token.type !=
                   TOKEN_RIGHT_PAREN) {
-            fprintf(stderr, "Error: missing closing paren.\n");
-            exit(1);
+            lizard_parser_fail("missing closing paren.", current_token);
           }
           *current_node_pointer = current_node->next;
           current_node = current_node->next;
           *depth -= 1;
           return def_node;
         } else {
-          fprintf(stderr, "Error: invalid define syntax.\n");
-          exit(1);
+          lizard_parser_fail("invalid define syntax.", current_token);
         }
 
       } else if (strcmp(current_token->data.symbol, "lambda") == 0) {
@@ -237,8 +294,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing lambda parameter(s).\n");
-          exit(1);
+          lizard_parser_fail("missing lambda parameter(s).", current_token);
         }
         ast_node->data.lambda.parameters =
             list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -258,8 +314,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -269,14 +324,12 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing if predicate.\n");
-          exit(1);
+          lizard_parser_fail("missing if predicate.", current_token);
         }
         ast_node->data.if_clause.pred = lizard_parse_expression(
             token_list, current_node_pointer, depth, heap);
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing if cons.\n");
-          exit(1);
+          lizard_parser_fail("missing if cons.", current_token);
         }
         ast_node->data.if_clause.cons = lizard_parse_expression(
             token_list, current_node_pointer, depth, heap);
@@ -290,8 +343,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -301,8 +353,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing begin predicate(s).\n");
-          exit(1);
+          lizard_parser_fail("missing begin predicate(s).", current_token);
         }
         ast_node->data.begin_expressions =
             list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -322,8 +373,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -333,8 +383,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         *current_node_pointer = current_node->next;
         current_node = current_node->next;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing cond predicate(s).\n");
-          exit(1);
+          lizard_parser_fail("missing cond predicate(s).", current_token);
         }
         ast_node->data.cond_clauses =
             list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -354,8 +403,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -382,16 +430,14 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_LEFT_PAREN) {
-          fprintf(stderr, "Error: let requires a binding list\n");
-          exit(1);
+          lizard_parser_fail("let requires a binding list", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
 
         while (1) {
           if (current_node == token_list->nil) {
-            fprintf(stderr, "Error: unexpected EOF in let bindings\n");
-            exit(1);
+            lizard_parser_fail("unexpected EOF in let bindings", current_token);
           }
           if (CAST(current_node, lizard_token_list_node_t)->token.type ==
               TOKEN_RIGHT_PAREN) {
@@ -401,9 +447,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
 
           if (CAST(current_node, lizard_token_list_node_t)->token.type !=
               TOKEN_LEFT_PAREN) {
-            fprintf(stderr, "Error: let binding must be a pair (got %d)\n",
-                    CAST(current_node, lizard_token_list_node_t)->token.type);
-            exit(1);
+            lizard_parser_fail("let binding must be a pair", current_token);
           }
           *current_node_pointer = current_node->next;
           current_node = *current_node_pointer;
@@ -418,8 +462,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
              not produce a symbol. */
           if (var->type != AST_SYMBOL && var->type != AST_UNQUOTE &&
               var->type != AST_UNQUOTE_SPLICING) {
-            fprintf(stderr, "Error: let binding name must be a symbol\n");
-            exit(1);
+            lizard_parser_fail("let binding name must be a symbol", current_token);
           }
 
           value = lizard_parse_expression(token_list, current_node_pointer,
@@ -429,9 +472,8 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
           if (current_node == token_list->nil ||
               CAST(current_node, lizard_token_list_node_t)->token.type !=
                   TOKEN_RIGHT_PAREN) {
-            fprintf(stderr,
-                    "Error: missing closing paren in let binding pair\n");
-            exit(1);
+            lizard_parser_fail("missing closing paren in let binding pair",
+                               current_token);
           }
           *current_node_pointer = current_node->next;
           current_node = *current_node_pointer;
@@ -448,8 +490,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren for let bindings\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren for let bindings", current_token);
         }
         *current_node_pointer = current_node->next;
         current_node = *current_node_pointer;
@@ -490,8 +531,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren for let expression\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren for let expression", current_token);
         }
         *current_node_pointer = current_node->next;
         *depth -= 1;
@@ -541,8 +581,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren in syntax-rules.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren in syntax-rules.", current_token);
         }
         *current_node_pointer = current_node->next;
         *depth -= 1;
@@ -558,8 +597,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         macro_name = lizard_parse_expression(token_list, current_node_pointer,
                                              depth, heap);
         if (macro_name->type != AST_SYMBOL) {
-          fprintf(stderr, "Error: macro name must be a symbol.\n");
-          exit(1);
+          lizard_parser_fail("macro name must be a symbol.", current_token);
         }
 
         transformer = lizard_parse_expression(token_list, current_node_pointer,
@@ -571,8 +609,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren in define-syntax.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren in define-syntax.", current_token);
         }
         *current_node_pointer = current_node->next;
         *depth -= 1;
@@ -581,8 +618,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
       } else {
         ast_node->type = AST_APPLICATION;
         if (current_node == token_list->nil) {
-          fprintf(stderr, "Error: missing application argument(s).\n");
-          exit(1);
+          lizard_parser_fail("missing application argument(s).", current_token);
         }
         ast_node->data.application_arguments =
             list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -603,8 +639,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         if (current_node == token_list->nil ||
             CAST(current_node, lizard_token_list_node_t)->token.type !=
                 TOKEN_RIGHT_PAREN) {
-          fprintf(stderr, "Error: missing closing paren.\n");
-          exit(1);
+          lizard_parser_fail("missing closing paren.", current_token);
         }
         first_arg = (lizard_ast_list_node_t *)
                         ast_node->data.application_arguments->head;
@@ -621,8 +656,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     } else if (current_token->type == TOKEN_LEFT_PAREN) {
       ast_node->type = AST_APPLICATION;
       if (current_node == token_list->nil) {
-        fprintf(stderr, "Error: missing application argument(s).\n");
-        exit(1);
+        lizard_parser_fail("missing application argument(s).", current_token);
       }
       ast_node->data.application_arguments =
           list_create_alloc(lizard_heap_alloc, lizard_heap_free);
@@ -642,8 +676,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
       if (current_node == token_list->nil ||
           CAST(current_node, lizard_token_list_node_t)->token.type !=
               TOKEN_RIGHT_PAREN) {
-        fprintf(stderr, "Error: missing closing paren.\n");
-        exit(1);
+        lizard_parser_fail("missing closing paren.", current_token);
       }
       current_node = *current_node_pointer;
       *current_node_pointer = current_node->next;
@@ -674,8 +707,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
       if (current_node == token_list->nil ||
           CAST(current_node, lizard_token_list_node_t)->token.type !=
               TOKEN_RIGHT_PAREN) {
-        fprintf(stderr, "Error: missing closing paren.\n");
-        exit(1);
+        lizard_parser_fail("missing closing paren.", current_token);
       }
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
@@ -686,8 +718,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
   }
   case TOKEN_RIGHT_PAREN:
     if (*depth == 0) {
-      fprintf(stderr, "Error: unmatched closing parenthesis.\n");
-      exit(1);
+      lizard_parser_fail("unmatched closing parenthesis.", current_token);
     }
     *depth = *depth - 1;
     break;
@@ -727,14 +758,12 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
        * we'd dereference past the end of the list. Detect EOF and
        * produce an error value instead of crashing. */
       if (current_node == token_list->nil || current_node == NULL) {
-        fprintf(stderr, "Error: stray # at end of input.\n");
-        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
+        lizard_parser_fail("stray # at end of input", current_token);
       }
       current_token = &CAST(current_node, lizard_token_list_node_t)->token;
       if (current_token->type != TOKEN_SYMBOL ||
           current_token->data.symbol == NULL) {
-        fprintf(stderr, "Error: unexpected token after #.\n");
-        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
+        lizard_parser_fail("unexpected token after #", current_token);
       }
       if (strcmp(current_token->data.symbol, "t") == 0) {
         ast_node->type = AST_BOOL;
@@ -743,9 +772,7 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
         ast_node->type = AST_BOOL;
         ast_node->data.boolean = false;
       } else {
-        fprintf(stderr, "Error: unexpected token after #: '%s'.\n",
-                current_token->data.symbol);
-        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
+        lizard_parser_fail("unexpected token after #", current_token);
       }
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
@@ -773,11 +800,35 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     current_node = current_node->next;
     break;
   default:
-    fprintf(stderr, "Error: unexpected token type.\n");
-    exit(1);
+    lizard_parser_fail("unexpected token type.", current_token);
   }
 
   return ast_node;
+}
+
+
+lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
+                                           lz_list_node_t **current_node_pointer,
+                                           int *depth, lizard_heap_t *heap) {
+  volatile int prev_active;
+  lizard_ast_node_t *result;
+
+  if (lz_parse_active) {
+    return lizard_parse_expression_inner(token_list, current_node_pointer,
+                                         depth, heap);
+  }
+
+  prev_active = lz_parse_active;
+  lz_parse_failed = 0;
+  if (setjmp(lz_parse_recovery)) {
+    lz_parse_active = prev_active;
+    return NULL;
+  }
+  lz_parse_active = 1;
+  result = lizard_parse_expression_inner(token_list, current_node_pointer,
+                                         depth, heap);
+  lz_parse_active = prev_active;
+  return result;
 }
 
 /* Non-specializing parser for s-expression "datum" context.
@@ -790,14 +841,13 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
  *
  * Side effect: advances *cur past the datum it consumed.
  */
-lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
-                                      lz_list_node_t **cur,
-                                      lizard_heap_t *heap) {
+static lizard_ast_node_t *lizard_parse_datum_inner(lz_list_t *token_list,
+                                             lz_list_node_t **cur,
+                                             lizard_heap_t *heap) {
   lizard_token_t *tok;
   lizard_ast_node_t *node;
   if (*cur == token_list->nil) {
-    fprintf(stderr, "Error: unexpected EOF in datum.\n");
-    exit(1);
+    lizard_parser_fail("unexpected EOF in datum.", NULL);
   }
   tok = &CAST(*cur, lizard_token_list_node_t)->token;
   if (tok->type == TOKEN_LEFT_PAREN) {
@@ -825,8 +875,7 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
         tail_slot = &pair->data.pair.cdr;
       }
     }
-    fprintf(stderr, "Error: missing closing paren in datum.\n");
-    exit(1);
+    lizard_parser_fail("missing closing paren in datum.", tok);
   }
   /* atom */
   node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -877,8 +926,7 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
       lizard_token_t *next;
       *cur = (*cur)->next;
       if (*cur == token_list->nil) {
-        fprintf(stderr, "Error: dangling # in datum.\n");
-        exit(1);
+        lizard_parser_fail("dangling # in datum.", tok);
       }
       next = &CAST(*cur, lizard_token_list_node_t)->token;
       node->type = AST_BOOL;
@@ -895,22 +943,72 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
     *cur = (*cur)->next;
     return node;
   default:
-    fprintf(stderr, "Error: unexpected token in datum.\n");
-    exit(1);
+    lizard_parser_fail("unexpected token in datum.", tok);
   }
+  return NULL;
+}
+
+
+lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
+                                    lz_list_node_t **current_node_pointer,
+                                    lizard_heap_t *heap) {
+  volatile int prev_active;
+  lizard_ast_node_t *result;
+
+  if (lz_parse_active) {
+    return lizard_parse_datum_inner(token_list, current_node_pointer, heap);
+  }
+
+  prev_active = lz_parse_active;
+  lz_parse_failed = 0;
+  if (setjmp(lz_parse_recovery)) {
+    lz_parse_active = prev_active;
+    return NULL;
+  }
+  lz_parse_active = 1;
+  result = lizard_parse_datum_inner(token_list, current_node_pointer, heap);
+  lz_parse_active = prev_active;
+  return result;
 }
 
 lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
   lz_list_t *ast_list;
   lz_list_node_t *current;
   int depth;
+  volatile int prev_active;
+
+  if (token_list == NULL) {
+    lz_parse_failed = 1;
+    lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
+    lz_parse_diag.span.filename = NULL;
+    lz_parse_diag.span.start_line = 0;
+    lz_parse_diag.span.start_column = 0;
+    lz_parse_diag.span.end_line = 0;
+    lz_parse_diag.span.end_column = 0;
+    lz_parse_diag.span.start_offset = 0;
+    lz_parse_diag.span.end_offset = 0;
+    strncpy(lz_parse_diag.message, "tokenization failed",
+            sizeof(lz_parse_diag.message) - 1U);
+    lz_parse_diag.message[sizeof(lz_parse_diag.message) - 1U] = '\0';
+    return NULL;
+  }
+
+  /* Establish a recovery point: any lizard_parser_fail() below longjmps
+   * here instead of killing the process. */
+  prev_active = lz_parse_active;
+  lz_parse_failed = 0;
+  if (setjmp(lz_parse_recovery)) {
+    lz_parse_active = prev_active;
+    return NULL; /* a syntax error was recorded in lz_parse_diag */
+  }
+  lz_parse_active = 1;
 
   ast_list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   current = token_list->head;
   depth = 0;
   while (current != token_list->nil) {
     lizard_ast_node_t *ast =
-        lizard_parse_expression(token_list, &current, &depth, heap);
+        lizard_parse_expression_inner(token_list, &current, &depth, heap);
     lizard_ast_list_node_t *ast_node =
         (lizard_ast_list_node_t *)lizard_heap_alloc(
             sizeof(lizard_ast_list_node_t));
@@ -919,10 +1017,10 @@ lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
     if (ast != NULL) {
       list_append(ast_list, &ast_node->node);
     } else {
-      fprintf(stderr, "Error: Failed to parse expression.\n");
-      exit(1);
+      lizard_parser_fail("Failed to parse expression.", NULL);
     }
   }
 
+  lz_parse_active = prev_active;
   return ast_list;
 }

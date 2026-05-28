@@ -1069,6 +1069,8 @@ lizard_ast_node_t *lizard_primitive_delay(lz_list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_force(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap);
 
+lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
+                                        lizard_heap_t *heap);
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
                                lizard_heap_t *heap, lizard_continuation_t cont);
 lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,

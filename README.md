@@ -63,13 +63,19 @@ See `docs/ROADMAP.md` for the full track breakdown and
 Requires GCC (or a C89-clean compiler) and GMP.
 
 ```
-nix-shell --run make        # with Nix
-make                        # without Nix (GMP at standard prefix)
-CPPFLAGS="-I/path/gmp/include" LDFLAGS="-L/path/gmp/lib" make   # custom GMP
-make test                   # run the test suite
+nix develop                 # enter the dev shell (provides GCC + GMP)
+make                        # build
+make test                   # unit tests
+make examples               # run every example, checked against examples/manifest.sexp
+make check                  # test + examples
 ```
 
-Binary lands at `build/lizard`.
+Without Nix (GMP at a standard prefix): just `make`. For a custom GMP
+location: `CPPFLAGS="-I/path/gmp/include" LDFLAGS="-L/path/gmp/lib" make`.
+
+Binary lands at `build/lizard`. `make examples` is honest: it fails if a
+`pass` example errors or an `error` example unexpectedly succeeds (see
+`examples/manifest.sexp`).
 
 ## Run
 

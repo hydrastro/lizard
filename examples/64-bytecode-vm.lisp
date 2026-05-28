@@ -13,7 +13,7 @@
 ; cons/car/cdr, display/newline.
 ;
 ; Forms not supported by the compiler (macros, call/cc, type
-; theory nodes) fall back to being stored as constants.
+; theory nodes) now fail explicitly instead of pretending to run.
 
 (display "=== Arithmetic ===") (newline)
 (display "  (vm-eval '(+ 2 3)): ")

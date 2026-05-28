@@ -83,6 +83,7 @@
     "Error: 'print-tokens' expects a string argument.")                        \
   X(LIZARD_ERROR_TOKENIZATION,                                                 \
     "Error: tokenization failed due to a syntax error.")                       \
+  X(LIZARD_ERROR_PARSE, "Error: parse failed due to a syntax error.")          \
   X(LIZARD_ERROR_AST_ARGC,                                                     \
     "Error: AST function got an incorrect number of arguments.")               \
   X(LIZARD_ERROR_AST_ARGT,                                                     \
@@ -108,6 +109,8 @@
   X(LIZARD_ERROR_LOAD_ARGT, "Error: 'load' expects a string path.")            \
   X(LIZARD_ERROR_LOAD_OPEN, "Error: 'load' could not open file.")              \
   X(LIZARD_ERROR_LOAD_READ, "Error: 'load' failed reading file.")              \
+  X(LIZARD_ERROR_BYTECODE_UNSUPPORTED,                                      \
+    "Error: bytecode compiler does not support this form.")                 \
   X(LIZARD_ERROR_USER, "Error: user-raised")
 
 #define LIZARD_ERROR_MESSAGES                                                  \

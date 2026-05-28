@@ -262,43 +262,45 @@ static char *read_input(void) {
 
 /* primitive registration is now provided by liblizard so tests can use it */
 
-static int eval_source(lizard_env_t *global_env, const char *source,
+static int eval_source(lizard_context_t *context, const char *source,
                        int interactive) {
-  lz_list_t *tokens;
-  lz_list_t *ast_list;
-  lz_list_node_t *node;
-  lizard_ast_list_node_t *expr_node;
-  lizard_ast_node_t *expanded_ast;
-  lizard_ast_node_t *result;
+  lizard_value_t *result;
+  lizard_status_t status;
 
-  tokens = lizard_tokenize(source);
-  if (tokens == NULL) {
-    fprintf(stderr, "tokenization failed\n");
-    return 1;
-  }
-  ast_list = lizard_parse(tokens, heap);
-  if (ast_list == NULL) {
-    fprintf(stderr, "parse failed\n");
-    return 1;
-  }
-  node = ast_list->head;
-  while (node != ast_list->nil) {
-    expr_node = (lizard_ast_list_node_t *)node;
-    expanded_ast = lizard_expand_macros(expr_node->ast, global_env, heap);
-    result = lizard_eval(expanded_ast, global_env, heap, lizard_identity_cont);
-    if (interactive) {
-      printf("=> ");
+  result = NULL;
+  status = lizard_context_eval_string(context, source, &result);
+  if (status != LIZARD_STATUS_OK) {
+    if (result != NULL && result->type == AST_ERROR) {
+      /* Evaluation error: print the error value (carries its own location). */
       lizard_print_value(result);
       printf("\n");
-    } else if (result && result->type == AST_ERROR) {
-      lizard_print_value(result);
-      printf("\n");
-    } else if (result && result->type != AST_NIL) {
-      printf("=> ");
-      lizard_print_value(result);
-      printf("\n");
+    } else {
+      /* Parse/tokenize error: present the recorded diagnostic with location.
+       * The parser records this as data and no longer prints it itself. */
+      const lizard_diagnostic_t *d;
+      d = lizard_context_last_diagnostic(context);
+      if (d != NULL && d->message[0] != '\0') {
+        if (d->span.filename != NULL && d->span.start_line > 0) {
+          fprintf(stderr, "%s:%d:%d: error: %s\n", d->span.filename,
+                  d->span.start_line, d->span.start_column, d->message);
+        } else if (d->span.start_line > 0) {
+          fprintf(stderr, "error at %d:%d: %s\n", d->span.start_line,
+                  d->span.start_column, d->message);
+        } else {
+          fprintf(stderr, "error: %s\n", d->message);
+        }
+      }
     }
-    node = node->next;
+    return 1;
+  }
+  if (interactive) {
+    printf("=> ");
+    lizard_print_value(result);
+    printf("\n");
+  } else if (result != NULL && result->type != AST_NIL) {
+    printf("=> ");
+    lizard_print_value(result);
+    printf("\n");
   }
   return 0;
 }
@@ -345,22 +347,56 @@ int main(int argc, char **argv) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");
     return 2;
   }
-  if (file_path != NULL && freopen(file_path, "r", stdin) == NULL) {
-    perror(file_path);
-    return 1;
-  }
-
-  mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
-                          lizard_heap_free_wrapper);
-  heap = lizard_heap_create(1024 * 1024, 16 * 1024 * 1024);
   {
-    lizard_env_t *global_env;
-    global_env = lizard_env_create(heap, NULL);
+    lizard_runtime_t *runtime;
+    lizard_context_t *context;
 
-    lizard_install_primitives(heap, global_env);
+    /* lizard_runtime_create installs the GMP allocators, creates the heap,
+     * and sets up all formerly-global state (modules, search path, flags). */
+    runtime = lizard_runtime_create(NULL);
+    if (runtime == NULL) {
+      fprintf(stderr, "failed to create lizard runtime\n");
+      return 1;
+    }
+    context = lizard_context_create(runtime);
+    if (context == NULL) {
+      fprintf(stderr, "failed to create lizard context\n");
+      lizard_runtime_destroy(runtime);
+      return 1;
+    }
 
     if (eval_expr != NULL) {
-      exit_code = eval_source(global_env, eval_expr, 0);
+      exit_code = eval_source(context, eval_expr, 0);
+    } else if (file_path != NULL) {
+      lizard_value_t *file_result;
+      lizard_status_t file_status;
+      file_result = NULL;
+      file_status = lizard_context_eval_file(context, file_path, &file_result);
+      if (file_status != LIZARD_STATUS_OK) {
+        if (file_result != NULL && file_result->type == AST_ERROR) {
+          lizard_print_value(file_result);
+          printf("\n");
+        } else {
+          const lizard_diagnostic_t *d;
+          d = lizard_context_last_diagnostic(context);
+          if (d != NULL && d->message[0] != '\0') {
+            if (d->span.filename != NULL && d->span.start_line > 0) {
+              fprintf(stderr, "%s:%d:%d: error: %s\n", d->span.filename,
+                      d->span.start_line, d->span.start_column, d->message);
+            } else if (d->span.start_line > 0) {
+              fprintf(stderr, "error at %d:%d: %s\n", d->span.start_line,
+                      d->span.start_column, d->message);
+            } else {
+              fprintf(stderr, "error: %s\n", d->message);
+            }
+          }
+        }
+        exit_code = 1;
+      } else if (file_result != NULL && file_result->type != AST_NIL) {
+        printf("=> ");
+        lizard_print_value(file_result);
+        printf("\n");
+      }
     } else {
       while (1) {
         interactive = isatty(STDIN_FILENO);
@@ -380,16 +416,17 @@ int main(int argc, char **argv) {
           free(input);
           continue;
         }
-        if (eval_source(global_env, input, interactive) != 0) {
+        if (eval_source(context, input, interactive) != 0) {
           exit_code = 1;
         }
         free(input);
       }
     }
+    lizard_context_destroy(context);
+    lizard_runtime_destroy(runtime);
   }
   for (i = 0; i < HISTORY_SIZE; i++) {
     free(history[i]);
   }
-  lizard_heap_destroy(heap);
   return exit_code;
 }

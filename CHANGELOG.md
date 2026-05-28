@@ -1,3 +1,39 @@
+# Recoverable Core Phase 1D — primitive split and strict foundations
+- Recoverable Core Phase 1E: split vector/hash primitives into `src/prims_collections.c`, split type-theory notation/logic primitives into `src/prims_tt.c`, and teach `clean.sh --check` that `.git`/`.gitmodules` are expected repository metadata.
+
+
+- Split additional coherent primitive families out of the monolithic `src/primitives.c`:
+  `prims_common.c`, `prims_lists.c`, `prims_modules.c`, `prims_gc.c`,
+  `prims_syntax.c`, and `prims_persistent.c`.
+- Kept primitive registration centralized while moving implementation bodies into
+  domain-specific files, making future module/GC/concurrency work easier to audit.
+- Added shared primitive helper routines for arity checks, nth-argument access,
+  and small alist construction used by diagnostics/GC/syntax primitives.
+- Preserved strict C89 / `-Werror` build discipline and kept all tests/examples green.
+
+# Recoverable Core continuation
+
+### Recoverable Core Phase 1B/C
+
+- Made direct parser entry points recoverable instead of process-exiting on syntax failure.
+- Preserved source names for `load`, `import`, `ast`, and token-printing paths.
+- Split bytecode/profiling primitives into `src/prims_bytecode.c`.
+- Made bytecode compilation strict for unsupported internal AST forms instead of silently treating them as constants.
+- Improved the example runner's missing-manifest diagnostic with an explicit suggested manifest entry.
+
+
+- Added recoverable tokenizer diagnostics through `lizard_tokenize_source`.
+- Unterminated strings now return `LIZARD_STATUS_PARSE_ERROR` with source span
+  instead of terminating the process.
+- `lizard_context_eval_file` now preserves filename-aware parse diagnostics.
+- Parser/tokenizer spans now carry a filename pointer when source names are
+  available.
+- Load/import/AST primitives now handle tokenization/parse failures without
+  dereferencing `NULL`.
+- Added API tests for tokenizer recovery and file-based diagnostic filenames.
+- `scripts/run-examples.sh` now invokes `build/lizard example.lisp` so example
+  diagnostics use the same file-evaluation/context path as real script runs.
+
 # Changelog
 
 ## Documentation refresh + proof-producing CAS

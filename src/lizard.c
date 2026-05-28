@@ -1150,9 +1150,6 @@ static lizard_ast_node_t *lizard_datumize(lizard_ast_node_t *n,
  * pair-chain and reconstructs specialized AST nodes by recognizing
  * special heads (`lambda`, `if`, etc.). This skips the text-rendering
  * roundtrip and keeps everything in-memory. */
-lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
-                                        lizard_heap_t *heap);
-
 static lz_list_t *pair_to_app_args(lizard_ast_node_t *list_form,
                                    lizard_heap_t *heap) {
   lz_list_t *args = list_create_alloc(lizard_heap_alloc, lizard_heap_free);

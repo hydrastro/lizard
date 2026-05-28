@@ -13,6 +13,7 @@ typedef enum {
 
 typedef struct lizard_token {
   lizard_token_type_t type;
+  const char *filename;
   int line;
   int column;
   int offset;
@@ -32,7 +33,13 @@ bool lizard_is_digit(const char *input, int i);
 void lizard_source_position(const char *input, int offset, int *line, int *column);
 void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
                       char *data, int line, int column, int offset);
+void lizard_add_token_source(lz_list_t *list, lizard_token_type_t token_type,
+                             char *data, const char *filename, int line,
+                             int column, int offset);
 lz_list_t *lizard_tokenize(const char *input);
+lz_list_t *lizard_tokenize_source(const char *input, const char *filename,
+                                  lizard_diagnostic_t *diagnostic);
+const lizard_diagnostic_t *lizard_tokenizer_last_diagnostic(void);
 void lizard_free_tokens(lz_list_t *token_list);
 
 #endif /* LIZARD_TOKENIZER_H */

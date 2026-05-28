@@ -81,7 +81,7 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel tactics
+LIB_SRCS := runtime lizard env mem parser primitives prims_common prims_lists prims_modules prims_gc prims_syntax prims_persistent prims_collections prims_tt prims_bytecode tokenizer printer tt_equality tt_check gc bytecode kernel tactics
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------
@@ -130,10 +130,7 @@ include tests/tests.mk
 
 # --- examples ------------------------------------------------------------
 examples: $(REPL_BIN)
-	@set -e; for f in $(EXAMPLE_DIR)/*.lisp; do \
-	  echo "=== $$f ==="; \
-	  $(RUN_ENV) $(REPL_BIN) < "$$f" || exit $$?; \
-	done
+	@$(RUN_ENV) ./scripts/run-examples.sh $(REPL_BIN)
 
 # --- profiling / coverage -----------------------------------------------
 smoke: $(REPL_BIN)

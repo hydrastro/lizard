@@ -65,6 +65,7 @@
   X(LIZARD_ERROR_TOKENS_ARGC)                                                  \
   X(LIZARD_ERROR_TOKENS_ARGT)                                                  \
   X(LIZARD_ERROR_TOKENIZATION)                                                 \
+  X(LIZARD_ERROR_PARSE)                                                        \
   X(LIZARD_ERROR_AST_ARGC)                                                     \
   X(LIZARD_ERROR_AST_ARGT)                                                     \
   X(LIZARD_ERROR_EVAL_ARGC)                                                    \
@@ -85,6 +86,7 @@
   X(LIZARD_ERROR_LOAD_ARGT)                                                    \
   X(LIZARD_ERROR_LOAD_OPEN)                                                    \
   X(LIZARD_ERROR_LOAD_READ)                                                    \
+  X(LIZARD_ERROR_BYTECODE_UNSUPPORTED)                                     \
   X(LIZARD_ERROR_USER)
 
 typedef enum lizard_error_code {

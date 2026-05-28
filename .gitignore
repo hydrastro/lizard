@@ -1,38 +1,34 @@
-# Build products
-build/
-coverage/
+# --- build artifacts -------------------------------------------------
+/build/
 *.o
 *.a
 *.so
-*.d
-*.gcov
-*.gcda
+*.dylib
 *.gcno
+*.gcda
+*.gcov
+/coverage/
 
-# Nix
-result
-result-*
-
-# Profiling / debugging
-perf.data
-perf.data.old
-gmon.out
-core
-core.*
-*.prof
-*.profraw
-*.profdata
-
-# Local editor / OS files
-.DS_Store
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
-
-# Archives accidentally copied into the repo
+# --- never commit release bundles ------------------------------------
 *.zip
 *.tar
 *.tar.gz
 *.tgz
+
+# --- editor / OS ------------------------------------------------------
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# --- logs / scratch --------------------------------------------------
+*.log
+*.bak
+/scratch/
+perf.data*
+
+# --- Nix --------------------------------------------------------------
+result
+result-*
