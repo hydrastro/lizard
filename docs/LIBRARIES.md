@@ -761,3 +761,45 @@ single typed-language frontend.
 - `examples/122-reader-lang.lisp` — Track R: reader + #lang
 - `examples/123-hit-computation.lisp` — Track Q: winding numbers, canonicity
 - `examples/124-capstone-pipeline.lisp` — all subsystems composed
+
+## lib/cas.lisp — Symbolic computer algebra
+
+Symbolic expressions, simplification, differentiation, basic integration.
+
+**Build/predicates:** cas-const?, cas-var?, cas-op?, cas-sum, cas-prod, …
+
+**Simplify:** simplify (algebraic identities)
+
+**Calculus:** diff, derivative (diff+simplify), integrate
+
+**Print:** cas->string
+
+```lisp
+(cas->string (derivative '(^ x 2) 'x))   ; "(2 * x)"
+(cas->string (integrate '(^ x 2) 'x))    ; "(x^3 / 3)"
+```
+
+## lib/cas-proof.lisp — Proof-producing CAS (CAS → ZFC)
+
+Attaches justifications to CAS steps and traces them to ZFC axioms.
+
+**Database:** foundation-db (ZFC → reals → fields → limits → calculus),
+rule-statement, rule-deps, axiom?
+
+**Unfolding:** unfold-to-axioms, dep-tree
+
+**Derivations:** diff-proof, deriv, print-derivation
+
+**Foundations:** print-foundations, print-dep-layers
+
+```lisp
+(print-derivation (diff-proof '(^ x 2) 'x))   ; tree with rule citations
+(unfold-to-axioms 'calc-power)                ; ZFC axioms it rests on
+(print-foundations 'calc-product)             ; product rule → ZFC
+```
+
+See `docs/CAS.md` for the verified-CAS architecture and roadmap.
+
+## New examples (CAS)
+- `examples/125-cas-symbolic.lisp` — differentiation & integration
+- `examples/126-cas-proof-to-zfc.lisp` — unfolding a derivative to ZFC

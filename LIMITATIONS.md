@@ -256,3 +256,28 @@ For all of (4)-(6), the realistic statement is: these are research
 projects, not implementation tasks. Lizard is an artifact suitable
 for pushing through (1) and (2), arguably (3), and not designed to
 support (4)-(6) within its current architecture.
+
+## Computer algebra (lib/cas.lisp, lib/cas-proof.lisp)
+
+The CAS is a working symbolic engine (simplification, differentiation,
+basic integration) but a deliberately small one — it is a foundation to
+build on, not a Maxima replacement. Specifically:
+
+- **Simplification is shallow.** It applies the obvious identities
+  (x+0, x*1, x*0, x^0, x^1, constant folding) but does not normalize
+  fully, collect like terms, or canonicalize. Two equal expressions may
+  print differently.
+- **Integration handles only simple polynomial cases.** No
+  substitution, parts, partial fractions, or special functions.
+- **The proof layer is a justification SKELETON, not a checked proof.**
+  `cas-proof.lisp` records which named rule justifies each step and
+  unfolds the dependency chain down to ZFC. But the rule *statements*
+  are informal strings and the dependency *edges* are asserted, not
+  machine-verified. It demonstrates the architecture of a verified CAS;
+  it is not yet one. `docs/CAS.md` describes the path to discharging the
+  rules against the trusted kernel.
+
+In short: the CAS computes correctly on its supported fragment, and the
+proof layer faithfully shows the logical dependency structure down to
+the axioms — but turning "cited" into "checked" is future work, tracked
+in `docs/CAS.md`.

@@ -1,3 +1,23 @@
+# Changelog
+
+## Documentation refresh + proof-producing CAS
+
+- Rewrote `README.md` to reflect the current state: the four research
+  tracks (R/C/K/Q, all feature-complete at the library level), the
+  45-module standard library, the self-hosting demos, and bignum
+  performance (within ~200ms of MIT Scheme on the 123^12312 loop).
+- Added `docs/USAGE.md` — a getting-started guide and library recipes.
+- Added `docs/CAS.md` — the proof-producing / verified CAS architecture
+  and a roadmap connecting the CAS to the trusted kernel and ZFC.
+- New `lib/cas.lisp` — symbolic algebra: simplification, differentiation
+  (constant/variable/sum/product/quotient/power/chain + sin/cos/exp/ln),
+  and basic polynomial integration.
+- New `lib/cas-proof.lisp` — a layered foundation database (ZFC axioms →
+  real construction → field axioms → limits → derivative → calculus
+  rules), derivation trees with rule citations, and unfolding of any
+  CAS result down to the ZFC axioms it rests on.
+- New examples 125 (symbolic CAS) and 126 (a derivative unfolded to ZFC).
+
 # Lizard v5 — engineering infrastructure (in progress)
 
 This section logs the major infrastructure work built on top of the v4
