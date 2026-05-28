@@ -581,3 +581,73 @@ vec->list, vec-len, vec-rec (eliminator)
 ## New examples (research tracks)
 - `examples/112-concurrency-csp.lisp` — Track C: channels, scheduler, agents
 - `examples/113-inductive-families.lisp` — Track K: Vec, Fin, dependent types
+
+## lib/rewrite.lisp — Term rewriting + induction (Track K)
+
+**Matching:** rw-match (one-directional), rw-subst
+
+**Rewriting:** rule, rewrite-root, rewrite-step, rewrite-normalize,
+rewrite-trace
+
+**Induction:** nat-induction, list-induction, verify-nat-property
+
+**Equational reasoning:** eq-chain, eq-chain-result
+
+```lisp
+(rewrite-normalize arith-rules '(* (+ a 0) 1) 50)   ; => a
+(verify-nat-property (lambda (n) (= (sum-to n) (gauss-formula n))) 20)  ; #t
+```
+
+## lib/macro-expand.lisp — Recursive hygienic expansion (Track R)
+
+**Gensym:** gensym (fresh symbols)
+
+**Env:** make-macro-env, macro-env-add, macro-lookup
+
+**Expansion:** expand-all (to fixpoint), expand-once, expand-all-h
+
+**Hygiene:** make-hygienic-macro, rename-ids (template binders → gensyms)
+
+```lisp
+(expand-all '(my-unless done (cleanup)) menv)  ; my-unless→my-when→if
+(expand-all-h '(swap tmp y) hyg-menv)          ; template tmp renamed; no capture
+```
+
+## lib/hit-recursors.lisp — HIT eliminators (Track Q)
+
+Recursors that satisfy the computation (β) rules.
+
+**Circle:** s1-rec, s1-rec-check, loop-pt
+
+**Suspension:** susp-rec, merid-pt
+
+**Torus:** torus-rec, torus-loop-a/b
+
+**Truncation:** trunc-rec, trunc-inj
+
+**Demo:** winding-number (π₁(S¹) = ℤ)
+
+```lisp
+((s1-rec 'red (path-const 'red)) 'base)   ; β-rule: base ↦ red
+```
+
+## lib/stm.lisp — Software Transactional Memory (Track C)
+
+Optimistic concurrency over versioned refs.
+
+**Refs:** make-ref, ref-value, ref-version
+
+**Transactions:** tx-begin, tx-read, tx-write!, tx-commit!
+
+**Runner:** atomically (validate + retry), stm-transfer!, stm-update!
+
+```lisp
+(stm-transfer! account-a account-b 30)   ; atomic multi-ref update
+(atomically (lambda (tx) (tx-write! tx r (+ (tx-read tx r) 1))))
+```
+
+## New examples (research tracks — extreme drop)
+- `examples/114-rewrite-induction.lisp` — Track K
+- `examples/115-hygienic-macros.lisp` — Track R
+- `examples/116-hit-recursors.lisp` — Track Q
+- `examples/117-stm.lisp` — Track C
