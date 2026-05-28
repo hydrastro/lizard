@@ -48,7 +48,11 @@ typedef enum {
   KT_LIST,         /* List A — the type of lists of A */
   KT_NIL_K,        /* nil : List A */
   KT_CONS_K,       /* cons : A → List A → List A */
-  KT_LIST_REC      /* list recursor */
+  KT_LIST_REC,     /* list recursor */
+  KT_MAYBE,        /* Maybe A — option type */
+  KT_NOTHING,      /* nothing : Maybe A */
+  KT_JUST,         /* just : A → Maybe A */
+  KT_MAYBE_REC     /* maybe eliminator */
 } kterm_tag_t;
 
 /* ---- kernel term ---- */
@@ -84,6 +88,10 @@ typedef struct kterm {
     struct { struct kterm *head; struct kterm *tail; } cons_k;  /* cons h t */
     struct { struct kterm *motive; struct kterm *nil_case;
              struct kterm *cons_case; struct kterm *scrutinee; } list_rec;
+    struct { struct kterm *elem_type; } maybe;      /* Maybe A */
+    struct { struct kterm *value; } just;            /* just v */
+    struct { struct kterm *motive; struct kterm *nothing_case;
+             struct kterm *just_case; struct kterm *scrutinee; } maybe_rec;
   } data;
 } kterm_t;
 

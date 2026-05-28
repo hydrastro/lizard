@@ -2525,6 +2525,10 @@ static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
         kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
         memset(b, 0, sizeof(*b)); b->tag = KT_NIL_K; return b;
       }
+      if (strcmp(s, "nothing") == 0) {
+        kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(b, 0, sizeof(*b)); b->tag = KT_NOTHING; return b;
+      }
     /* de Bruijn variable: #0, #1, etc. */
     if (s[0] == '#' && s[1] >= '0' && s[1] <= '9') {
       return kt_var(heap, s[1] - '0');
@@ -2789,6 +2793,32 @@ static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
         nr->data.nat_rec.succ_case = sc;
         nr->data.nat_rec.scrutinee = scrut;
         return nr;
+      }
+      /* (Maybe A) */
+      if (strcmp(name, "Maybe") == 0 && parts != NULL) {
+        kterm_t *et = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        if (et) {
+          kterm_t *m = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(m, 0, sizeof(*m));
+          m->tag = KT_MAYBE;
+          m->data.maybe.elem_type = et;
+          return m;
+        }
+        return NULL;
+      }
+      /* (just v) */
+      if (strcmp(name, "just") == 0 && parts != NULL) {
+        kterm_t *v = sexp_to_kterm(heap,
+            ((lizard_ast_list_node_t *)parts->head->next)->ast);
+        if (v) {
+          kterm_t *j = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(j, 0, sizeof(*j));
+          j->tag = KT_JUST;
+          j->data.just.value = v;
+          return j;
+        }
+        return NULL;
       }
       /* (if scrutinee true-case false-case) — Bool eliminator. */
       if (strcmp(name, "if") == 0 && parts != NULL) {

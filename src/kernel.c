@@ -158,6 +158,7 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
   case KT_UNIT: case KT_STAR:
   case KT_META:
   case KT_NIL_K:
+  case KT_NOTHING:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
@@ -221,6 +222,7 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
   case KT_UNIT: case KT_STAR:
   case KT_META:
   case KT_NIL_K:
+  case KT_NOTHING:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
@@ -344,6 +346,14 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     return t;
   }
 
+  case KT_MAYBE_REC: {
+    kterm_t *scrut = kt_whnf(heap, ctx, t->data.maybe_rec.scrutinee);
+    if (scrut->tag == KT_NOTHING)
+      return kt_whnf(heap, ctx, t->data.maybe_rec.nothing_case);
+    if (scrut->tag == KT_JUST)
+      return kt_whnf(heap, ctx, kt_app(heap, t->data.maybe_rec.just_case, scrut->data.just.value));
+    return t;
+  }
   case KT_LIST_REC: {
     kterm_t *scrut = kt_whnf(heap, ctx, t->data.list_rec.scrutinee);
     if (scrut->tag == KT_NIL_K)
@@ -400,7 +410,12 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
   case KT_NIL_K:
+  case KT_NOTHING:
     return 1;
+  case KT_MAYBE:
+    return kt_equal(heap, ctx, na->data.maybe.elem_type, nb->data.maybe.elem_type);
+  case KT_JUST:
+    return kt_equal(heap, ctx, na->data.just.value, nb->data.just.value);
   case KT_LIST:
     return kt_equal(heap, ctx, na->data.list.elem_type, nb->data.list.elem_type);
   case KT_CONS_K:
@@ -584,6 +599,27 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     l->data.list.elem_type = ht;
     return l;
   }
+  case KT_MAYBE: {
+    kterm_t *et = kt_infer(heap, ctx, t->data.maybe.elem_type);
+    if (et == NULL) return NULL;
+    et = kt_whnf(heap, ctx, et);
+    if (et->tag != KT_SORT) return NULL;
+    return kt_sort(heap, et->data.sort.level);
+  }
+  case KT_NOTHING: {
+    /* nothing needs type annotation */
+    return NULL;
+  }
+  case KT_JUST: {
+    kterm_t *vt = kt_infer(heap, ctx, t->data.just.value);
+    kterm_t *m;
+    if (vt == NULL) return NULL;
+    m = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(m, 0, sizeof(*m));
+    m->tag = KT_MAYBE;
+    m->data.maybe.elem_type = vt;
+    return m;
+  }
   case KT_ANNOT: {
     kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
                                   t->data.annot.type);
@@ -684,6 +720,17 @@ void kt_fprint(FILE *fp, kterm_t *t) {
     break;
   case KT_LIST_REC:
     fprintf(fp, "(listrec ...)"); break;
+
+  case KT_MAYBE:
+    fprintf(fp, "(Maybe "); kt_fprint(fp, t->data.maybe.elem_type); fprintf(fp, ")");
+    break;
+  case KT_NOTHING:
+    fprintf(fp, "nothing"); break;
+  case KT_JUST:
+    fprintf(fp, "(just "); kt_fprint(fp, t->data.just.value); fprintf(fp, ")");
+    break;
+  case KT_MAYBE_REC:
+    fprintf(fp, "(maybe-rec ...)"); break;
   default:
     fprintf(fp, "<kterm:%d>", t->tag);
     break;
@@ -745,6 +792,7 @@ kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t) {
   case KT_VAR: case KT_SORT: case KT_NAT: case KT_ZERO:
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
+  case KT_NOTHING: case KT_NIL_K:
     return t;
   case KT_SUCC:
     return kt_succ(heap, meta_zonk(heap, mctx, t->data.succ.pred));
@@ -872,7 +920,12 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
   case KT_NIL_K:
+  case KT_NOTHING:
     return 1;
+  case KT_MAYBE:
+    return kt_unify(heap, ctx, mctx, na->data.maybe.elem_type, nb->data.maybe.elem_type);
+  case KT_JUST:
+    return kt_unify(heap, ctx, mctx, na->data.just.value, nb->data.just.value);
   case KT_LIST:
     return kt_unify(heap, ctx, mctx, na->data.list.elem_type, nb->data.list.elem_type);
   case KT_CONS_K:

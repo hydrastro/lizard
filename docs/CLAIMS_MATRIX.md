@@ -37,3 +37,12 @@ feature changes from notation, to scaffold, to checked kernel feature.
 | Standard library | basic | sort, zip, partition, flatten, take, drop, any, every, enumerate, range, compose, ->, alist-ref, alist-set. |
 | Syntax objects | basic | datum->syntax, syntax->datum, syntax-e, syntax-source, syntax?. Foundation for hygiene. |
 | Persistent vectors | basic | pvec, pvec-ref, pvec-set, pvec-push, pvec-count, pvec->list. Copy-on-write (trie upgrade planned). |
+
+## Final session additions
+
+| Feature | Status | Notes |
+|---|---|---|
+| Kernel Maybe type | checked | Maybe A, nothing, just v. maybe-rec with computation: maybe-rec _ n _ nothing → n, maybe-rec _ _ j (just v) → j v. |
+| Kernel List type | checked | List A, nil, cons h t. listrec with computation: listrec _ n _ nil → n, listrec C n c (cons h t) → c h t (listrec C n c t). |
+| Unification | basic | First-order flex-rigid unification. Solves metavars by structural matching. Works under WHNF. |
+| Kernel tests | comprehensive | C-level tests for Nat, Bool, Pi/beta, Sigma/proj, Id/refl, unification, sort hierarchy, definitional equality. |
