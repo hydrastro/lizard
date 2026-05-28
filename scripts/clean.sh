@@ -10,7 +10,7 @@
 #   ./scripts/clean.sh                 # standard cleanup (safe)
 #   ./scripts/clean.sh --dry           # print what would be removed
 #   ./scripts/clean.sh --deep          # also wipe Nix result/.direnv/cache
-#   ./scripts/clean.sh --nuke-lock     # with --deep, also remove flake.lock
+  ./scripts/clean.sh --nuke-lock     # with --deep, also remove flake.lock
 #   ./scripts/clean.sh --suspicious    # also list files at top level
 #                                      # that look out of place (NOT
 #                                      # removed automatically — only
@@ -214,7 +214,7 @@ if [[ $suspicious -eq 1 ]]; then
   echo "${c_dim}  These are NOT removed automatically. They're listed so${c_off}"
   echo "${c_dim}  you can review and decide.${c_off}"
 
-  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|\.git|\.gitmodules|\.github|build|src|include|tests|examples|scripts|docs|lib|prelude\.lisp|LICENSE.*)$'
+  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|\.git|\.gitmodules|\.github|build|src|include|tests|examples|scripts|docs|prelude\.lisp|LICENSE.*)$'
 
   found_any=0
   # Iterate over normal entries first, then dotfiles (safely).

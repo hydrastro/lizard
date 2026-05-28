@@ -95,12 +95,9 @@ typedef struct {
 /* ---- public API ---- */
 
 /* Compile an AST expression to a bytecode chunk. Returns NULL on
- * failure (unsupported form). The chunk is heap-allocated.
- * On failure, lizard_compile_last_error() returns a short static
- * description of the unsupported construct. */
+ * failure (unsupported form). The chunk is heap-allocated. */
 lizard_bc_chunk_t *lizard_compile(lizard_ast_node_t *expr,
                                    lizard_heap_t *heap);
-const char *lizard_compile_last_error(void);
 
 /* Execute a bytecode chunk in the given environment. Returns the
  * result value (top of stack after OP_HALT). */

@@ -6,7 +6,8 @@
 #include <setjmp.h>
 
 /* Forward declarations for opaque internal types whose linked-list
- * heads live in the runtime (Phase 0 Turn B.2). Definitions live in tt_registry.c and tt_equality.c. */
+ * heads live in the runtime (Phase 0 Turn B.2). Definitions remain
+ * in tt_equality.c. */
 struct logic_rule_entry;
 struct hit_registry_entry;
 struct lizard_tt_flag;

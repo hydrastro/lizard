@@ -14,19 +14,6 @@
 #include <string.h>
 #include <gmp.h>
 
-/* ---- compiler diagnostics ---- */
-
-static const char *compile_last_error = NULL;
-
-static int compile_fail(const char *message) {
-  compile_last_error = message;
-  return -1;
-}
-
-const char *lizard_compile_last_error(void) {
-  return compile_last_error != NULL ? compile_last_error : "bytecode compilation failed";
-}
-
 /* ---- opcode names ---- */
 
 const char *lizard_bc_opcode_name(lizard_opcode_t op) {
@@ -69,10 +56,7 @@ const char *lizard_bc_opcode_name(lizard_opcode_t op) {
 static lizard_bc_chunk_t *chunk_create(lizard_heap_t *heap) {
   lizard_bc_chunk_t *c;
   c = (lizard_bc_chunk_t *)malloc(sizeof(lizard_bc_chunk_t));
-  if (c == NULL) {
-    compile_last_error = "out of memory while creating bytecode chunk";
-    return NULL;
-  }
+  if (c == NULL) return NULL;
   memset(c, 0, sizeof(*c));
   return c;
 }
@@ -103,44 +87,6 @@ static int list_len(lz_list_t *list) {
   if (list == NULL) return 0;
   for (iter = list->head; iter != list->nil; iter = iter->next) n++;
   return n;
-}
-
-static int lambda_param_count(lizard_ast_node_t *spec) {
-  if (spec == NULL || spec->type == AST_NIL) {
-    return 0;
-  }
-  if (spec->type == AST_SYMBOL) {
-    return 1;
-  }
-  if (spec->type == AST_APPLICATION) {
-    return list_len(spec->data.application_arguments);
-  }
-  return 0;
-}
-
-static const char *lambda_param_name(lizard_ast_node_t *spec, int index) {
-  int i;
-  lz_list_node_t *iter;
-  if (spec == NULL) {
-    return "?";
-  }
-  if (spec->type == AST_SYMBOL) {
-    return index == 0 ? spec->data.variable : "?";
-  }
-  if (spec->type == AST_APPLICATION && spec->data.application_arguments != NULL) {
-    i = 0;
-    for (iter = spec->data.application_arguments->head;
-         iter != spec->data.application_arguments->nil;
-         iter = iter->next) {
-      lizard_ast_node_t *p;
-      p = ((lizard_ast_list_node_t *)iter)->ast;
-      if (i == index) {
-        return p != NULL && p->type == AST_SYMBOL ? p->data.variable : "?";
-      }
-      i++;
-    }
-  }
-  return "?";
 }
 
 /* Compile the body of a begin/sequence: compile each expr, pop
@@ -310,58 +256,54 @@ static int compile_expr(lizard_bc_chunk_t *c, lizard_ast_node_t *expr,
     }
 
   case AST_LAMBDA:
-    /* Compile lambda body to a sub-chunk, emit OP_CLOSURE.
-     * Lambda ASTs store the parameter specification as the first element
-     * of expr->data.lambda.parameters, followed by one or more body forms. */
+    /* Compile lambda body to a sub-chunk, emit OP_CLOSURE. */
     {
       lizard_bc_chunk_t *sub;
       lz_list_node_t *iter;
-      lz_list_node_t *first;
-      lizard_ast_node_t *param_spec;
       int param_count, i, idx;
-      int body_count;
       lizard_ast_node_t *chunk_holder;
 
       sub = chunk_create(heap);
       if (sub == NULL) return -1;
 
-      first = expr->data.lambda.parameters != NULL
-                  ? expr->data.lambda.parameters->head
-                  : NULL;
-      param_spec = (first != NULL &&
-                    first != expr->data.lambda.parameters->nil)
-                       ? ((lizard_ast_list_node_t *)first)->ast
-                       : NULL;
-
-      param_count = lambda_param_count(param_spec);
+      /* Count and record parameter names. */
+      param_count = list_len(expr->data.lambda.parameters);
+      /* The last element of the parameter list is the body. */
+      if (param_count > 0) param_count--;
       sub->arity = param_count;
       if (param_count > 0) {
         sub->param_names = (const char **)malloc(
             (size_t)param_count * sizeof(const char *));
-        if (sub->param_names == NULL) return -1;
-        for (i = 0; i < param_count; i++) {
-          sub->param_names[i] = lambda_param_name(param_spec, i);
+        i = 0;
+        for (iter = expr->data.lambda.parameters->head;
+             iter != expr->data.lambda.parameters->nil && i < param_count;
+             iter = iter->next) {
+          lizard_ast_node_t *p = ((lizard_ast_list_node_t *)iter)->ast;
+          if (p->type == AST_SYMBOL) {
+            sub->param_names[i] = p->data.variable;
+          } else {
+            sub->param_names[i] = "?";
+          }
+          i++;
         }
       }
 
-      body_count = 0;
-      if (first != NULL && first != expr->data.lambda.parameters->nil) {
-        for (iter = first->next; iter != expr->data.lambda.parameters->nil;
+      /* The body is the last element of the parameter list. */
+      {
+        lz_list_node_t *last = NULL;
+        for (iter = expr->data.lambda.parameters->head;
+             iter != expr->data.lambda.parameters->nil;
              iter = iter->next) {
-          int is_last;
-          is_last = (iter->next == expr->data.lambda.parameters->nil);
-          if (compile_expr(sub, ((lizard_ast_list_node_t *)iter)->ast,
-                           heap, is_last) < 0) {
+          last = iter;
+        }
+        if (last != NULL) {
+          if (compile_expr(sub, ((lizard_ast_list_node_t *)last)->ast,
+                           heap, 1) < 0) {
             return -1;
           }
-          if (!is_last) {
-            chunk_emit(sub, OP_POP, 0);
-          }
-          body_count++;
+        } else {
+          chunk_emit(sub, OP_NIL, 0);
         }
-      }
-      if (body_count == 0) {
-        chunk_emit(sub, OP_NIL, 0);
       }
       chunk_emit(sub, OP_RETURN, 0);
 
@@ -459,10 +401,14 @@ static int compile_expr(lizard_bc_chunk_t *c, lizard_ast_node_t *expr,
     }
 
   default:
-    /* Strict bytecode mode: unsupported forms must fail explicitly.
-     * The previous behavior silently stored unsupported AST nodes as
-     * constants, making vm-eval appear to succeed without evaluating. */
-    return compile_fail("unsupported form for bytecode compiler");
+    /* Unsupported form: store it as a constant and push it.
+     * The VM will return it as-is (no evaluation). */
+    {
+      int idx = chunk_add_const(c, expr);
+      if (idx < 0) return -1;
+      chunk_emit(c, OP_CONST, idx);
+      return 0;
+    }
   }
 }
 
@@ -470,17 +416,9 @@ static int compile_expr(lizard_bc_chunk_t *c, lizard_ast_node_t *expr,
 
 lizard_bc_chunk_t *lizard_compile(lizard_ast_node_t *expr,
                                    lizard_heap_t *heap) {
-  lizard_bc_chunk_t *c;
-  compile_last_error = NULL;
-  c = chunk_create(heap);
-  if (c == NULL) {
-    compile_last_error = "out of memory while creating bytecode chunk";
-    return NULL;
-  }
+  lizard_bc_chunk_t *c = chunk_create(heap);
+  if (c == NULL) return NULL;
   if (compile_expr(c, expr, heap, 0) < 0) {
-    if (compile_last_error == NULL) {
-      compile_last_error = "bytecode compilation failed";
-    }
     free(c);
     return NULL;
   }

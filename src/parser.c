@@ -33,11 +33,11 @@ static int lz_parse_active = 0;
 static int lz_parse_failed = 0;
 static lizard_diagnostic_t lz_parse_diag;
 
-static void lizard_parser_fail(const char *msg,
-                               const lizard_token_t *tok) {
+static LZ_NORETURN void lizard_parser_fail(const char *msg,
+                                           const lizard_token_t *tok) {
   lz_parse_failed = 1;
   lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
-  lz_parse_diag.span.filename = tok != NULL ? tok->filename : NULL;
+  lz_parse_diag.span.filename = NULL;
   if (tok != NULL) {
     lz_parse_diag.span.start_line = tok->line;
     lz_parse_diag.span.start_column = tok->column;
@@ -62,10 +62,11 @@ static void lizard_parser_fail(const char *msg,
   if (lz_parse_active) {
     longjmp(lz_parse_recovery, 1);
   }
-  /* This path should be unreachable: public parser entry points establish
-   * a recovery point before parsing. Keep a defensive abort instead of
-   * continuing after a syntax error. */
-  abort();
+  /* No active recovery point (a direct call outside lizard_parse): there is
+   * no caller to present the diagnostic, so report it here and exit, as the
+   * parser historically did. */
+  fprintf(stderr, "Error: %s\n", lz_parse_diag.message);
+  exit(1);
 }
 
 const lizard_diagnostic_t *lizard_parser_last_diagnostic(void) {
@@ -78,7 +79,7 @@ static void lizard_set_node_span_from_token(lizard_ast_node_t *node,
   if (node == NULL || token == NULL) {
     return;
   }
-  node->span.filename = token->filename;
+  node->span.filename = NULL;
   node->span.start_line = token->line;
   node->span.start_column = token->column;
   node->span.end_line = token->line;
@@ -96,10 +97,9 @@ lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap) {
   return canonical_empty_list;
 }
 
-static lizard_ast_node_t *lizard_parse_expression_inner(lz_list_t *token_list,
-                                                     lz_list_node_t **current_node_pointer,
-                                                     int *depth,
-                                                     lizard_heap_t *heap) {
+lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
+                                           lz_list_node_t **current_node_pointer,
+                                           int *depth, lizard_heap_t *heap) {
   lizard_ast_node_t *ast_node, *val_node, *var_node, *body_node, *lambda_node,
       *params_app, *def_node, *fn_symbol, *app_node, *var, *value, *macro_name,
       *transformer;
@@ -758,12 +758,14 @@ static lizard_ast_node_t *lizard_parse_expression_inner(lz_list_t *token_list,
        * we'd dereference past the end of the list. Detect EOF and
        * produce an error value instead of crashing. */
       if (current_node == token_list->nil || current_node == NULL) {
-        lizard_parser_fail("stray # at end of input", current_token);
+        fprintf(stderr, "Error: stray # at end of input.\n");
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
       }
       current_token = &CAST(current_node, lizard_token_list_node_t)->token;
       if (current_token->type != TOKEN_SYMBOL ||
           current_token->data.symbol == NULL) {
-        lizard_parser_fail("unexpected token after #", current_token);
+        fprintf(stderr, "Error: unexpected token after #.\n");
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
       }
       if (strcmp(current_token->data.symbol, "t") == 0) {
         ast_node->type = AST_BOOL;
@@ -772,7 +774,9 @@ static lizard_ast_node_t *lizard_parse_expression_inner(lz_list_t *token_list,
         ast_node->type = AST_BOOL;
         ast_node->data.boolean = false;
       } else {
-        lizard_parser_fail("unexpected token after #", current_token);
+        fprintf(stderr, "Error: unexpected token after #: '%s'.\n",
+                current_token->data.symbol);
+        return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
       }
       *current_node_pointer = current_node->next;
       current_node = *current_node_pointer;
@@ -806,31 +810,6 @@ static lizard_ast_node_t *lizard_parse_expression_inner(lz_list_t *token_list,
   return ast_node;
 }
 
-
-lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
-                                           lz_list_node_t **current_node_pointer,
-                                           int *depth, lizard_heap_t *heap) {
-  volatile int prev_active;
-  lizard_ast_node_t *result;
-
-  if (lz_parse_active) {
-    return lizard_parse_expression_inner(token_list, current_node_pointer,
-                                         depth, heap);
-  }
-
-  prev_active = lz_parse_active;
-  lz_parse_failed = 0;
-  if (setjmp(lz_parse_recovery)) {
-    lz_parse_active = prev_active;
-    return NULL;
-  }
-  lz_parse_active = 1;
-  result = lizard_parse_expression_inner(token_list, current_node_pointer,
-                                         depth, heap);
-  lz_parse_active = prev_active;
-  return result;
-}
-
 /* Non-specializing parser for s-expression "datum" context.
  *
  * Unlike lizard_parse_expression, this reads (a b c) as a proper
@@ -841,9 +820,9 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
  *
  * Side effect: advances *cur past the datum it consumed.
  */
-static lizard_ast_node_t *lizard_parse_datum_inner(lz_list_t *token_list,
-                                             lz_list_node_t **cur,
-                                             lizard_heap_t *heap) {
+lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
+                                      lz_list_node_t **cur,
+                                      lizard_heap_t *heap) {
   lizard_token_t *tok;
   lizard_ast_node_t *node;
   if (*cur == token_list->nil) {
@@ -945,30 +924,6 @@ static lizard_ast_node_t *lizard_parse_datum_inner(lz_list_t *token_list,
   default:
     lizard_parser_fail("unexpected token in datum.", tok);
   }
-  return NULL;
-}
-
-
-lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
-                                    lz_list_node_t **current_node_pointer,
-                                    lizard_heap_t *heap) {
-  volatile int prev_active;
-  lizard_ast_node_t *result;
-
-  if (lz_parse_active) {
-    return lizard_parse_datum_inner(token_list, current_node_pointer, heap);
-  }
-
-  prev_active = lz_parse_active;
-  lz_parse_failed = 0;
-  if (setjmp(lz_parse_recovery)) {
-    lz_parse_active = prev_active;
-    return NULL;
-  }
-  lz_parse_active = 1;
-  result = lizard_parse_datum_inner(token_list, current_node_pointer, heap);
-  lz_parse_active = prev_active;
-  return result;
 }
 
 lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
@@ -976,22 +931,6 @@ lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
   lz_list_node_t *current;
   int depth;
   volatile int prev_active;
-
-  if (token_list == NULL) {
-    lz_parse_failed = 1;
-    lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
-    lz_parse_diag.span.filename = NULL;
-    lz_parse_diag.span.start_line = 0;
-    lz_parse_diag.span.start_column = 0;
-    lz_parse_diag.span.end_line = 0;
-    lz_parse_diag.span.end_column = 0;
-    lz_parse_diag.span.start_offset = 0;
-    lz_parse_diag.span.end_offset = 0;
-    strncpy(lz_parse_diag.message, "tokenization failed",
-            sizeof(lz_parse_diag.message) - 1U);
-    lz_parse_diag.message[sizeof(lz_parse_diag.message) - 1U] = '\0';
-    return NULL;
-  }
 
   /* Establish a recovery point: any lizard_parser_fail() below longjmps
    * here instead of killing the process. */
@@ -1008,7 +947,7 @@ lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
   depth = 0;
   while (current != token_list->nil) {
     lizard_ast_node_t *ast =
-        lizard_parse_expression_inner(token_list, &current, &depth, heap);
+        lizard_parse_expression(token_list, &current, &depth, heap);
     lizard_ast_list_node_t *ast_node =
         (lizard_ast_list_node_t *)lizard_heap_alloc(
             sizeof(lizard_ast_list_node_t));

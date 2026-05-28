@@ -10,26 +10,12 @@ and type-theory references.
 
 ---
 
-### Phase 1E progress
 
-- `primitives.c` has been split further: vector/hash primitives now live in
-  `src/prims_collections.c`, and type-theory notation/logic primitives live in
-  `src/prims_tt.c`.  Primitive registration remains centralized for now; the
-  next split targets are the remaining equality/order/cubical pieces in `tt_equality.c`.
-- `scripts/clean.sh --check` treats `.git`, `.gitmodules`, and `.github` as
-  normal repository metadata instead of suspicious user files.
+### Phase 1H progress
 
-
-### Phase 1F progress
-
-- `tt_equality.c` has started splitting into theory subsystems. Runtime-owned
-  registries now live in `src/tt_registry.c`: fresh dimensions, HIT registry,
-  logic-rule registry, snapshots/restores, and named logic bundles.
-- Added a runtime-isolation regression test so future context/concurrency work
-  cannot accidentally move logic state back into process-global storage.
-- The remaining `tt_equality.c` work is now clearer: reduction/equality core,
-  universe/couniverse ordering, face/system entailment, and cubical/Glue/HIT
-  computation should be split in that order.
+- Equiv / Glue / ua / system constructors have been split into `src/tt_glue.c` with `src/tt_glue.h` as the internal API.
+- `tt_equality.c` still owns the actual reduction and judgmental equality rules; this phase only makes constructors reusable and removes another chunk of infrastructure from the monolith.
+- The next split target is the Glue/ua reduction rules themselves, followed by HIT/truncation computation.
 
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
@@ -66,38 +52,19 @@ already present; the work is to connect it, not invent it:
 - **AST nodes already carry a `span`** (set from token line/col/offset in
   `parser.c`), and `runtime.c` already has `set_diagnostic` helpers.
 
-Phase 0 / Phase 1A progress now landed:
+What's missing (the actual 0.2 work):
 
-1. **Parser recovery is wired through `lizard_parse()`.** Syntax errors now
-   return `NULL` with `lizard_parser_last_diagnostic()` instead of killing
-   the normal REPL/API path.
-2. **Tokenizer recovery is wired through `lizard_tokenize_source()`.** Lexical
-   errors such as unterminated strings return `LIZARD_STATUS_PARSE_ERROR`
-   diagnostics with filename/line/column instead of calling `exit(1)`.
-3. **The public runtime API distinguishes parse and eval failures.**
-   `lizard_context_eval_string` / `lizard_context_eval_file` preserve
-   `LIZARD_STATUS_PARSE_ERROR` and `LIZARD_STATUS_EVAL_ERROR` and keep the
-   same context usable after a failed parse.
-4. **Examples are manifest-gated.** `make examples` fails on unexpected
-   errors/missing files while allowing explicitly experimental examples to be
-   non-gating.
-5. **Bytecode failure is strict/fallback-marked.** Unsupported internal forms
-   report `LIZARD_ERROR_BYTECODE_UNSUPPORTED` instead of being silently treated
-   as constants.
-6. **The first large primitive split has landed.** List, module/load, GC/diagnostic,
-   syntax-object, persistent vector/HAMT, and bytecode primitive implementations
-   now live outside the monolithic `src/primitives.c`; registration remains
-   centralized.
-
-What's still missing for the full 0.2 milestone:
-
-1. **Finish replacing legacy fallback aborts with context-owned diagnostics.**
-   Normal parser/tokenizer paths are recoverable; remaining fallback paths should
-   be made explicit and tested.
-2. **Propagate source filenames and spans through macro expansion.** Token and
-   parser spans exist; syntax objects must preserve them through expansion.
-3. **Continue source-file splits.** `primitives.c` is smaller, but type-theory
-   notation/equality still needs domain-specific modules before Phase 2.
+1. **The parser still `exit(1)`s** — 42 sites in `parser.c`, each an
+   `fprintf(stderr, "Error: …")` followed by `exit(1)`. It never returns
+   failure, so `lizard_parse` never returns `NULL`, so the existing
+   recovery path in the REPL's `eval_source` (which already checks
+   `ast_list == NULL`) can never fire. Fixing this is the single
+   highest-impact change.
+2. **The REPL bypasses the context API.** `repl.c:main` builds its own
+   heap/env and calls a local `eval_source`, instead of going through
+   `lizard_context_eval_string`. Unify them.
+3. **Diagnostics aren't populated by the parser** — the structs exist but
+   the parser writes to `stderr` instead of filling a `lizard_diagnostic_t`.
 
 ---
 

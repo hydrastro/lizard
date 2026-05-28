@@ -280,10 +280,7 @@ static int eval_source(lizard_context_t *context, const char *source,
       const lizard_diagnostic_t *d;
       d = lizard_context_last_diagnostic(context);
       if (d != NULL && d->message[0] != '\0') {
-        if (d->span.filename != NULL && d->span.start_line > 0) {
-          fprintf(stderr, "%s:%d:%d: error: %s\n", d->span.filename,
-                  d->span.start_line, d->span.start_column, d->message);
-        } else if (d->span.start_line > 0) {
+        if (d->span.start_line > 0) {
           fprintf(stderr, "error at %d:%d: %s\n", d->span.start_line,
                   d->span.start_column, d->message);
         } else {
@@ -347,6 +344,11 @@ int main(int argc, char **argv) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");
     return 2;
   }
+  if (file_path != NULL && freopen(file_path, "r", stdin) == NULL) {
+    perror(file_path);
+    return 1;
+  }
+
   {
     lizard_runtime_t *runtime;
     lizard_context_t *context;
@@ -367,36 +369,6 @@ int main(int argc, char **argv) {
 
     if (eval_expr != NULL) {
       exit_code = eval_source(context, eval_expr, 0);
-    } else if (file_path != NULL) {
-      lizard_value_t *file_result;
-      lizard_status_t file_status;
-      file_result = NULL;
-      file_status = lizard_context_eval_file(context, file_path, &file_result);
-      if (file_status != LIZARD_STATUS_OK) {
-        if (file_result != NULL && file_result->type == AST_ERROR) {
-          lizard_print_value(file_result);
-          printf("\n");
-        } else {
-          const lizard_diagnostic_t *d;
-          d = lizard_context_last_diagnostic(context);
-          if (d != NULL && d->message[0] != '\0') {
-            if (d->span.filename != NULL && d->span.start_line > 0) {
-              fprintf(stderr, "%s:%d:%d: error: %s\n", d->span.filename,
-                      d->span.start_line, d->span.start_column, d->message);
-            } else if (d->span.start_line > 0) {
-              fprintf(stderr, "error at %d:%d: %s\n", d->span.start_line,
-                      d->span.start_column, d->message);
-            } else {
-              fprintf(stderr, "error: %s\n", d->message);
-            }
-          }
-        }
-        exit_code = 1;
-      } else if (file_result != NULL && file_result->type != AST_NIL) {
-        printf("=> ");
-        lizard_print_value(file_result);
-        printf("\n");
-      }
     } else {
       while (1) {
         interactive = isatty(STDIN_FILENO);
