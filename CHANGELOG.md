@@ -1,3 +1,9 @@
+# Recoverable Core Phase 1F — type-theory registry split
+- Split per-runtime type-theory registries out of `src/tt_equality.c` into `src/tt_registry.c`: fresh-dimension allocation, HIT declaration registry, logic-rule registry, logic snapshots/restores, and named logic bundles.
+- Kept `tt_equality.c` focused on reduction/equality while preserving public APIs and primitive registration behavior.
+- Added `tests/runtime_registry_isolation_test.c` to prove logic-rule state remains runtime-local across independent `lizard_runtime_t` instances.
+- Updated `runtime.h` comments to reflect the new registry implementation location.
+
 # Recoverable Core Phase 1D — primitive split and strict foundations
 - Recoverable Core Phase 1E: split vector/hash primitives into `src/prims_collections.c`, split type-theory notation/logic primitives into `src/prims_tt.c`, and teach `clean.sh --check` that `.git`/`.gitmodules` are expected repository metadata.
 

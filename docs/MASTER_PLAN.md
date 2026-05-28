@@ -15,10 +15,21 @@ and type-theory references.
 - `primitives.c` has been split further: vector/hash primitives now live in
   `src/prims_collections.c`, and type-theory notation/logic primitives live in
   `src/prims_tt.c`.  Primitive registration remains centralized for now; the
-  next split target is the equality engine (`tt_equality.c`).
+  next split targets are the remaining equality/order/cubical pieces in `tt_equality.c`.
 - `scripts/clean.sh --check` treats `.git`, `.gitmodules`, and `.github` as
   normal repository metadata instead of suspicious user files.
 
+
+### Phase 1F progress
+
+- `tt_equality.c` has started splitting into theory subsystems. Runtime-owned
+  registries now live in `src/tt_registry.c`: fresh dimensions, HIT registry,
+  logic-rule registry, snapshots/restores, and named logic bundles.
+- Added a runtime-isolation regression test so future context/concurrency work
+  cannot accidentally move logic state back into process-global storage.
+- The remaining `tt_equality.c` work is now clearer: reduction/equality core,
+  universe/couniverse ordering, face/system entailment, and cubical/Glue/HIT
+  computation should be split in that order.
 
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
