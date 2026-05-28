@@ -253,6 +253,36 @@ lizard_ast_node_t *lizard_primitive_kernel_meta_state(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_kernel_unify(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_define(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_lookup(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Core predicates + math. */
+lizard_ast_node_t *lizard_primitive_zerop(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_positivep(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_negativep(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_evenp(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_oddp(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_min(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_max(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Character + string conversion. */
+lizard_ast_node_t *lizard_primitive_char_to_int(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_int_to_char(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_to_list(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_list_to_string(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_string_reverse(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 
 lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
                                                 lizard_env_t *env,

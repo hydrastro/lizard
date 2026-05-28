@@ -52,7 +52,13 @@ typedef enum {
   KT_MAYBE,        /* Maybe A — option type */
   KT_NOTHING,      /* nothing : Maybe A */
   KT_JUST,         /* just : A → Maybe A */
-  KT_MAYBE_REC     /* maybe eliminator */
+  KT_MAYBE_REC,    /* maybe eliminator */
+  KT_EMPTY,        /* Empty/Void — the type with no constructors */
+  KT_ABSURD,       /* absurd : Empty → A — ex falso */
+  KT_SUM_K,        /* Sum A B — coproduct/either */
+  KT_INL,          /* inl : A → Sum A B */
+  KT_INR,          /* inr : B → Sum A B */
+  KT_SUM_REC       /* case/sum eliminator */
 } kterm_tag_t;
 
 /* ---- kernel term ---- */
@@ -92,6 +98,12 @@ typedef struct kterm {
     struct { struct kterm *value; } just;            /* just v */
     struct { struct kterm *motive; struct kterm *nothing_case;
              struct kterm *just_case; struct kterm *scrutinee; } maybe_rec;
+    struct { struct kterm *target_type; } absurd;  /* absurd {A} : Empty → A */
+    struct { struct kterm *left_type; struct kterm *right_type; } sum_k;
+    struct { struct kterm *value; struct kterm *right_type; } inl;
+    struct { struct kterm *value; struct kterm *left_type; } inr;
+    struct { struct kterm *motive; struct kterm *left_case;
+             struct kterm *right_case; struct kterm *scrutinee; } sum_rec;
   } data;
 } kterm_t;
 
@@ -195,5 +207,24 @@ void meta_ctx_fprint(FILE *fp, meta_ctx_t *mctx);
  * may be solved. */
 int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
              kterm_t *a, kterm_t *b);
+
+/* ---- global definitions ---- */
+
+/* A named kernel definition: name, type, and value. */
+typedef struct kdef {
+  const char *name;
+  kterm_t *type;
+  kterm_t *value;
+  struct kdef *next;
+} kdef_t;
+
+typedef struct {
+  kdef_t *defs;
+} kdef_ctx_t;
+
+kdef_ctx_t *kdef_ctx_create(lizard_heap_t *heap);
+void kdef_add(lizard_heap_t *heap, kdef_ctx_t *dctx,
+              const char *name, kterm_t *type, kterm_t *value);
+kdef_t *kdef_lookup(kdef_ctx_t *dctx, const char *name);
 
 #endif /* LIZARD_KERNEL_H */

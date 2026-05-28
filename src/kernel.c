@@ -159,6 +159,7 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
   case KT_META:
   case KT_NIL_K:
   case KT_NOTHING:
+  case KT_EMPTY:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
@@ -223,6 +224,7 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
   case KT_META:
   case KT_NIL_K:
   case KT_NOTHING:
+  case KT_EMPTY:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
@@ -354,6 +356,14 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
       return kt_whnf(heap, ctx, kt_app(heap, t->data.maybe_rec.just_case, scrut->data.just.value));
     return t;
   }
+  case KT_SUM_REC: {
+    kterm_t *scrut = kt_whnf(heap, ctx, t->data.sum_rec.scrutinee);
+    if (scrut->tag == KT_INL)
+      return kt_whnf(heap, ctx, kt_app(heap, t->data.sum_rec.left_case, scrut->data.inl.value));
+    if (scrut->tag == KT_INR)
+      return kt_whnf(heap, ctx, kt_app(heap, t->data.sum_rec.right_case, scrut->data.inr.value));
+    return t;
+  }
   case KT_LIST_REC: {
     kterm_t *scrut = kt_whnf(heap, ctx, t->data.list_rec.scrutinee);
     if (scrut->tag == KT_NIL_K)
@@ -411,7 +421,15 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   case KT_UNIT: case KT_STAR:
   case KT_NIL_K:
   case KT_NOTHING:
+  case KT_EMPTY:
     return 1;
+  case KT_SUM_K:
+    return kt_equal(heap, ctx, na->data.sum_k.left_type, nb->data.sum_k.left_type) &&
+           kt_equal(heap, ctx, na->data.sum_k.right_type, nb->data.sum_k.right_type);
+  case KT_INL:
+    return kt_equal(heap, ctx, na->data.inl.value, nb->data.inl.value);
+  case KT_INR:
+    return kt_equal(heap, ctx, na->data.inr.value, nb->data.inr.value);
   case KT_MAYBE:
     return kt_equal(heap, ctx, na->data.maybe.elem_type, nb->data.maybe.elem_type);
   case KT_JUST:
@@ -620,6 +638,45 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     m->data.maybe.elem_type = vt;
     return m;
   }
+  case KT_EMPTY:
+    return kt_sort(heap, 0);
+  case KT_SUM_K: {
+    kterm_t *lt = kt_infer(heap, ctx, t->data.sum_k.left_type);
+    kterm_t *rt;
+    int l, r;
+    if (lt == NULL) return NULL;
+    lt = kt_whnf(heap, ctx, lt);
+    if (lt->tag != KT_SORT) return NULL;
+    rt = kt_infer(heap, ctx, t->data.sum_k.right_type);
+    if (rt == NULL) return NULL;
+    rt = kt_whnf(heap, ctx, rt);
+    if (rt->tag != KT_SORT) return NULL;
+    l = lt->data.sort.level;
+    r = rt->data.sort.level;
+    return kt_sort(heap, l > r ? l : r);
+  }
+  case KT_INL: {
+    kterm_t *vt = kt_infer(heap, ctx, t->data.inl.value);
+    kterm_t *s;
+    if (vt == NULL) return NULL;
+    s = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(s, 0, sizeof(*s));
+    s->tag = KT_SUM_K;
+    s->data.sum_k.left_type = vt;
+    s->data.sum_k.right_type = t->data.inl.right_type;
+    return s;
+  }
+  case KT_INR: {
+    kterm_t *vt = kt_infer(heap, ctx, t->data.inr.value);
+    kterm_t *s;
+    if (vt == NULL) return NULL;
+    s = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(s, 0, sizeof(*s));
+    s->tag = KT_SUM_K;
+    s->data.sum_k.left_type = t->data.inr.left_type;
+    s->data.sum_k.right_type = vt;
+    return s;
+  }
   case KT_ANNOT: {
     kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
                                   t->data.annot.type);
@@ -731,6 +788,23 @@ void kt_fprint(FILE *fp, kterm_t *t) {
     break;
   case KT_MAYBE_REC:
     fprintf(fp, "(maybe-rec ...)"); break;
+
+  case KT_EMPTY:
+    fprintf(fp, "Empty"); break;
+  case KT_ABSURD:
+    fprintf(fp, "(absurd ...)"); break;
+  case KT_SUM_K:
+    fprintf(fp, "(Sum "); kt_fprint(fp, t->data.sum_k.left_type);
+    fprintf(fp, " "); kt_fprint(fp, t->data.sum_k.right_type);
+    fprintf(fp, ")"); break;
+  case KT_INL:
+    fprintf(fp, "(inl "); kt_fprint(fp, t->data.inl.value); fprintf(fp, ")");
+    break;
+  case KT_INR:
+    fprintf(fp, "(inr "); kt_fprint(fp, t->data.inr.value); fprintf(fp, ")");
+    break;
+  case KT_SUM_REC:
+    fprintf(fp, "(case ...)"); break;
   default:
     fprintf(fp, "<kterm:%d>", t->tag);
     break;
@@ -921,7 +995,15 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
   case KT_UNIT: case KT_STAR:
   case KT_NIL_K:
   case KT_NOTHING:
+  case KT_EMPTY:
     return 1;
+  case KT_SUM_K:
+    return kt_unify(heap, ctx, mctx, na->data.sum_k.left_type, nb->data.sum_k.left_type) &&
+           kt_unify(heap, ctx, mctx, na->data.sum_k.right_type, nb->data.sum_k.right_type);
+  case KT_INL:
+    return kt_unify(heap, ctx, mctx, na->data.inl.value, nb->data.inl.value);
+  case KT_INR:
+    return kt_unify(heap, ctx, mctx, na->data.inr.value, nb->data.inr.value);
   case KT_MAYBE:
     return kt_unify(heap, ctx, mctx, na->data.maybe.elem_type, nb->data.maybe.elem_type);
   case KT_JUST:
@@ -956,4 +1038,31 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
   default:
     return 0;
   }
+}
+
+
+/* ---- global definitions ---- */
+
+kdef_ctx_t *kdef_ctx_create(lizard_heap_t *heap) {
+  kdef_ctx_t *d = (kdef_ctx_t *)lizard_heap_alloc(sizeof(kdef_ctx_t));
+  d->defs = NULL;
+  return d;
+}
+
+void kdef_add(lizard_heap_t *heap, kdef_ctx_t *dctx,
+              const char *name, kterm_t *type, kterm_t *value) {
+  kdef_t *def = (kdef_t *)lizard_heap_alloc(sizeof(kdef_t));
+  def->name = name;
+  def->type = type;
+  def->value = value;
+  def->next = dctx->defs;
+  dctx->defs = def;
+}
+
+kdef_t *kdef_lookup(kdef_ctx_t *dctx, const char *name) {
+  kdef_t *d;
+  for (d = dctx->defs; d != NULL; d = d->next) {
+    if (strcmp(d->name, name) == 0) return d;
+  }
+  return NULL;
 }
