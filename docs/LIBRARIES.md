@@ -715,3 +715,49 @@ True blocking via a parking scheduler (no host continuations).
 - `examples/119-syntax-case.lisp` — Track R: procedural macros
 - `examples/120-univalence.lisp` — Track Q: Glue + univalence
 - `examples/121-coroutines.lisp` — Track C: blocking CSP
+
+## lib/reader.lisp — Reader with #lang dialects (Track R → 100%)
+
+A reader written in lizard: text → s-expressions, with dialects.
+
+**Tokenize/parse:** tokenize, read-str, read-all, parse-tokens
+
+**Dialects:** make-dialect, dialect-registry, read-program (honors
+a leading (#lang NAME) directive)
+
+**Samples:** identity-dialect, infix-dialect (a+b → (+ a b)),
+quote-all-dialect
+
+```lisp
+(read-str "(f (g x) y)")                      ; (f (g x) y)
+(read-program "(#lang infix) (1 + 2)" reg)    ; ((+ 1 2))
+```
+
+## lib/hit-compute.lisp — HIT computation & canonicity (Track Q → 100%)
+
+The computational payoff of HITs.
+
+**Loops as ℤ:** loop-id, loop-compose, loop-invert, loop-law-*
+
+**Universal cover:** cover-transport, encode-loop, decode-winding
+
+**Recursor:** s1-rec-loop-power; **Degrees:** map-degree, compose-degrees
+
+**Canonicity:** check-canonicity, canonical-bool?, canonical-nat?,
+s1-canonical-form
+
+```lisp
+(loop-compose 2 (loop-invert 2))    ; 0 — loop²·loop⁻² = refl
+(cover-transport 3 0)               ; 3 — transport adds winding
+```
+
+## examples/124-capstone-pipeline.lisp — INTEGRATION
+
+read → expand → type-infer → evaluate, chaining the reader,
+macro engine, HM inference, and the self-hosting evaluator into a
+single typed-language frontend.
+
+## New examples (research tracks — completion)
+- `examples/122-reader-lang.lisp` — Track R: reader + #lang
+- `examples/123-hit-computation.lisp` — Track Q: winding numbers, canonicity
+- `examples/124-capstone-pipeline.lisp` — all subsystems composed
