@@ -242,6 +242,17 @@ lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_phash_entries(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+/* Metavariables. */
+lizard_ast_node_t *lizard_primitive_kernel_hole(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_solve(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_zonk(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_meta_state(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_unify(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 
 lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,
                                                 lizard_env_t *env,

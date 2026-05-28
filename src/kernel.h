@@ -43,7 +43,12 @@ typedef enum {
   KT_FALSE,        /* false : Bool */
   KT_BOOL_REC,     /* if-then-else / Bool eliminator */
   KT_UNIT,         /* the type Unit */
-  KT_STAR          /* * : Unit */
+  KT_STAR,         /* * : Unit */
+  KT_META,         /* metavariable / hole ?n */
+  KT_LIST,         /* List A — the type of lists of A */
+  KT_NIL_K,        /* nil : List A */
+  KT_CONS_K,       /* cons : A → List A → List A */
+  KT_LIST_REC      /* list recursor */
 } kterm_tag_t;
 
 /* ---- kernel term ---- */
@@ -73,8 +78,28 @@ typedef struct kterm {
     struct { struct kterm *term; struct kterm *type; } annot;
     struct { struct kterm *motive; struct kterm *true_case;
              struct kterm *false_case; struct kterm *scrutinee; } bool_rec;
+    struct { int id; } meta;  /* metavariable ?id */
+    struct { struct kterm *elem_type; } list;  /* List A */
+    struct { struct kterm *elem_type; } nil_k; /* nil {A} */
+    struct { struct kterm *head; struct kterm *tail; } cons_k;  /* cons h t */
+    struct { struct kterm *motive; struct kterm *nil_case;
+             struct kterm *cons_case; struct kterm *scrutinee; } list_rec;
   } data;
 } kterm_t;
+
+/* ---- metavariable context ---- */
+
+typedef struct meta_entry {
+  int id;
+  kterm_t *type;        /* declared type of the hole */
+  kterm_t *solution;    /* NULL until solved */
+  struct meta_entry *next;
+} meta_entry_t;
+
+typedef struct {
+  meta_entry_t *entries;
+  int next_id;
+} meta_ctx_t;
 
 /* ---- kernel context ---- */
 
@@ -144,5 +169,23 @@ kctx_entry_t *kctx_lookup(kctx_t *ctx, int index);
 /* ---- printing ---- */
 
 void kt_fprint(FILE *fp, kterm_t *t);
+
+/* ---- metavariables ---- */
+
+meta_ctx_t *meta_ctx_create(lizard_heap_t *heap);
+kterm_t *meta_fresh(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *type);
+meta_entry_t *meta_lookup(meta_ctx_t *mctx, int id);
+int meta_solve(meta_ctx_t *mctx, int id, kterm_t *solution);
+kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t);
+int meta_unsolved_count(meta_ctx_t *mctx);
+void meta_ctx_fprint(FILE *fp, meta_ctx_t *mctx);
+
+/* ---- unification ---- */
+
+/* Try to make two terms definitionally equal by solving metavariables.
+ * Returns 1 on success, 0 on failure. On success, some metas in mctx
+ * may be solved. */
+int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
+             kterm_t *a, kterm_t *b);
 
 #endif /* LIZARD_KERNEL_H */

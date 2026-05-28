@@ -156,6 +156,8 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
   case KT_SORT: case KT_NAT: case KT_ZERO:
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
+  case KT_META:
+  case KT_NIL_K:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
@@ -187,6 +189,21 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
     return kt_proj1(heap, kt_shift(heap, t->data.proj.target, cutoff, delta));
   case KT_PROJ2:
     return kt_proj2(heap, kt_shift(heap, t->data.proj.target, cutoff, delta));
+  case KT_LIST: {
+    kterm_t *l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(l, 0, sizeof(*l));
+    l->tag = KT_LIST;
+    l->data.list.elem_type = kt_shift(heap, t->data.list.elem_type, cutoff, delta);
+    return l;
+  }
+  case KT_CONS_K: {
+    kterm_t *c = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(c, 0, sizeof(*c));
+    c->tag = KT_CONS_K;
+    c->data.cons_k.head = kt_shift(heap, t->data.cons_k.head, cutoff, delta);
+    c->data.cons_k.tail = kt_shift(heap, t->data.cons_k.tail, cutoff, delta);
+    return c;
+  }
   default:
     return t;
   }
@@ -202,6 +219,8 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
   case KT_SORT: case KT_NAT: case KT_ZERO:
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
+  case KT_META:
+  case KT_NIL_K:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
@@ -236,6 +255,21 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
     return kt_proj1(heap, kt_subst(heap, t->data.proj.target, n, s));
   case KT_PROJ2:
     return kt_proj2(heap, kt_subst(heap, t->data.proj.target, n, s));
+  case KT_LIST: {
+    kterm_t *l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(l, 0, sizeof(*l));
+    l->tag = KT_LIST;
+    l->data.list.elem_type = kt_subst(heap, t->data.list.elem_type, n, s);
+    return l;
+  }
+  case KT_CONS_K: {
+    kterm_t *c = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(c, 0, sizeof(*c));
+    c->tag = KT_CONS_K;
+    c->data.cons_k.head = kt_subst(heap, t->data.cons_k.head, n, s);
+    c->data.cons_k.tail = kt_subst(heap, t->data.cons_k.tail, n, s);
+    return c;
+  }
   default:
     return t;
   }
@@ -309,6 +343,30 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
       return kt_whnf(heap, ctx, t->data.bool_rec.false_case);
     return t;
   }
+
+  case KT_LIST_REC: {
+    kterm_t *scrut = kt_whnf(heap, ctx, t->data.list_rec.scrutinee);
+    if (scrut->tag == KT_NIL_K)
+      return kt_whnf(heap, ctx, t->data.list_rec.nil_case);
+    if (scrut->tag == KT_CONS_K) {
+      /* listrec C n c (cons h t) → c h t (listrec C n c t) */
+      kterm_t *rec = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+      kterm_t *step;
+      memset(rec, 0, sizeof(*rec));
+      rec->tag = KT_LIST_REC;
+      rec->data.list_rec.motive = t->data.list_rec.motive;
+      rec->data.list_rec.nil_case = t->data.list_rec.nil_case;
+      rec->data.list_rec.cons_case = t->data.list_rec.cons_case;
+      rec->data.list_rec.scrutinee = scrut->data.cons_k.tail;
+      step = kt_app(heap,
+               kt_app(heap,
+                 kt_app(heap, t->data.list_rec.cons_case, scrut->data.cons_k.head),
+                 scrut->data.cons_k.tail),
+               rec);
+      return kt_whnf(heap, ctx, step);
+    }
+    return t;
+  }
   case KT_J: {
     /* J C d A a b (refl a) → d a */
     kterm_t *pf = kt_whnf(heap, ctx, t->data.j.proof);
@@ -341,7 +399,15 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   case KT_NAT: case KT_ZERO:
   case KT_BOOL: case KT_TRUE: case KT_FALSE:
   case KT_UNIT: case KT_STAR:
+  case KT_NIL_K:
     return 1;
+  case KT_LIST:
+    return kt_equal(heap, ctx, na->data.list.elem_type, nb->data.list.elem_type);
+  case KT_CONS_K:
+    return kt_equal(heap, ctx, na->data.cons_k.head, nb->data.cons_k.head) &&
+           kt_equal(heap, ctx, na->data.cons_k.tail, nb->data.cons_k.tail);
+  case KT_META:
+    return na->data.meta.id == nb->data.meta.id;
   case KT_SUCC:
     return kt_equal(heap, ctx, na->data.succ.pred, nb->data.succ.pred);
   case KT_PI:
@@ -492,6 +558,32 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     if (vt == NULL) return NULL;
     return kt_id(heap, vt, t->data.refl.value, t->data.refl.value);
   }
+
+  case KT_LIST: {
+    kterm_t *et = kt_infer(heap, ctx, t->data.list.elem_type);
+    if (et == NULL) return NULL;
+    et = kt_whnf(heap, ctx, et);
+    if (et->tag != KT_SORT) return NULL;
+    return kt_sort(heap, et->data.sort.level);
+  }
+  case KT_NIL_K: {
+    /* nil needs a type annotation to infer; without one, use Sort(0). */
+    kterm_t *l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(l, 0, sizeof(*l));
+    l->tag = KT_LIST;
+    l->data.list.elem_type = t->data.nil_k.elem_type;
+    return (t->data.nil_k.elem_type != NULL) ? l : NULL;
+  }
+  case KT_CONS_K: {
+    kterm_t *ht = kt_infer(heap, ctx, t->data.cons_k.head);
+    kterm_t *l;
+    if (ht == NULL) return NULL;
+    l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(l, 0, sizeof(*l));
+    l->tag = KT_LIST;
+    l->data.list.elem_type = ht;
+    return l;
+  }
   case KT_ANNOT: {
     kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
                                   t->data.annot.type);
@@ -577,8 +669,238 @@ void kt_fprint(FILE *fp, kterm_t *t) {
     fprintf(fp, " "); kt_fprint(fp, t->data.bool_rec.true_case);
     fprintf(fp, " "); kt_fprint(fp, t->data.bool_rec.false_case);
     fprintf(fp, ")"); break;
+  case KT_META:
+    fprintf(fp, "?%d", t->data.meta.id);
+    break;
+
+  case KT_LIST:
+    fprintf(fp, "(List "); kt_fprint(fp, t->data.list.elem_type); fprintf(fp, ")");
+    break;
+  case KT_NIL_K:
+    fprintf(fp, "nil"); break;
+  case KT_CONS_K:
+    fprintf(fp, "(cons "); kt_fprint(fp, t->data.cons_k.head);
+    fprintf(fp, " "); kt_fprint(fp, t->data.cons_k.tail); fprintf(fp, ")");
+    break;
+  case KT_LIST_REC:
+    fprintf(fp, "(listrec ...)"); break;
   default:
     fprintf(fp, "<kterm:%d>", t->tag);
     break;
+  }
+}
+
+
+/* ---- metavariables ---- */
+
+meta_ctx_t *meta_ctx_create(lizard_heap_t *heap) {
+  meta_ctx_t *mctx = (meta_ctx_t *)lizard_heap_alloc(sizeof(meta_ctx_t));
+  mctx->entries = NULL;
+  mctx->next_id = 0;
+  return mctx;
+}
+
+kterm_t *meta_fresh(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *type) {
+  meta_entry_t *e = (meta_entry_t *)lizard_heap_alloc(sizeof(meta_entry_t));
+  kterm_t *t = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+  memset(t, 0, sizeof(*t));
+  t->tag = KT_META;
+  t->data.meta.id = mctx->next_id;
+  e->id = mctx->next_id++;
+  e->type = type;
+  e->solution = NULL;
+  e->next = mctx->entries;
+  mctx->entries = e;
+  return t;
+}
+
+meta_entry_t *meta_lookup(meta_ctx_t *mctx, int id) {
+  meta_entry_t *e;
+  for (e = mctx->entries; e != NULL; e = e->next) {
+    if (e->id == id) return e;
+  }
+  return NULL;
+}
+
+int meta_solve(meta_ctx_t *mctx, int id, kterm_t *solution) {
+  meta_entry_t *e = meta_lookup(mctx, id);
+  if (e == NULL) return -1;
+  if (e->solution != NULL) return -1;  /* already solved */
+  e->solution = solution;
+  return 0;
+}
+
+/* Zonk: substitute all solved metas in a term. */
+kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t) {
+  meta_entry_t *e;
+  if (t == NULL) return NULL;
+  if (t->tag == KT_META) {
+    e = meta_lookup(mctx, t->data.meta.id);
+    if (e != NULL && e->solution != NULL) {
+      return meta_zonk(heap, mctx, e->solution);
+    }
+    return t;
+  }
+  switch (t->tag) {
+  case KT_VAR: case KT_SORT: case KT_NAT: case KT_ZERO:
+  case KT_BOOL: case KT_TRUE: case KT_FALSE:
+  case KT_UNIT: case KT_STAR:
+    return t;
+  case KT_SUCC:
+    return kt_succ(heap, meta_zonk(heap, mctx, t->data.succ.pred));
+  case KT_PI:
+    return kt_pi(heap, t->data.pi.name,
+                 meta_zonk(heap, mctx, t->data.pi.domain),
+                 meta_zonk(heap, mctx, t->data.pi.codomain));
+  case KT_LAM:
+    return kt_lam(heap, t->data.lam.name,
+                  meta_zonk(heap, mctx, t->data.lam.domain),
+                  meta_zonk(heap, mctx, t->data.lam.body));
+  case KT_APP:
+    return kt_app(heap, meta_zonk(heap, mctx, t->data.app.fun),
+                        meta_zonk(heap, mctx, t->data.app.arg));
+  case KT_ID:
+    return kt_id(heap, meta_zonk(heap, mctx, t->data.id.type),
+                       meta_zonk(heap, mctx, t->data.id.a),
+                       meta_zonk(heap, mctx, t->data.id.b));
+  case KT_REFL:
+    return kt_refl(heap, meta_zonk(heap, mctx, t->data.refl.value));
+  default:
+    return t;
+  }
+}
+
+int meta_unsolved_count(meta_ctx_t *mctx) {
+  int n = 0;
+  meta_entry_t *e;
+  for (e = mctx->entries; e != NULL; e = e->next) {
+    if (e->solution == NULL) n++;
+  }
+  return n;
+}
+
+void meta_ctx_fprint(FILE *fp, meta_ctx_t *mctx) {
+  meta_entry_t *e;
+  int total = 0, solved = 0;
+  for (e = mctx->entries; e != NULL; e = e->next) {
+    total++;
+    if (e->solution != NULL) solved++;
+  }
+  fprintf(fp, "metavars: %d total, %d solved, %d unsolved\n",
+          total, solved, total - solved);
+  for (e = mctx->entries; e != NULL; e = e->next) {
+    fprintf(fp, "  ?%d : ", e->id);
+    kt_fprint(fp, e->type);
+    if (e->solution != NULL) {
+      fprintf(fp, " = ");
+      kt_fprint(fp, e->solution);
+    }
+    fprintf(fp, "\n");
+  }
+}
+
+/* ---- unification ---- */
+
+/* First-order unification: try to solve metavariables to make
+ * two terms definitionally equal. This is the "flex-rigid" pattern:
+ * if one side is an unsolved meta, solve it with the other side. */
+int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
+             kterm_t *a, kterm_t *b) {
+  kterm_t *na, *nb;
+  meta_entry_t *e;
+  if (a == b) return 1;
+  if (a == NULL || b == NULL) return 0;
+
+  /* Resolve solved metas first. */
+  if (a->tag == KT_META) {
+    e = meta_lookup(mctx, a->data.meta.id);
+    if (e != NULL && e->solution != NULL) {
+      return kt_unify(heap, ctx, mctx, e->solution, b);
+    }
+  }
+  if (b->tag == KT_META) {
+    e = meta_lookup(mctx, b->data.meta.id);
+    if (e != NULL && e->solution != NULL) {
+      return kt_unify(heap, ctx, mctx, a, e->solution);
+    }
+  }
+
+  /* Flex-rigid: solve unsolved meta with the other term. */
+  if (a->tag == KT_META) {
+    e = meta_lookup(mctx, a->data.meta.id);
+    if (e != NULL && e->solution == NULL) {
+      e->solution = b;
+      return 1;
+    }
+  }
+  if (b->tag == KT_META) {
+    e = meta_lookup(mctx, b->data.meta.id);
+    if (e != NULL && e->solution == NULL) {
+      e->solution = a;
+      return 1;
+    }
+  }
+
+  /* Reduce to WHNF and compare structurally. */
+  na = kt_whnf(heap, ctx, a);
+  nb = kt_whnf(heap, ctx, b);
+
+  /* After WHNF, check for metas again. */
+  if (na->tag == KT_META) {
+    e = meta_lookup(mctx, na->data.meta.id);
+    if (e != NULL && e->solution == NULL) {
+      e->solution = nb;
+      return 1;
+    }
+  }
+  if (nb->tag == KT_META) {
+    e = meta_lookup(mctx, nb->data.meta.id);
+    if (e != NULL && e->solution == NULL) {
+      e->solution = na;
+      return 1;
+    }
+  }
+
+  if (na->tag != nb->tag) return 0;
+
+  switch (na->tag) {
+  case KT_VAR:
+    return na->data.var.index == nb->data.var.index;
+  case KT_SORT:
+    return na->data.sort.level == nb->data.sort.level;
+  case KT_NAT: case KT_ZERO:
+  case KT_BOOL: case KT_TRUE: case KT_FALSE:
+  case KT_UNIT: case KT_STAR:
+  case KT_NIL_K:
+    return 1;
+  case KT_LIST:
+    return kt_unify(heap, ctx, mctx, na->data.list.elem_type, nb->data.list.elem_type);
+  case KT_CONS_K:
+    return kt_unify(heap, ctx, mctx, na->data.cons_k.head, nb->data.cons_k.head) &&
+           kt_unify(heap, ctx, mctx, na->data.cons_k.tail, nb->data.cons_k.tail);
+  case KT_SUCC:
+    return kt_unify(heap, ctx, mctx, na->data.succ.pred, nb->data.succ.pred);
+  case KT_PI:
+    return kt_unify(heap, ctx, mctx, na->data.pi.domain, nb->data.pi.domain) &&
+           kt_unify(heap, ctx, mctx, na->data.pi.codomain, nb->data.pi.codomain);
+  case KT_SIGMA:
+    return kt_unify(heap, ctx, mctx, na->data.sigma.fst_type, nb->data.sigma.fst_type) &&
+           kt_unify(heap, ctx, mctx, na->data.sigma.snd_type, nb->data.sigma.snd_type);
+  case KT_LAM:
+    return kt_unify(heap, ctx, mctx, na->data.lam.body, nb->data.lam.body);
+  case KT_APP:
+    return kt_unify(heap, ctx, mctx, na->data.app.fun, nb->data.app.fun) &&
+           kt_unify(heap, ctx, mctx, na->data.app.arg, nb->data.app.arg);
+  case KT_ID:
+    return kt_unify(heap, ctx, mctx, na->data.id.type, nb->data.id.type) &&
+           kt_unify(heap, ctx, mctx, na->data.id.a, nb->data.id.a) &&
+           kt_unify(heap, ctx, mctx, na->data.id.b, nb->data.id.b);
+  case KT_REFL:
+    return kt_unify(heap, ctx, mctx, na->data.refl.value, nb->data.refl.value);
+  case KT_PAIR:
+    return kt_unify(heap, ctx, mctx, na->data.pair.fst, nb->data.pair.fst) &&
+           kt_unify(heap, ctx, mctx, na->data.pair.snd, nb->data.pair.snd);
+  default:
+    return 0;
   }
 }

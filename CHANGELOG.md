@@ -701,3 +701,31 @@ All tests passed.
 - Persistent vectors: pvec, pvec-ref, pvec-set, pvec-push, pvec-count.
 - Persistent hash maps: phash-map, phash-get, phash-set, phash-keys.
 - Syntax objects: datum->syntax, syntax->datum, syntax-e, syntax-source.
+
+## Phase 4: Elaboration foundations
+
+### Metavariables / Holes (K.4)
+- `KT_META` kernel term tag — placeholder for unknown terms.
+- `meta_ctx_t` — metavariable context tracking type, solution, and ID.
+- `meta_fresh(heap, mctx, type)` — create a fresh typed hole.
+- `meta_solve(mctx, id, solution)` — fill a hole.
+- `meta_zonk(heap, mctx, term)` — substitute solved metas in a term.
+- `(kernel-hole type)`, `(kernel-solve id term)`, `(kernel-zonk term)`,
+  `(kernel-meta-state)` — Lisp-facing primitives.
+
+### Unification (K.5)
+- `kt_unify(heap, ctx, mctx, a, b)` — first-order unification.
+- Flex-rigid: unsolved meta on one side → solve with the other.
+- Structural: recursively unify corresponding subterms.
+- Works with WHNF reduction — unfolds definitions before comparing.
+- `(kernel-unify a b)` — Lisp-facing primitive.
+- `?N` syntax in sexp_to_kterm for metavariable references.
+
+### Kernel Bool + Unit types
+- `Bool`, `true`, `false` — boolean type with constructors.
+- `(if b t f)` — Bool eliminator with computation rules:
+  `if true t f → t`, `if false t f → f`.
+- `Unit`, `*` — unit type with unique inhabitant.
+
+### Tactic: assumption
+- `(tactic-assumption)` — search context for hypothesis matching goal.
