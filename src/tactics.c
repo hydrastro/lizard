@@ -184,3 +184,93 @@ void proof_state_fprint(FILE *fp, proof_state_t *ps) {
     }
   }
 }
+
+/* ---- simpl ---- */
+
+int tactic_simpl(proof_state_t *ps) {
+  proof_goal_t *g = proof_current_goal(ps);
+  if (g == NULL) return -1;
+  g->type = kt_whnf(ps->heap, g->ctx, g->type);
+  return 0;
+}
+
+/* ---- split (for Sigma goals) ---- */
+
+int tactic_split(proof_state_t *ps) {
+  proof_goal_t *g = proof_current_goal(ps);
+  kterm_t *goal_whnf;
+  proof_goal_t *g1, *g2;
+  if (g == NULL) return -1;
+  goal_whnf = kt_whnf(ps->heap, g->ctx, g->type);
+  if (goal_whnf->tag != KT_SIGMA) return -1;
+  /* Create two subgoals: one for fst_type, one for snd_type. */
+  g1 = (proof_goal_t *)lizard_heap_alloc(sizeof(proof_goal_t));
+  memset(g1, 0, sizeof(*g1));
+  g1->id = ps->next_goal_id++;
+  g1->ctx = g->ctx;
+  g1->type = goal_whnf->data.sigma.fst_type;
+  g2 = (proof_goal_t *)lizard_heap_alloc(sizeof(proof_goal_t));
+  memset(g2, 0, sizeof(*g2));
+  g2->id = ps->next_goal_id++;
+  g2->ctx = g->ctx;
+  g2->type = goal_whnf->data.sigma.snd_type;
+  g2->next = g->next;
+  g1->next = g2;
+  /* Mark current goal as delegated (pair of subgoals). */
+  {
+    kterm_t *p = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(p, 0, sizeof(*p));
+    p->tag = KT_PAIR;
+    g->solution = p;  /* placeholder — filled by qed */
+  }
+  g->next = g1;
+  return 0;
+}
+
+/* ---- left/right (for Sum goals) ---- */
+
+int tactic_left(proof_state_t *ps) {
+  proof_goal_t *g = proof_current_goal(ps);
+  kterm_t *goal_whnf;
+  proof_goal_t *sub;
+  if (g == NULL) return -1;
+  goal_whnf = kt_whnf(ps->heap, g->ctx, g->type);
+  if (goal_whnf->tag != KT_SUM_K) return -1;
+  sub = (proof_goal_t *)lizard_heap_alloc(sizeof(proof_goal_t));
+  memset(sub, 0, sizeof(*sub));
+  sub->id = ps->next_goal_id++;
+  sub->ctx = g->ctx;
+  sub->type = goal_whnf->data.sum_k.left_type;
+  sub->next = g->next;
+  {
+    kterm_t *inl = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(inl, 0, sizeof(*inl));
+    inl->tag = KT_INL;
+    g->solution = inl;
+  }
+  g->next = sub;
+  return 0;
+}
+
+int tactic_right(proof_state_t *ps) {
+  proof_goal_t *g = proof_current_goal(ps);
+  kterm_t *goal_whnf;
+  proof_goal_t *sub;
+  if (g == NULL) return -1;
+  goal_whnf = kt_whnf(ps->heap, g->ctx, g->type);
+  if (goal_whnf->tag != KT_SUM_K) return -1;
+  sub = (proof_goal_t *)lizard_heap_alloc(sizeof(proof_goal_t));
+  memset(sub, 0, sizeof(*sub));
+  sub->id = ps->next_goal_id++;
+  sub->ctx = g->ctx;
+  sub->type = goal_whnf->data.sum_k.right_type;
+  sub->next = g->next;
+  {
+    kterm_t *inr = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(inr, 0, sizeof(*inr));
+    inr->tag = KT_INR;
+    g->solution = inr;
+  }
+  g->next = sub;
+  return 0;
+}

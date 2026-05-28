@@ -1,0 +1,70 @@
+; -*- lisp -*-
+; ============================================================
+;  EXAMPLE 89 — Track C: concurrency patterns over atoms
+; ============================================================
+
+(import "match.lisp")
+(import "concurrent.lisp")
+
+(display "=== ATOMIC COUNTER ===") (newline)
+(define c (make-counter))
+(counter-inc! c)
+(counter-inc! c)
+(counter-inc! c)
+(counter-add! c 10)
+(counter-dec! c)
+(display "  After +1+1+1+10-1: ") (display (counter-get c)) (newline)
+(newline)
+
+(display "=== ACCUMULATOR ===") (newline)
+(define acc (make-accumulator))
+(for-each (lambda (x) (accumulate! acc x)) '(1 2 3 4 5))
+(display "  Accumulated: ") (display (accumulator-values acc)) (newline)
+(display "  Count: ") (display (accumulator-count acc)) (newline)
+(newline)
+
+(display "=== CELL WITH HISTORY ===") (newline)
+(define cell (make-cell 'initial))
+(cell-set! cell 'second)
+(cell-set! cell 'third)
+(display "  Current: ") (display (cell-get cell)) (newline)
+(display "  History: ") (display (cell-history cell)) (newline)
+(cell-rollback! cell)
+(display "  After rollback: ") (display (cell-get cell)) (newline)
+(newline)
+
+(display "=== LAZY REFERENCE (compute once) ===") (newline)
+(define computation-count (make-counter))
+(define expensive
+  (make-lazy-ref (lambda ()
+                   (counter-inc! computation-count)
+                   42)))
+(display "  First get: ") (display (lazy-ref-get expensive)) (newline)
+(display "  Second get: ") (display (lazy-ref-get expensive)) (newline)
+(display "  Times computed (should be 1): ")
+(display (counter-get computation-count)) (newline)
+(newline)
+
+(display "=== REGISTRY ===") (newline)
+(define reg (make-registry))
+(registry-put! reg 'host "localhost")
+(registry-put! reg 'port 8080)
+(registry-put! reg 'debug #t)
+(display "  host: ") (display (registry-get reg 'host)) (newline)
+(display "  port: ") (display (registry-get reg 'port)) (newline)
+(display "  keys: ") (display (registry-keys reg)) (newline)
+(registry-put! reg 'port 9090)
+(display "  port after update: ") (display (registry-get reg 'port)) (newline)
+(newline)
+
+(display "=== SEMAPHORE ===") (newline)
+(define sem (make-semaphore 2))
+(display "  Permits: ") (display (semaphore-available sem)) (newline)
+(display "  acquire: ") (display (semaphore-acquire! sem)) (newline)
+(display "  acquire: ") (display (semaphore-acquire! sem)) (newline)
+(display "  acquire (should fail): ") (display (semaphore-acquire! sem)) (newline)
+(semaphore-release! sem)
+(display "  after release, acquire: ") (display (semaphore-acquire! sem)) (newline)
+(newline)
+
+(display "=== End of concurrency patterns ===") (newline)

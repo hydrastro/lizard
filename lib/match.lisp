@@ -141,3 +141,72 @@
           (let ((result (f x)))
             (swap! cache (lambda (c) (cons (cons x result) c)))
             result)))))
+
+; ---- reduce (alias for fold-left) ----
+(define reduce fold-left)
+
+; ---- frequencies: count occurrences ----
+(define (frequencies lst)
+  (fold-left
+    (lambda (acc x)
+      (let ((count (alist-ref x acc 0)))
+        (alist-set x (+ count 1) acc)))
+    '()
+    lst))
+
+; ---- group-by: group elements by function ----
+(define (group-by f lst)
+  (fold-left
+    (lambda (acc x)
+      (let ((key (f x))
+            (existing (alist-ref key acc '())))
+        (alist-set key (cons x existing) acc)))
+    '()
+    lst))
+
+; ---- interleave two lists ----
+(define (interleave a b)
+  (if (or (null? a) (null? b)) '()
+    (cons (car a) (cons (car b) (interleave (cdr a) (cdr b))))))
+
+; ---- scan (prefix sums) ----
+(define (scan f init lst)
+  (if (null? lst) (list init)
+    (cons init (scan f (f init (car lst)) (cdr lst)))))
+
+; ---- iterate: apply f n times ----
+(define (iterate f n x)
+  (if (= n 0) x (iterate f (- n 1) (f x))))
+
+; ---- unfold: generate list from seed ----
+(define (unfold pred f seed)
+  (if (pred seed) '()
+    (cons (f seed)
+          (unfold pred f (f seed)))))
+
+; ---- tabulate: build list from function ----
+(define (tabulate f n)
+  (map f (range 0 n)))
+
+; ---- sum / product ----
+(define (sum lst) (fold-left + 0 lst))
+(define (product lst) (fold-left * 1 lst))
+
+; ---- minimum / maximum of list ----
+(define (minimum lst)
+  (fold-left min (car lst) (cdr lst)))
+(define (maximum lst)
+  (fold-left max (car lst) (cdr lst)))
+
+; ---- assoc-update ----
+(define (assoc-update key f default alist)
+  (alist-set key (f (alist-ref key alist default)) alist))
+
+; ---- string-repeat ----
+(define (string-repeat s n)
+  (string-join (repeat n s) ""))
+
+; ---- pipeline macro (-> already defined) ----
+; ---- thread-last (->> val f1 f2 ...) ----
+(define (->> val . fns)
+  (fold-left (lambda (acc f) (f acc)) val fns))

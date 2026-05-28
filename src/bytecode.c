@@ -210,6 +210,51 @@ static int compile_expr(lizard_bc_chunk_t *c, lizard_ast_node_t *expr,
     return compile_sequence(c, expr->data.begin_expressions, heap,
                             tail_position);
 
+  case AST_COND:
+    /* Compile cond as a chain of if-then-else. */
+    {
+      lz_list_node_t *clause;
+      int end_patches[32];
+      int n_patches = 0;
+      if (expr->data.cond_clauses == NULL) {
+        chunk_emit(c, OP_CONST, chunk_add_const(c, lizard_make_nil(heap)));
+        return 0;
+      }
+      for (clause = expr->data.cond_clauses->head;
+           clause != expr->data.cond_clauses->nil;
+           clause = clause->next) {
+        lizard_ast_node_t *cl = ((lizard_ast_list_node_t *)clause)->ast;
+        int skip;
+        if (cl == NULL || cl->type != AST_PAIR) continue;
+        /* Check for 'else' clause. */
+        if (cl->data.pair.car->type == AST_SYMBOL &&
+            strcmp(cl->data.pair.car->data.variable, "else") == 0) {
+          if (compile_expr(c, cl->data.pair.cdr, heap, tail_position) < 0)
+            return -1;
+          break;
+        }
+        /* Compile test. */
+        if (compile_expr(c, cl->data.pair.car, heap, 0) < 0) return -1;
+        skip = chunk_emit(c, OP_JUMP_IF_FALSE, 0);
+        /* Compile body. */
+        if (compile_expr(c, cl->data.pair.cdr, heap, tail_position) < 0)
+          return -1;
+        if (n_patches < 32) {
+          end_patches[n_patches++] = chunk_emit(c, OP_JUMP, 0);
+        }
+        /* Patch the skip to jump past this clause's body. */
+        c->code[skip].arg = c->code_count;
+      }
+      /* Patch all end jumps to here. */
+      {
+        int j;
+        for (j = 0; j < n_patches; j++) {
+          c->code[end_patches[j]].arg = c->code_count;
+        }
+      }
+      return 0;
+    }
+
   case AST_LAMBDA:
     /* Compile lambda body to a sub-chunk, emit OP_CLOSURE. */
     {

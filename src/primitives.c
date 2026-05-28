@@ -88,6 +88,18 @@ lizard_ast_node_t *lizard_primitive_minus(lz_list_t *args, lizard_env_t *env,
   if (arg->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT);
   }
+  /* Fast path: exactly two number arguments — subtract directly
+   * into a fresh result without copying the first operand. */
+  if (node->next != args->nil && node->next->next == args->nil) {
+    lizard_ast_node_t *b = ((lizard_ast_list_node_t *)node->next)->ast;
+    if (b->type == AST_NUMBER) {
+      lizard_ast_node_t *result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      result->type = AST_NUMBER;
+      mpz_init(result->data.number);
+      mpz_sub(result->data.number, arg->data.number, b->data.number);
+      return result;
+    }
+  }
   acc = lizard_make_number_copy(heap, arg);
   node = node->next;
   if (node == args->nil) {
@@ -122,6 +134,19 @@ lizard_ast_node_t *lizard_primitive_multiply(lz_list_t *args, lizard_env_t *env,
   acc = first_arg_node->ast;
   if (acc->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGT);
+  }
+  /* Fast path: exactly two number arguments. Avoid copying the
+   * (potentially huge) accumulator — multiply directly into a fresh
+   * result. This is the dominant case for bignum power loops. */
+  if (node->next != args->nil && node->next->next == args->nil) {
+    lizard_ast_node_t *b = ((lizard_ast_list_node_t *)node->next)->ast;
+    if (b->type == AST_NUMBER) {
+      lizard_ast_node_t *result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      result->type = AST_NUMBER;
+      mpz_init(result->data.number);
+      mpz_mul(result->data.number, acc->data.number, b->data.number);
+      return result;
+    }
   }
   acc = lizard_make_number_copy(heap, acc);
   node = node->next;
@@ -3558,6 +3583,58 @@ lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
   return lizard_make_bool(heap, 1);
 }
 
+/* (tactic-simpl) — reduce goal to WHNF. */
+lizard_ast_node_t *lizard_primitive_tactic_simpl(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_simpl(current_proof);
+  if (r < 0) { printf("tactic-simpl: no goal.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (tactic-split) — split a Sigma goal into two subgoals. */
+lizard_ast_node_t *lizard_primitive_tactic_split(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_split(current_proof);
+  if (r < 0) { printf("tactic-split: goal is not a Sigma type.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (tactic-left) — choose left for Sum goal. */
+lizard_ast_node_t *lizard_primitive_tactic_left(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_left(current_proof);
+  if (r < 0) { printf("tactic-left: goal is not a Sum type.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+/* (tactic-right) — choose right for Sum goal. */
+lizard_ast_node_t *lizard_primitive_tactic_right(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_right(current_proof);
+  if (r < 0) { printf("tactic-right: goal is not a Sum type.\n"); return lizard_make_bool(heap, 0); }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
 /* (phash-values m) — list of values. */
 lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
                                                   lizard_env_t *env,
@@ -3975,6 +4052,122 @@ lizard_ast_node_t *lizard_primitive_string_reverse(lz_list_t *args,
   result->type = AST_STRING;
   result->data.string = buf;
   return result;
+}
+
+/* ============================================================
+ * Track C.3: Transients — mutable batch ops on persistent data.
+ *
+ * (transient! pvec) → mutable vector
+ * (conj! vec val) → append to mutable vector in place
+ * (persistent! vec) → freeze back to immutable pvec
+ * ============================================================ */
+
+/* (transient! coll) — create a mutable copy. */
+lizard_ast_node_t *lizard_primitive_transient(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *coll, *result;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  coll = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (coll->type == AST_PVEC) {
+    /* Convert persistent vector to mutable vector. */
+    int count = coll->data.pvec.count;
+    int i;
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_VECTOR;
+    result->data.vector.elements = (lizard_ast_node_t **)
+        lizard_heap_alloc((size_t)(count + 16) * sizeof(lizard_ast_node_t *));
+    result->data.vector.size = (size_t)count;
+    for (i = 0; i < count; i++) {
+      result->data.vector.elements[i] = coll->data.pvec.entries[i];
+    }
+    return result;
+  }
+  if (coll->type == AST_HAMT) {
+    /* Convert persistent hash map to mutable list of pairs. */
+    hamt_flat_t *h = (hamt_flat_t *)coll->data.hamt.root;
+    lizard_ast_node_t *lst = lizard_make_nil(heap);
+    int i;
+    for (i = h->count - 1; i >= 0; i--) {
+      lizard_ast_node_t *pair, *node;
+      pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      pair->type = AST_PAIR;
+      pair->data.pair.car = h->entries[i].key;
+      pair->data.pair.cdr = h->entries[i].val;
+      node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+      node->type = AST_PAIR;
+      node->data.pair.car = pair;
+      node->data.pair.cdr = lst;
+      lst = node;
+    }
+    return lst;
+  }
+  return coll;
+}
+
+/* (conj! vec val) — append to mutable vector in place. */
+lizard_ast_node_t *lizard_primitive_conj_mut(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *vec, *val;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  vec = ((lizard_ast_list_node_t *)args->head)->ast;
+  val = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (vec->type == AST_VECTOR) {
+    int len = (int)vec->data.vector.size;
+    /* Grow if needed — simple realloc-style. */
+    {
+      lizard_ast_node_t **new_elems;
+      new_elems = (lizard_ast_node_t **)
+          lizard_heap_alloc((size_t)(len + 1) * sizeof(lizard_ast_node_t *));
+      if (len > 0)
+        memcpy(new_elems, vec->data.vector.elements,
+               (size_t)len * sizeof(lizard_ast_node_t *));
+      new_elems[len] = val;
+      vec->data.vector.elements = new_elems;
+      vec->data.vector.size = (size_t)(len + 1);
+    }
+    return vec;
+  }
+  /* For lists, cons onto front. */
+  if (vec->type == AST_PAIR || vec->type == AST_NIL) {
+    lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    node->type = AST_PAIR;
+    node->data.pair.car = val;
+    node->data.pair.cdr = vec;
+    return node;
+  }
+  return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+}
+
+/* (persistent! vec) — freeze mutable vector back to immutable pvec. */
+lizard_ast_node_t *lizard_primitive_persistent(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *vec, *result;
+  (void)env;
+  if (!single_arg(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  vec = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (vec->type == AST_VECTOR) {
+    int count = (int)vec->data.vector.size;
+    int i;
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_PVEC;
+    result->data.pvec.count = count;
+    result->data.pvec.capacity = count;
+    result->data.pvec.entries = (lizard_ast_node_t **)
+        lizard_heap_alloc((size_t)count * sizeof(lizard_ast_node_t *));
+    for (i = 0; i < count; i++) {
+      result->data.pvec.entries[i] = vec->data.vector.elements[i];
+    }
+    return result;
+  }
+  return vec;
 }
 
 static void install_one(lizard_heap_t *heap, lizard_env_t *env,
@@ -8087,6 +8280,10 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "tactic-refl",      lizard_primitive_tactic_refl);
   install_one(heap, env, "qed",              lizard_primitive_qed);
   install_one(heap, env, "tactic-assumption",lizard_primitive_tactic_assumption);
+  install_one(heap, env, "tactic-simpl",     lizard_primitive_tactic_simpl);
+  install_one(heap, env, "tactic-split",     lizard_primitive_tactic_split);
+  install_one(heap, env, "tactic-left",      lizard_primitive_tactic_left);
+  install_one(heap, env, "tactic-right",     lizard_primitive_tactic_right);
   /* Track C: hash map utilities. */
   install_one(heap, env, "phash-values",     lizard_primitive_phash_values);
   install_one(heap, env, "phash-entries",    lizard_primitive_phash_entries);
@@ -8134,6 +8331,10 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "string->list",     lizard_primitive_string_to_list);
   install_one(heap, env, "list->string",     lizard_primitive_list_to_string);
   install_one(heap, env, "string-reverse",   lizard_primitive_string_reverse);
+  /* Track C.3: Transients. */
+  install_one(heap, env, "transient!",       lizard_primitive_transient);
+  install_one(heap, env, "conj!",            lizard_primitive_conj_mut);
+  install_one(heap, env, "persistent!",      lizard_primitive_persistent);
   install_one(heap, env, "arithmetic-shift", lizard_primitive_arith_shift);
   install_one(heap, env, "expt",            lizard_primitive_expt);
   install_one(heap, env, "gcd",             lizard_primitive_gcd);

@@ -284,3 +284,12 @@ Exit criteria:
 - Claiming full proof-assistant trust before the kernel is isolated.
 - Claiming full CCHM before all interval/face/composition laws are represented and tested.
 - Adding native code generation before a bytecode compiler and source maps exist.
+
+## Phase 4 progress note (library-level)
+
+Pending full hygienic syntax-rules with ellipsis, the Phase 4 exit-criteria forms are now available as library functions:
+- `match` → lib/pattern.lisp (match-run with structural patterns)
+- `case`, `when`, `unless`, `cond` → lib/control.lisp
+- `let`, `let*`, `letrec` → already special forms in the evaluator
+
+These will be re-expressed as true macros once ellipsis lands.

@@ -238,6 +238,14 @@ lizard_ast_node_t *lizard_primitive_kernel_equalp(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_simpl(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_split(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_left(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_right(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_phash_entries(lz_list_t *args,
@@ -282,6 +290,13 @@ lizard_ast_node_t *lizard_primitive_string_to_list(lz_list_t *args,
 lizard_ast_node_t *lizard_primitive_list_to_string(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_string_reverse(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Transients. */
+lizard_ast_node_t *lizard_primitive_transient(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_conj_mut(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_persistent(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 
 lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args,

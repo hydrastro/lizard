@@ -62,6 +62,21 @@ int tactic_apply(proof_state_t *ps, kterm_t *f);
  * type matches the goal. Returns 0 on success, -1 if not found. */
 int tactic_assumption(proof_state_t *ps);
 
+/* Tactic: simpl — reduce the goal type to WHNF. */
+int tactic_simpl(proof_state_t *ps);
+
+/* Tactic: split — for a Sigma goal (Σ x:A. B), produce two subgoals:
+ * one for A and one for B. Returns 0 on success. */
+int tactic_split(proof_state_t *ps);
+
+/* Tactic: left — for a Sum goal (A + B), choose left; produce
+ * subgoal for A. */
+int tactic_left(proof_state_t *ps);
+
+/* Tactic: right — for a Sum goal (A + B), choose right; produce
+ * subgoal for B. */
+int tactic_right(proof_state_t *ps);
+
 /* QED: check that all goals are solved and return the proof term.
  * Returns the term on success, NULL if goals remain. */
 kterm_t *proof_qed(proof_state_t *ps);
