@@ -248,3 +248,12 @@ build/lizard --list-report-schemas --list-report-schemas-format json
 
 This command does not evaluate code and cannot be combined with evaluation or
 tracing options.
+
+
+## Phase 2T: report schema requirements
+
+Report schema discovery now has a preflight requirement API and CLI command.
+External tools can require a schema type, minimum version, and format support
+(`any`, `text`, or `json`) before requesting expansion, trace, or diagnostic
+reports.  This keeps editor/tooling integrations explicit without changing
+evaluator or macro semantics.

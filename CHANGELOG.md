@@ -1,3 +1,11 @@
+# Phase 2T — report schema requirement checks
+
+- Added `lizard_report_schema_require` so tools can assert that a schema type, minimum version, and format capability are available before using report APIs.
+- Added CLI preflight option `--require-report-schema TYPE:VERSION:FORMAT`; accepted formats are `any`, `text`, and `json`.
+- `--require-report-schema` is standalone and intentionally rejected when combined with evaluation/tracing options.
+- Extended report-schema and CLI tests to cover satisfied requirements, unsupported versions, bad formats, and invalid option combinations.
+- Kept report output formats stable and kept all strict warning/security flags intact.
+
 # Phase 2R — stable report schema registry
 
 - Added `src/report_schema.c` / `src/report_schema.h` to centralize report type names and version numbers.

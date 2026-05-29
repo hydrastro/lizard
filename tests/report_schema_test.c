@@ -121,5 +121,32 @@ int main(void) {
   TEST_ASSERT(strstr(buffer, "\"supports_json\":true") != NULL);
   fclose(fp);
 
+
+  memset(&info, 0, sizeof(info));
+  ok = lizard_report_schema_require("lizard-syntax-expansion", 1, "json",
+                                    &info);
+  TEST_ASSERT(ok);
+  TEST_ASSERT_STR(info.type, "lizard-syntax-expansion");
+  TEST_ASSERT_EQ(info.version, 1);
+
+  ok = lizard_report_schema_require("lizard-syntax-expansion", 2, "json",
+                                    &info);
+  TEST_ASSERT(!ok);
+
+  ok = lizard_report_schema_require("lizard-syntax-expansion", 1, "text",
+                                    NULL);
+  TEST_ASSERT(ok);
+
+  ok = lizard_report_schema_require("lizard-syntax-expansion", 1, "any",
+                                    NULL);
+  TEST_ASSERT(ok);
+
+  ok = lizard_report_schema_require("lizard-syntax-expansion", 1, "xml",
+                                    NULL);
+  TEST_ASSERT(!ok);
+
+  ok = lizard_report_schema_require("missing-schema", 1, "json", NULL);
+  TEST_ASSERT(!ok);
+
   TEST_RETURN();
 }

@@ -272,6 +272,16 @@ and type-theory references.
 - Added regression coverage for schema names, versions, validity checks, and JSON
   type-field printing.
 
+
+### Phase 2T progress
+
+- Added report schema requirement checking. Tools can now require a schema type,
+  minimum version, and format capability before consuming a report.
+- Added `--require-report-schema TYPE:VERSION:FORMAT` as a standalone CLI
+  preflight check. This keeps editor integrations explicit and fail-fast.
+- Existing report formats remain stable; this phase adds compatibility checking
+  rather than changing report contents.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

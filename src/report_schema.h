@@ -30,5 +30,7 @@ int lizard_report_schema_info_from_kind(lizard_report_schema_kind_t kind,
                                         lizard_report_schema_info_t *out_info);
 int lizard_report_schema_kind_at(unsigned long index,
                                  lizard_report_schema_kind_t *out_kind);
+int lizard_report_schema_format_supported(const lizard_report_schema_info_t *info,
+                                          const char *format);
 
 #endif /* LIZARD_REPORT_SCHEMA_H */

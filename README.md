@@ -237,5 +237,14 @@ build/lizard --list-report-schemas
 build/lizard --list-report-schemas --list-report-schemas-format json
 ```
 
+Tools can also require a specific schema before using a report parser:
+
+```sh
+build/lizard --require-report-schema lizard-syntax-expansion:1:json
+```
+
+The format component is one of `any`, `text`, or `json`.  This command is a
+standalone preflight check and does not evaluate code.
+
 The schema listing reports each schema type, version, and whether the current
 binary supports stable text output, JSON output, and the stable-v1 contract.

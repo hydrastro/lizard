@@ -80,3 +80,12 @@ versions, and capabilities must be centralized in the report schema registry;
 do not duplicate string literals or silently change schema versions in writer
 modules.  Any new report schema must declare whether it supports stable text,
 JSON, and the stable-v1 contract.
+
+
+## Phase 2T: report schema requirements
+
+Report schema discovery now has a preflight requirement API and CLI command.
+External tools can require a schema type, minimum version, and format support
+(`any`, `text`, or `json`) before requesting expansion, trace, or diagnostic
+reports.  This keeps editor/tooling integrations explicit without changing
+evaluator or macro semantics.

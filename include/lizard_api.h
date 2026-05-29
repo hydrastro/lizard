@@ -93,6 +93,9 @@ const char *lizard_report_schema_list_type(void);
 int lizard_report_schema_list_version(void);
 int lizard_report_schema_list_fprint(FILE *fp);
 int lizard_report_schema_list_fprint_json(FILE *fp);
+int lizard_report_schema_require(const char *type, int min_version,
+                                 const char *format,
+                                 lizard_report_schema_info_t *out_info);
 
 typedef enum {
   LIZARD_VALUE_STRING,

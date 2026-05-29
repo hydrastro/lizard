@@ -262,3 +262,12 @@ assuming that text/JSON/stable-v1 support exists by convention.
 
 Existing report output remains byte-compatible for the trace, diagnostic, and
 syntax-expansion report formats.
+
+
+## Phase 2T: report schema requirements
+
+Report schema discovery now has a preflight requirement API and CLI command.
+External tools can require a schema type, minimum version, and format support
+(`any`, `text`, or `json`) before requesting expansion, trace, or diagnostic
+reports.  This keeps editor/tooling integrations explicit without changing
+evaluator or macro semantics.

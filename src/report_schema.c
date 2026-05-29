@@ -3,6 +3,8 @@
 #include "report_schema.h"
 #include "report_writer.h"
 
+#include <string.h>
+
 #define LIZARD_REPORT_SCHEMA_PUBLIC_COUNT 3UL
 #define LIZARD_REPORT_SCHEMA_LIST_TYPE "lizard-report-schema-list"
 #define LIZARD_REPORT_SCHEMA_LIST_VERSION 1
@@ -111,6 +113,58 @@ int lizard_report_schema_get(unsigned long index,
     return 0;
   }
   return lizard_report_schema_info_from_kind(kind, out_info);
+}
+
+
+int lizard_report_schema_format_supported(const lizard_report_schema_info_t *info,
+                                          const char *format) {
+  if (info == NULL || info->type == NULL || info->version <= 0) {
+    return 0;
+  }
+  if (format == NULL || strcmp(format, "any") == 0) {
+    return info->supports_text || info->supports_json;
+  }
+  if (strcmp(format, "text") == 0) {
+    return info->supports_text;
+  }
+  if (strcmp(format, "json") == 0) {
+    return info->supports_json;
+  }
+  return 0;
+}
+
+int lizard_report_schema_require(const char *type, int min_version,
+                                 const char *format,
+                                 lizard_report_schema_info_t *out_info) {
+  unsigned long i;
+  unsigned long count;
+  lizard_report_schema_info_t info;
+
+  if (out_info != NULL) {
+    out_info->type = NULL;
+    out_info->version = 0;
+    out_info->supports_text = 0;
+    out_info->supports_json = 0;
+    out_info->stable_v1 = 0;
+  }
+  if (type == NULL || type[0] == '\0' || min_version < 0) {
+    return 0;
+  }
+  count = lizard_report_schema_count();
+  for (i = 0UL; i < count; i++) {
+    if (!lizard_report_schema_get(i, &info)) {
+      continue;
+    }
+    if (info.type != NULL && strcmp(info.type, type) == 0 &&
+        info.version >= min_version &&
+        lizard_report_schema_format_supported(&info, format)) {
+      if (out_info != NULL) {
+        *out_info = info;
+      }
+      return 1;
+    }
+  }
+  return 0;
 }
 
 const char *lizard_report_schema_list_type(void) {

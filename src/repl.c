@@ -8,6 +8,7 @@
 #include "tokenizer.h"
 #include "syntax_expansion_report.h"
 #include "report_schema.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,7 @@
 static void print_usage(const char *argv0) {
   printf("usage: %s [--help] [--version] [--trace-expansion] "
          "[--print-expansion-trace] [--trace-expansion-file PATH] "
-         "[--expand-only] [--expand-only-format text|json] [--list-report-schemas] [--list-report-schemas-format text|json] [--eval EXPR] [file]\n", argv0);
+         "[--expand-only] [--expand-only-format text|json] [--list-report-schemas] [--list-report-schemas-format text|json] [--require-report-schema TYPE:VERSION:FORMAT] [--eval EXPR] [file]\n", argv0);
   printf("Run Lizard interactively, evaluate EXPR, or evaluate a file/stdin in script mode.\n");
   printf("  --trace-expansion        enable traced SurfaceTerm macro expansion\n");
   printf("  --print-expansion-trace  print an owned expansion trace report after each evaluation\n");
@@ -33,6 +34,8 @@ static void print_usage(const char *argv0) {
   printf("  --list-report-schemas    list supported tooling report schemas and exit\n");
   printf("  --list-report-schemas-format FMT\n");
   printf("                           choose schema-list output: text or json\n");
+  printf("  --require-report-schema TYPE:VERSION:FORMAT\n");
+  printf("                           require a supported report schema, format any|text|json\n");
 }
 
 
@@ -446,6 +449,94 @@ static int list_report_schemas(int json_output) {
   return 0;
 }
 
+
+static int parse_nonnegative_version(const char *text, int *out_value) {
+  char *end;
+  long value;
+
+  if (text == NULL || text[0] == '\0' || out_value == NULL) {
+    return 0;
+  }
+  value = strtol(text, &end, 10);
+  if (end == text || *end != '\0' || value < 0L || value > (long)INT_MAX) {
+    return 0;
+  }
+  *out_value = (int)value;
+  return 1;
+}
+
+static int copy_schema_requirement_part(char *dst, size_t dst_size,
+                                        const char *start,
+                                        const char *end) {
+  size_t len;
+
+  if (dst == NULL || dst_size == 0U || start == NULL || end == NULL ||
+      end < start) {
+    return 0;
+  }
+  len = (size_t)(end - start);
+  if (len == 0U || len >= dst_size) {
+    return 0;
+  }
+  memcpy(dst, start, len);
+  dst[len] = '\0';
+  return 1;
+}
+
+static int require_report_schema_spec(const char *spec) {
+  const char *first;
+  const char *second;
+  const char *extra;
+  char type[128];
+  char version_text[32];
+  char format[16];
+  int min_version;
+  lizard_report_schema_info_t info;
+
+  if (spec == NULL) {
+    fprintf(stderr, "invalid --require-report-schema: expected TYPE:VERSION:FORMAT\n");
+    return 2;
+  }
+  first = strchr(spec, ':');
+  if (first == NULL) {
+    fprintf(stderr, "invalid --require-report-schema: expected TYPE:VERSION:FORMAT\n");
+    return 2;
+  }
+  second = strchr(first + 1, ':');
+  if (second == NULL) {
+    fprintf(stderr, "invalid --require-report-schema: expected TYPE:VERSION:FORMAT\n");
+    return 2;
+  }
+  extra = strchr(second + 1, ':');
+  if (extra != NULL ||
+      !copy_schema_requirement_part(type, sizeof(type), spec, first) ||
+      !copy_schema_requirement_part(version_text, sizeof(version_text),
+                                    first + 1, second) ||
+      !copy_schema_requirement_part(format, sizeof(format), second + 1,
+                                    spec + strlen(spec))) {
+    fprintf(stderr, "invalid --require-report-schema: expected TYPE:VERSION:FORMAT\n");
+    return 2;
+  }
+  if (!parse_nonnegative_version(version_text, &min_version)) {
+    fprintf(stderr, "invalid --require-report-schema version: %s\n",
+            version_text);
+    return 2;
+  }
+  if (strcmp(format, "any") != 0 && strcmp(format, "text") != 0 &&
+      strcmp(format, "json") != 0) {
+    fprintf(stderr, "invalid --require-report-schema format: %s\n", format);
+    return 2;
+  }
+  if (!lizard_report_schema_require(type, min_version, format, &info)) {
+    fprintf(stderr,
+            "required report schema not supported: type=%s min-version=%d format=%s\n",
+            type, min_version, format);
+    return 1;
+  }
+  return 0;
+}
+
+
 int main(int argc, char **argv) {
   char *input;
   int i;
@@ -458,6 +549,8 @@ int main(int argc, char **argv) {
   int expand_only_json;
   int list_schemas;
   int list_schemas_json;
+  int require_schema_count;
+  const char *require_schema_specs[32];
   const char *trace_expansion_file_path;
   FILE *trace_expansion_file;
   const char *eval_expr;
@@ -474,6 +567,7 @@ int main(int argc, char **argv) {
   expand_only_json = 0;
   list_schemas = 0;
   list_schemas_json = 0;
+  require_schema_count = 0;
 
   for (argi = 1; argi < argc; argi++) {
     if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
@@ -545,6 +639,20 @@ int main(int argc, char **argv) {
       }
       continue;
     }
+    if (strcmp(argv[argi], "--require-report-schema") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--require-report-schema expects TYPE:VERSION:FORMAT\n");
+        return 2;
+      }
+      if (require_schema_count >= 32) {
+        fprintf(stderr, "too many --require-report-schema options\n");
+        return 2;
+      }
+      require_schema_specs[require_schema_count] = argv[argi];
+      require_schema_count++;
+      continue;
+    }
     if (strcmp(argv[argi], "--eval") == 0 || strcmp(argv[argi], "-e") == 0) {
       argi++;
       if (argi >= argc) {
@@ -564,11 +672,28 @@ int main(int argc, char **argv) {
   if (list_schemas) {
     if (eval_expr != NULL || file_path != NULL || expand_only ||
         trace_expansion_file_path != NULL || print_expansion_trace ||
-        trace_expansion) {
-      fprintf(stderr, "--list-report-schemas cannot be combined with evaluation or tracing options\n");
+        trace_expansion || require_schema_count > 0) {
+      fprintf(stderr, "--list-report-schemas cannot be combined with evaluation, tracing, or requirement options\n");
       return 2;
     }
     return list_report_schemas(list_schemas_json);
+  }
+  if (require_schema_count > 0) {
+    int r;
+    int status;
+    if (eval_expr != NULL || file_path != NULL || expand_only ||
+        trace_expansion_file_path != NULL || print_expansion_trace ||
+        trace_expansion) {
+      fprintf(stderr, "--require-report-schema cannot be combined with evaluation or tracing options\n");
+      return 2;
+    }
+    for (r = 0; r < require_schema_count; r++) {
+      status = require_report_schema_spec(require_schema_specs[r]);
+      if (status != 0) {
+        return status;
+      }
+    }
+    return 0;
   }
   if (eval_expr != NULL && file_path != NULL) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");
