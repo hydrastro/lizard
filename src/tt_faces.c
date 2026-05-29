@@ -5,10 +5,27 @@
  */
 
 #include "primitives.h"
-#include "prims_common.h"
 #include "errors.h"
 #include "mem.h"
+
 #include <string.h>
+
+static int tt_faces_two_args(lz_list_t *args) {
+  return args->head != args->nil && args->head->next != args->nil &&
+         args->head->next->next == args->nil;
+}
+
+static lizard_ast_node_t *tt_faces_nth_arg(lz_list_t *args, int n) {
+  lz_list_node_t *it;
+  it = args->head;
+  while (n-- > 0 && it != args->nil) {
+    it = it->next;
+  }
+  if (it == args->nil) {
+    return NULL;
+  }
+  return ((lizard_ast_list_node_t *)it)->ast;
+}
 
 /* ----- Face entailment decision procedure (Turn 7) -----
  *
@@ -80,11 +97,11 @@ lizard_ast_node_t *lizard_primitive_tt_face_entails(lz_list_t *args,
   lizard_ast_node_t *phi, *psi;
   int r;
   (void)env;
-  if (!lizard_prim_two_args(args)) {
+  if (!tt_faces_two_args(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  phi = lizard_prim_nth_arg(args, 0);
-  psi = lizard_prim_nth_arg(args, 1);
+  phi = tt_faces_nth_arg(args, 0);
+  psi = tt_faces_nth_arg(args, 1);
   phi = lizard_tt_reduce(phi, heap);
   psi = lizard_tt_reduce(psi, heap);
   r = lizard_tt_face_entails(phi, psi);
@@ -130,11 +147,11 @@ lizard_ast_node_t *lizard_primitive_tt_system_lookup(lz_list_t *args,
                                                      lizard_heap_t *heap) {
   lizard_ast_node_t *sys, *phi, *r;
   (void)env;
-  if (!lizard_prim_two_args(args)) {
+  if (!tt_faces_two_args(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  sys = lizard_tt_reduce(lizard_prim_nth_arg(args, 0), heap);
-  phi = lizard_tt_reduce(lizard_prim_nth_arg(args, 1), heap);
+  sys = lizard_tt_reduce(tt_faces_nth_arg(args, 0), heap);
+  phi = lizard_tt_reduce(tt_faces_nth_arg(args, 1), heap);
   r = lizard_tt_system_lookup(sys, phi);
   if (r == NULL) return lizard_make_nil(heap);
   return r;

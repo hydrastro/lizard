@@ -17,6 +17,144 @@ and type-theory references.
 - `tt_equality.c` still owns the actual reduction and judgmental equality rules; this phase only makes constructors reusable and removes another chunk of infrastructure from the monolith.
 - The next split target is the Glue/ua reduction rules themselves, followed by HIT/truncation computation.
 
+
+### Phase 1I progress
+
+- The type-theory monolith has been split again. Runtime-owned registries now
+  live in `src/tt_registry.c`, universe/couniverse lattice operations live in
+  `src/tt_lattice.c` / `src/tt_lattice.h`, and cubical face entailment/system
+  lookup live in `src/tt_faces.c`.
+- Added direct regression tests for the moved registry, lattice, and face APIs.
+  These are important because the next architectural step is separating runtime
+  values from checked kernel terms; the existing theory behavior must stay
+  pinned down while that representation boundary is introduced.
+- `tt_equality.c` is now closer to its intended role: normalization,
+  judgmental equality, and reducer orchestration. Remaining split targets are
+  HIT/truncation computation and, later, the reducer switch itself.
+
+
+### Phase 1J progress
+
+- HIT construction/lookup primitives now live in `src/prims_hits.c` instead of
+  the monolithic `src/primitives.c`.
+- Propositional truncation primitives now live in `src/prims_trunc.c`.  This
+  keeps primitive registration centralized while moving implementation bodies
+  into theory-specific files.
+- Added `tests/tt_primitive_split_test.c` to guard the moved HIT/truncation
+  primitive entry points directly through normal evaluation.
+- The next theory split should move HIT/truncation *normalization and equality*
+  helper logic out of `tt_equality.c`; this phase deliberately avoided changing
+  reducer semantics.
+
+
+### Phase 1K progress
+
+- Optional proof-theory scaffolds are no longer embedded in the monolithic
+  primitive implementation: S¹ and user theory-extension constructors now live
+  in `src/prims_theory_ext.c`.
+- Named logic-bundle primitives now live in `src/prims_logic.c`; the registry
+  implementation remains in `tt_registry.c`.
+- Added a split-regression test for optional S¹/theory-extension and named
+  logic-bundle entry points.
+- The next primitive split target is the proof/tactic interface, but that first
+  requires exposing or moving the kernel S-expression converter so the split
+  does not create hidden cross-file coupling.
+
+
+### Phase 1L progress
+
+- `src/prims_kernel.c` now owns kernel/proof/tactic primitives and the
+  S-expression-to-kernel-term bridge.  This keeps tactics as ordinary optional
+  front-end functions and removes proof-facing code from the general primitive
+  monolith.
+- `src/primitives.c` still owns registration, but implementation bodies are now
+  split enough to prepare the later `SurfaceTerm / CoreTerm / KernelTerm / Value`
+  boundary.
+- The build hotfix also removes the unused `no_args` helper left behind by the
+  previous theory-extension split.
+
+
+### Phase 1M progress
+
+- Kernel S-expression conversion now lives in `src/kernel_sexp.c` /
+  `src/kernel_sexp.h`, rather than inside the proof primitive file.
+- Quoted pair-chain data such as `'(Id Nat 0 0)` is reparsed before kernel
+  conversion, fixing the split-regression in `kernel_primitive_split_test`.
+- Proof state, metavariable context, and kernel definition context are now
+  runtime-owned fields, preparing the kernel/proof layer for future
+  thread-safe contexts.
+- `scripts/clean.sh` no longer recursively invokes itself from the usage
+  block, fixing the shell-level explosion after CI-like command chains.
+
+
+### Phase 1N progress
+
+- Kernel/proof primitives are now split by family. `src/prims_kernel_core.c`
+  owns infer/check/reduce/equality primitives; `src/prims_kernel_proof.c` owns
+  proof state and tactic front-end primitives; `src/prims_kernel_meta.c` owns
+  holes/metavariables/unification; and `src/prims_kernel_defs.c` owns named
+  kernel definitions. Shared string formatting lives in `src/prims_kernel_util.c`.
+- The split keeps tactics optional and unprivileged: every tactic primitive still
+  emits/checks kernel terms through the same public runtime path.
+- The next architectural target is no longer more file splitting; it is the
+  representation boundary: SurfaceTerm / CoreTerm / KernelTerm / Value.
+
+
+### Phase 1N hotfix note
+
+- `src/prims_kernel.c` is now a marker/documentation file only and is not compiled.
+  This avoids an empty-translation-unit failure under strict C89/`-Wpedantic` while
+  preserving the directory-level explanation of the kernel primitive family split.
+- `scripts/clean.sh` now treats generated `lizard-*.zip` and `lizard-*.patch` files
+  as removable release artifacts.
+
+
+### Phase 2A progress
+
+- Added the first explicit representation-boundary scaffold: `SurfaceTerm`,
+  `CoreTerm`, existing `KernelTerm` (`kterm_t`), and runtime `Value` now have
+  named paths in the codebase.
+- This phase is deliberately non-invasive: the evaluator still uses the runtime
+  AST, while the new wrappers make reader/macro/elaborator/kernel routing
+  testable before changing semantics.
+- Added `docs/REPRESENTATION_BOUNDARY.md` and a regression test proving that the
+  four paths are distinct.
+
+
+### Phase 2B progress
+
+- Parser output can now be wrapped as `SurfaceTerm` values with source spans
+  preserved from tokenizer/parser output.
+- `lizard_surface_parse_source` is the first concrete bridge from the existing
+  AST parser into the SurfaceTerm boundary.
+- `lizard_core_from_surface` gives the future elaborator path a preferred name
+  while preserving the old runtime-AST-backed CoreTerm scaffold.
+- Evaluator semantics are unchanged; this is an integration boundary, not a
+  new elaborator yet.
+
+
+### Phase 2C progress
+
+- SurfaceTerm now carries the first syntax-object scaffold: source span, phase,
+  a compact lexical-scope marker, and an untrusted property table for future
+  macro/debugger/tool metadata.
+- Added a direct syntax-object scaffold regression test. Evaluator and macro
+  semantics remain unchanged; this is a boundary/data-model step only.
+- Next direction: replace the compact scope marker with a persistent scope-set
+  object and start preserving syntax metadata through quote/quasiquote and
+  macro expansion.
+
+
+### Phase 2D progress
+
+- `SurfaceTerm` now stores a small explicit scope-set object rather than a
+  single unsigned-long placeholder.  The compatibility summary API remains,
+  but future hygiene work can compare real scope sets.
+- Added scope-set add/remove/contains/equal/count/summary APIs and a direct
+  regression test for scope-set behavior.
+- Evaluator and macro behavior remain unchanged; this is still scaffold for the
+  future hygienic expander.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,
@@ -531,3 +669,12 @@ Then: build the example test runner (#2) and start splitting
 
 The throughline: keep the trusted core tiny, push everything else into
 the untrusted tower, and let each phase stand on its own.
+
+### Phase 2E progress
+
+- SurfaceTerm now has explicit metadata propagation helpers for future reader
+  and macro-expansion transformations.
+- Quoted datum can be reparsed and wrapped as a SurfaceTerm while preserving the
+  origin span, phase, scopes, and optional properties.
+- Added debug-string support for syntax-object tooling; it is intentionally
+  untrusted and ignored by evaluator/kernel paths.

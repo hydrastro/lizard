@@ -116,6 +116,10 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->logic_last_set_bundle = NULL;
   runtime->hit_registry_head = NULL;
   runtime->flag_list = NULL;
+  /* Phase 1M: kernel/proof state starts empty per runtime. */
+  runtime->kernel_current_proof = NULL;
+  runtime->kernel_meta_ctx = NULL;
+  runtime->kernel_kdef_ctx = NULL;
   /* Phase C: module loader starts with "lib/" on the search path. */
   runtime->modules_head = NULL;
   {
@@ -203,10 +207,14 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
     context->last_value = result;
     if (result != NULL && result->type == AST_ERROR) {
       lizard_context_set_error(context, "evaluation returned a Lizard error");
+      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      if (context->runtime != NULL) {
+        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      }
       if (out_value != NULL) {
         *out_value = result;
       }
-      return LIZARD_STATUS_ERROR;
+      return LIZARD_STATUS_EVAL_ERROR;
     }
   }
   context->last_value = result;
@@ -232,22 +240,47 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
     return LIZARD_STATUS_INVALID_ARGUMENT;
   }
   lizard_runtime_make_current(context->runtime);
-  tokens = lizard_tokenize(source);
+  tokens = lizard_tokenize_source(source, "<string>", &context->diagnostic);
   if (tokens == NULL) {
-    lizard_context_set_error(context, "tokenization failed");
-    return LIZARD_STATUS_ERROR;
+    const lizard_diagnostic_t *td;
+    td = lizard_tokenizer_last_diagnostic();
+    if (td != NULL && td->message[0] != '\0') {
+      copy_error(context->last_error, sizeof(context->last_error), td->message);
+      context->diagnostic = *td;
+      if (context->runtime != NULL) {
+        copy_error(context->runtime->last_error,
+                   sizeof(context->runtime->last_error), td->message);
+        context->runtime->diagnostic = *td;
+      }
+    } else {
+      lizard_context_set_error(context, "tokenization failed");
+      context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+      if (context->runtime != NULL) {
+        context->runtime->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+      }
+    }
+    return LIZARD_STATUS_PARSE_ERROR;
   }
   ast_list = lizard_parse(tokens, context->runtime->heap);
   if (ast_list == NULL) {
     const lizard_diagnostic_t *pd;
     pd = lizard_parser_last_diagnostic();
     if (pd != NULL && pd->message[0] != '\0') {
-      lizard_context_set_error(context, pd->message);
+      copy_error(context->last_error, sizeof(context->last_error), pd->message);
       context->diagnostic = *pd; /* keep PARSE_ERROR status + source span */
-    } else {
-      lizard_context_set_error(context, "parse failed");
+      if (context->runtime != NULL) {
+        copy_error(context->runtime->last_error,
+                   sizeof(context->runtime->last_error), pd->message);
+        context->runtime->diagnostic = *pd;
+      }
+      return pd->status;
     }
-    return LIZARD_STATUS_ERROR;
+    lizard_context_set_error(context, "parse failed");
+    context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+    if (context->runtime != NULL) {
+      context->runtime->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+    }
+    return LIZARD_STATUS_PARSE_ERROR;
   }
   return eval_parsed_forms(context, ast_list, out_value);
 }
@@ -300,7 +333,52 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
     return LIZARD_STATUS_IO_ERROR;
   }
   source[file_size] = '\0';
-  status = lizard_context_eval_string(context, source, out_value);
+  lizard_runtime_make_current(context->runtime);
+  {
+    lz_list_t *tokens;
+    lz_list_t *ast_list;
+    tokens = lizard_tokenize_source(source, path, &context->diagnostic);
+    if (tokens == NULL) {
+      const lizard_diagnostic_t *td;
+      td = lizard_tokenizer_last_diagnostic();
+      if (td != NULL && td->message[0] != '\0') {
+        copy_error(context->last_error, sizeof(context->last_error), td->message);
+        context->diagnostic = *td;
+        if (context->runtime != NULL) {
+          copy_error(context->runtime->last_error,
+                     sizeof(context->runtime->last_error), td->message);
+          context->runtime->diagnostic = *td;
+        }
+      } else {
+        lizard_context_set_error(context, "tokenization failed");
+        context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+      }
+      free(source);
+      return LIZARD_STATUS_PARSE_ERROR;
+    }
+    ast_list = lizard_parse(tokens, context->runtime->heap);
+    if (ast_list == NULL) {
+      const lizard_diagnostic_t *pd;
+      pd = lizard_parser_last_diagnostic();
+      if (pd != NULL && pd->message[0] != '\0') {
+        copy_error(context->last_error, sizeof(context->last_error), pd->message);
+        context->diagnostic = *pd;
+        if (context->runtime != NULL) {
+          copy_error(context->runtime->last_error,
+                     sizeof(context->runtime->last_error), pd->message);
+          context->runtime->diagnostic = *pd;
+        }
+        status = pd->status;
+      } else {
+        lizard_context_set_error(context, "parse failed");
+        context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+        status = LIZARD_STATUS_PARSE_ERROR;
+      }
+      free(source);
+      return status;
+    }
+    status = eval_parsed_forms(context, ast_list, out_value);
+  }
   free(source);
   return status;
 }

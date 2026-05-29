@@ -2,6 +2,48 @@
 #include "lizard_internal.h"
 #include "mem.h"
 
+static lizard_diagnostic_t lizard_tokenizer_diag;
+static int lizard_tokenizer_failed = 0;
+
+static void lizard_tokenizer_clear_diagnostic(void) {
+  lizard_tokenizer_failed = 0;
+  lizard_tokenizer_diag.status = LIZARD_STATUS_OK;
+  lizard_tokenizer_diag.span.filename = NULL;
+  lizard_tokenizer_diag.span.start_line = 0;
+  lizard_tokenizer_diag.span.start_column = 0;
+  lizard_tokenizer_diag.span.end_line = 0;
+  lizard_tokenizer_diag.span.end_column = 0;
+  lizard_tokenizer_diag.span.start_offset = 0;
+  lizard_tokenizer_diag.span.end_offset = 0;
+  lizard_tokenizer_diag.message[0] = '\0';
+}
+
+static void lizard_tokenizer_set_diagnostic(lizard_diagnostic_t *diagnostic,
+                                            const char *filename, int line,
+                                            int column, int offset,
+                                            const char *message) {
+  if (diagnostic == NULL) {
+    return;
+  }
+  diagnostic->status = LIZARD_STATUS_PARSE_ERROR;
+  diagnostic->span.filename = filename;
+  diagnostic->span.start_line = line;
+  diagnostic->span.start_column = column;
+  diagnostic->span.end_line = line;
+  diagnostic->span.end_column = column;
+  diagnostic->span.start_offset = offset;
+  diagnostic->span.end_offset = offset;
+  if (message == NULL) {
+    message = "";
+  }
+  strncpy(diagnostic->message, message, sizeof(diagnostic->message) - 1U);
+  diagnostic->message[sizeof(diagnostic->message) - 1U] = '\0';
+}
+
+const lizard_diagnostic_t *lizard_tokenizer_last_diagnostic(void) {
+  return lizard_tokenizer_failed ? &lizard_tokenizer_diag : NULL;
+}
+
 bool lizard_is_digit(const char *input, int i) {
   if (input[i] >= '0' && input[i] <= '9') {
     return true;
@@ -36,12 +78,13 @@ void lizard_source_position(const char *input, int offset, int *line,
   }
 }
 
-void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
-                      char *data, int line, int column, int offset) {
-
+void lizard_add_token_source(lz_list_t *list, lizard_token_type_t token_type,
+                             char *data, const char *filename, int line,
+                             int column, int offset) {
   lizard_token_list_node_t *node;
   node = lizard_heap_alloc(sizeof(lizard_token_list_node_t));
   node->token.type = token_type;
+  node->token.filename = filename;
   node->token.line = line;
   node->token.column = column;
   node->token.offset = offset;
@@ -65,19 +108,53 @@ void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
   list_append(list, &node->node);
 }
 
-static void lizard_add_token_at(lz_list_t *list, const char *input, int offset,
+void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
+                      char *data, int line, int column, int offset) {
+  lizard_add_token_source(list, token_type, data, NULL, line, column, offset);
+}
+
+static void lizard_add_token_at(lz_list_t *list, const char *input,
+                                const char *filename, int offset,
                                 lizard_token_type_t token_type, char *data) {
   int line;
   int column;
   lizard_source_position(input, offset, &line, &column);
-  lizard_add_token(list, token_type, data, line, column, offset);
+  lizard_add_token_source(list, token_type, data, filename, line, column,
+                          offset);
 }
 
-lz_list_t *lizard_tokenize(const char *input) {
-  lz_list_t *list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+lz_list_t *lizard_tokenize_source(const char *input, const char *filename,
+                                  lizard_diagnostic_t *diagnostic) {
+  lz_list_t *list;
   int i, j, k;
   int token_start;
+  int line;
+  int column;
   char *buffer;
+
+  lizard_tokenizer_clear_diagnostic();
+  if (diagnostic != NULL) {
+    diagnostic->status = LIZARD_STATUS_OK;
+    diagnostic->span.filename = NULL;
+    diagnostic->span.start_line = 0;
+    diagnostic->span.start_column = 0;
+    diagnostic->span.end_line = 0;
+    diagnostic->span.end_column = 0;
+    diagnostic->span.start_offset = 0;
+    diagnostic->span.end_offset = 0;
+    diagnostic->message[0] = '\0';
+  }
+  if (input == NULL) {
+    lizard_tokenizer_failed = 1;
+    lizard_tokenizer_set_diagnostic(&lizard_tokenizer_diag, filename, 0, 0, 0,
+                                    "null input");
+    if (diagnostic != NULL) {
+      *diagnostic = lizard_tokenizer_diag;
+    }
+    return NULL;
+  }
+
+  list = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   i = 0;
   while (input[i] != '\0') {
     if (input[i] == ' ' || input[i] == '\t' || input[i] == '\n' ||
@@ -86,25 +163,22 @@ lz_list_t *lizard_tokenize(const char *input) {
       continue;
     }
     if (input[i] == ';') {
-      /* Scheme line comment */
       while (input[i] != '\0' && input[i] != '\n') {
         i++;
       }
       continue;
     }
     if (input[i] == '(') {
-      lizard_add_token_at(list, input, i, TOKEN_LEFT_PAREN, NULL);
+      lizard_add_token_at(list, input, filename, i, TOKEN_LEFT_PAREN, NULL);
       i++;
     } else if (input[i] == ')') {
-      lizard_add_token_at(list, input, i, TOKEN_RIGHT_PAREN, NULL);
+      lizard_add_token_at(list, input, filename, i, TOKEN_RIGHT_PAREN, NULL);
       i++;
     } else if (input[i] == '"') {
       token_start = i;
       j = i;
       i++;
       while (input[i] != '"' && input[i] != '\0') {
-        /* Skip over an escaped character so \" doesn't close the
-           string. The actual escape decoding happens during copy. */
         if (input[i] == '\\' && input[i + 1] != '\0') {
           i += 2;
         } else {
@@ -112,28 +186,33 @@ lz_list_t *lizard_tokenize(const char *input) {
         }
       }
       if (input[i] == '\0') {
-        fprintf(stderr, "Error: unterminated string.\n");
-        exit(1);
+        lizard_source_position(input, token_start, &line, &column);
+        lizard_tokenizer_failed = 1;
+        lizard_tokenizer_set_diagnostic(&lizard_tokenizer_diag, filename,
+                                        line, column, token_start,
+                                        "unterminated string");
+        if (diagnostic != NULL) {
+          *diagnostic = lizard_tokenizer_diag;
+        }
+        return NULL;
       }
-      /* Decoded length is at most (i - j - 1); we'll \0-terminate. */
       buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j));
       k = 0;
-      j++; /* step over the opening " */
+      j++;
       while (j < i) {
-        char c = input[j];
+        char c;
+        c = input[j];
         if (c == '\\' && j + 1 < i) {
-          char esc = input[j + 1];
+          char esc;
+          esc = input[j + 1];
           switch (esc) {
-          case 'n':  buffer[k++] = '\n'; break;
-          case 't':  buffer[k++] = '\t'; break;
-          case 'r':  buffer[k++] = '\r'; break;
+          case 'n': buffer[k++] = '\n'; break;
+          case 't': buffer[k++] = '\t'; break;
+          case 'r': buffer[k++] = '\r'; break;
           case '\\': buffer[k++] = '\\'; break;
-          case '"':  buffer[k++] = '"';  break;
-          case '0':  buffer[k++] = '\0'; break;
-          default:
-            /* unknown escape — keep the literal character */
-            buffer[k++] = esc;
-            break;
+          case '"': buffer[k++] = '"'; break;
+          case '0': buffer[k++] = '\0'; break;
+          default: buffer[k++] = esc; break;
           }
           j += 2;
         } else {
@@ -142,9 +221,9 @@ lz_list_t *lizard_tokenize(const char *input) {
         }
       }
       buffer[k] = '\0';
-      lizard_add_token_at(list, input, token_start, TOKEN_STRING, buffer);
+      lizard_add_token_at(list, input, filename, token_start, TOKEN_STRING,
+                          buffer);
       i++;
-
     } else if (lizard_is_digit(input, i)) {
       token_start = i;
       j = i;
@@ -156,8 +235,8 @@ lz_list_t *lizard_tokenize(const char *input) {
         buffer[k] = input[j];
       }
       buffer[k] = '\0';
-      lizard_add_token_at(list, input, token_start, TOKEN_NUMBER, buffer);
-
+      lizard_add_token_at(list, input, filename, token_start, TOKEN_NUMBER,
+                          buffer);
     } else {
       token_start = i;
       j = i;
@@ -167,18 +246,19 @@ lz_list_t *lizard_tokenize(const char *input) {
           input[i] == '&' || input[i] == '[' || input[i] == ']' ||
           (input[i] == ',' && input[i + 1] == '@')) {
         if (input[i] == ',' && input[i + 1] == '@') {
-          buffer = lizard_heap_alloc(sizeof(char) * 3);
+          buffer = lizard_heap_alloc(sizeof(char) * 3U);
           buffer[0] = input[i];
           buffer[1] = input[i + 1];
           buffer[2] = '\0';
-          lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
+          lizard_add_token_at(list, input, filename, token_start,
+                              TOKEN_SYMBOL, buffer);
           i += 2;
         } else {
-
-          buffer = lizard_heap_alloc(sizeof(char) * 2);
+          buffer = lizard_heap_alloc(sizeof(char) * 2U);
           buffer[0] = input[i];
           buffer[1] = '\0';
-          lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
+          lizard_add_token_at(list, input, filename, token_start,
+                              TOKEN_SYMBOL, buffer);
           i++;
         }
       } else {
@@ -188,24 +268,26 @@ lz_list_t *lizard_tokenize(const char *input) {
                input[i] != ',' && input[i] != ';') {
           i++;
         }
-        buffer =
-            lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
+        buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
         for (k = 0; j < i; j++, k++) {
           buffer[k] = input[j];
         }
         buffer[k] = '\0';
-        lizard_add_token_at(list, input, token_start, TOKEN_SYMBOL, buffer);
+        lizard_add_token_at(list, input, filename, token_start, TOKEN_SYMBOL,
+                            buffer);
       }
     }
   }
-
   return list;
+}
+
+lz_list_t *lizard_tokenize(const char *input) {
+  return lizard_tokenize_source(input, NULL, NULL);
 }
 
 static void lizard_destroy_token(lz_list_node_t *node) {
   lizard_token_list_node_t *token_node = CAST(node, lizard_token_list_node_t);
   lizard_token_t *token = &token_node->token;
-
   switch (token->type) {
   case TOKEN_SYMBOL:
   case TOKEN_STRING:
@@ -217,7 +299,6 @@ static void lizard_destroy_token(lz_list_node_t *node) {
   default:
     break;
   }
-
   lizard_heap_free(token_node);
 }
 

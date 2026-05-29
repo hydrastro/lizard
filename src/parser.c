@@ -37,7 +37,7 @@ static LZ_NORETURN void lizard_parser_fail(const char *msg,
                                            const lizard_token_t *tok) {
   lz_parse_failed = 1;
   lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
-  lz_parse_diag.span.filename = NULL;
+  lz_parse_diag.span.filename = tok != NULL ? tok->filename : NULL;
   if (tok != NULL) {
     lz_parse_diag.span.start_line = tok->line;
     lz_parse_diag.span.start_column = tok->column;
@@ -79,7 +79,7 @@ static void lizard_set_node_span_from_token(lizard_ast_node_t *node,
   if (node == NULL || token == NULL) {
     return;
   }
-  node->span.filename = NULL;
+  node->span.filename = token->filename;
   node->span.start_line = token->line;
   node->span.start_column = token->column;
   node->span.end_line = token->line;

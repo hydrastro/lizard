@@ -1,13 +1,14 @@
 /* tt_lattice.c
  *
- * Universe/couniverse lattice constructors, set operations, and
- * ordering checks. Split from tt_equality.c so the equality engine
- * can focus on normalization/judgmental equality.
+ * Universe/couniverse lattice constructors, set operations, and ordering
+ * checks. Split from tt_equality.c so the equality engine can focus on
+ * normalization and judgmental equality.
  */
 
 #include "tt_lattice.h"
 #include "primitives.h"
 #include "mem.h"
+
 #include <string.h>
 
 lizard_ast_node_t *lizard_tt_make_u_suc(lizard_heap_t *heap,

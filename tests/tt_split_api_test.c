@@ -1,8 +1,8 @@
 /* tests/tt_split_api_test.c
  *
- * Regression guard for the Phase 1G file split. These tests exercise
- * the public/internal APIs now implemented outside tt_equality.c so the
- * split stays behavior-preserving.
+ * Regression guard for the Phase 1I file split. These tests exercise the
+ * public/internal APIs now implemented outside tt_equality.c so the split
+ * remains behavior-preserving.
  */
 
 #include "test_harness.h"

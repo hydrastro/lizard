@@ -1,8 +1,8 @@
 /* tests/runtime_registry_isolation_test.c
  *
- * Regression coverage for Phase 1F's tt_registry.c split.  Logic-rule
- * state is runtime-owned via heap->runtime, so two independent runtime
- * contexts must not see each other's toggles.
+ * Regression coverage for the tt_registry.c split. Logic-rule state is
+ * runtime-owned via heap->runtime, so two independent runtimes must not see
+ * each other's toggles.
  */
 
 #include "lizard_api.h"
@@ -43,24 +43,35 @@ int main(void) {
   TEST_ASSERT(ctx2 != NULL);
 
   value = NULL;
-  status = lizard_context_eval_string(ctx1, "(logic-rule-enable 'phase1f-rule)", &value);
+  status = lizard_context_eval_string(ctx1,
+                                      "(logic-rule-enable 'phase1i-rule)",
+                                      &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);
 
   value = NULL;
-  status = lizard_context_eval_string(ctx1, "(logic-rule-enabled? 'phase1f-rule)", &value);
+  status = lizard_context_eval_string(ctx1,
+                                      "(logic-rule-enabled? 'phase1i-rule)",
+                                      &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);
   TEST_ASSERT(is_bool_value(value, 1));
 
   value = NULL;
-  status = lizard_context_eval_string(ctx2, "(logic-rule-enabled? 'phase1f-rule)", &value);
+  status = lizard_context_eval_string(ctx2,
+                                      "(logic-rule-enabled? 'phase1i-rule)",
+                                      &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);
   TEST_ASSERT(is_symbol_value(value, "unknown"));
 
   value = NULL;
-  status = lizard_context_eval_string(ctx2, "(logic-rule-enable 'phase1f-rule)", &value);
+  status = lizard_context_eval_string(ctx2,
+                                      "(logic-rule-enable 'phase1i-rule)",
+                                      &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);
+
   value = NULL;
-  status = lizard_context_eval_string(ctx2, "(logic-rule-enabled? 'phase1f-rule)", &value);
+  status = lizard_context_eval_string(ctx2,
+                                      "(logic-rule-enabled? 'phase1i-rule)",
+                                      &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);
   TEST_ASSERT(is_bool_value(value, 1));
 

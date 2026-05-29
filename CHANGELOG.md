@@ -1,3 +1,95 @@
+# Phase 2E — SurfaceTerm metadata propagation hooks
+- Added `lizard_surface_from_ast_like` and `lizard_surface_from_quoted_datum` for source/span/scope/property-preserving syntax rewrites.
+- Added `lizard_surface_copy_scopes`, `lizard_surface_copy_properties`, and `lizard_surface_copy_metadata`.
+- Added `lizard_surface_debug_string` for future macro/debugger/tooling output.
+- Added `tests/surface_metadata_propagation_test.c`.
+- Updated syntax-object and representation-boundary documentation.
+
+# Phase 2D — explicit SurfaceTerm scope sets
+- Replaced the single SurfaceTerm scope marker with a small explicit scope-set scaffold.
+- Preserved `lizard_surface_scope()` as a compatibility summary/hash.
+- Added add/remove/contains/equal/count/summary APIs for scope sets.
+- Added `tests/scope_set_scaffold_test.c` for scope-set behavior and compatibility.
+- Updated syntax-object and representation-boundary documentation.
+
+# Phase 2C — syntax object scaffold
+- Extended `lizard_surface_term_t` with syntax-object metadata: phase, scope clearing, and an untrusted property table.
+- Added SurfaceTerm property APIs for macro/tooling metadata without changing evaluator semantics.
+- Added `tests/syntax_object_scaffold_test.c` to guard phase/scope/span/property behavior.
+- Added `docs/SYNTAX_OBJECTS.md` documenting the scaffold and the future hygiene direction.
+
+# Phase 2B — parser-to-surface boundary
+
+- Added `lizard_surface_parse_source`, which tokenizes/parses source and wraps
+  each top-level AST as a `SurfaceTerm` with source span preserved.
+- Added `lizard_surface_list_from_ast_list` and `lizard_surface_list_node_t` for
+  parser output wrapping.
+- Added `lizard_core_from_surface` as the preferred Phase 2 spelling for
+  wrapping a surface runtime AST as an untrusted `CoreTerm`.
+- Added `tests/surface_parse_test.c` covering source-span preservation and
+  parse-error diagnostics through the SurfaceTerm boundary.
+
+# Phase 2A build hotfix
+- Changed `lizard_surface_span` to use an out-parameter instead of returning
+  `lizard_source_span_t` by value, preserving compatibility with
+  `-Waggregate-return -Werror`.
+- Reworked the internal empty-span helper to avoid aggregate returns entirely.
+
+# Phase 2A — representation boundary scaffold
+- Added `src/surface_term.c` / `src/surface_term.h` for untrusted parsed/expanded syntax objects carrying source spans, phase, and scope metadata.
+- Added `src/core_term.c` / `src/core_term.h` for untrusted elaborator-output scaffolding around runtime AST, kernel terms, and holes.
+- Added `tests/term_boundary_test.c` to prove Runtime AST, SurfaceTerm, CoreTerm, and KernelTerm are distinct paths before evaluator routing changes.
+- Added `docs/REPRESENTATION_BOUNDARY.md` documenting the intended SurfaceTerm/CoreTerm/KernelTerm/Value split.
+- Extended `scripts/clean.sh` to remove common local scratch/wrong-project leftovers (`quit`, `time2.sh`, `asd`, and stale `examples/flake*` files).
+
+# Phase 1N build hotfix
+
+- Removed the empty `src/prims_kernel.c` marker file from `LIB_SRCS` so strict `-Wpedantic` builds no longer fail with “ISO C forbids an empty translation unit”.
+- Kept `src/prims_kernel.c` as a source-tree marker/documentation file only.
+- Taught `scripts/clean.sh` to remove generated `lizard-*.zip` and `lizard-*.patch` artifacts instead of reporting them as suspicious top-level files.
+
+# Recoverable Core Phase 1N — kernel primitive family split
+- Split `src/prims_kernel.c` into family-specific modules: `prims_kernel_core.c`, `prims_kernel_proof.c`, `prims_kernel_meta.c`, and `prims_kernel_defs.c`.
+- Added `src/prims_kernel_util.c` / `.h` for shared kernel-term formatting helpers.
+- Kept all kernel state runtime-owned through `lizard_runtime_t`; this phase is an implementation-boundary split, not a semantics change.
+- Added `tests/kernel_family_split_test.c` to exercise representative entry points from each split family through the public runtime API.
+
+# Recoverable Core Phase 1M — kernel state/runtime isolation hotfix
+- Fixed `kernel_primitive_split_test` by moving kernel S-expression conversion into `src/kernel_sexp.c` and reparsing quoted pair-chain data before converting it to kernel terms.
+- Added `src/kernel_sexp.h` and made kernel/proof primitives use `lizard_kernel_sexp_to_kterm`.
+- Moved proof state, metavariable context, and kernel definition context from process-global storage to `lizard_runtime_t` fields, with legacy fallback only for non-runtime callers.
+- Fixed `scripts/clean.sh` recursion by commenting the `--nuke-lock` usage example.
+- Added `tests/kernel_runtime_isolation_test.c` to protect proof/meta/definition state isolation across independent runtimes.
+
+# Recoverable Core Phase 1L — kernel/proof primitive split hotfix
+- Removed the unused `no_args` helper left behind in `src/primitives.c`, fixing `-Werror=unused-function` builds.
+- Split kernel, proof-state, tactic, metavariable, and kernel-definition primitives into `src/prims_kernel.c`.
+- Kept primitive registration centralized while isolating the proof-facing implementation from the general primitive monolith.
+- Added `tests/kernel_primitive_split_test.c` to guard `kernel-infer`, `kernel-check`, `begin-proof`/`tactic-refl`/`qed`, and `kernel-reduce` through the public runtime API.
+
+# Recoverable Core Phase 1K — optional-theory and logic primitive split
+- Split optional S¹/theory-extension scaffolding primitives out of `src/primitives.c` into `src/prims_theory_ext.c`.
+- Split named logic-bundle Lisp primitives (`set-logic`, `current-logic`, `list-logics`) out of `src/primitives.c` into `src/prims_logic.c`.
+- Added `tests/tt_optional_scaffold_split_test.c` to cover the moved optional scaffold and logic-bundle entry points.
+- Kept primitive registration centralized while moving implementation bodies into subsystem files.
+- Left proof/tactic primitives in `primitives.c` for now because they still share the kernel S-expression converter; that boundary is the next extraction target.
+
+# Recoverable Core Phase 1J — HIT/truncation primitive split
+
+- Split HIT construction/lookup primitives out of the monolithic `src/primitives.c` into `src/prims_hits.c`.
+- Split propositional truncation primitives out of `src/primitives.c` into `src/prims_trunc.c`.
+- Added `tests/tt_primitive_split_test.c` to exercise the moved HIT and truncation primitive entry points directly.
+- Kept HIT/truncation typing, reduction, and equality semantics unchanged; this is a module-boundary/refactoring phase.
+
+# Recoverable Core Phase 1I — registry, lattice, and face split
+
+- Split runtime-owned type-theory registries out of `src/tt_equality.c` into `src/tt_registry.c`: fresh-dimension allocation, HIT declarations, logic-rule configuration, snapshots/restores, and named logic bundles.
+- Split universe/couniverse lattice constructors, set operations, and ordering checks into `src/tt_lattice.c` / `src/tt_lattice.h`.
+- Split cubical face entailment and system lookup into `src/tt_faces.c`.
+- Added `tests/runtime_registry_isolation_test.c` to guard per-runtime logic-rule isolation.
+- Added `tests/tt_split_api_test.c` to guard the moved lattice and face APIs directly.
+- `scripts/clean.sh --check` now treats `lib/` as an expected project directory.
+
 # Recoverable Core Phase 1H — Glue constructor split
 
 - Split Equiv / Glue / ua / system AST constructors out of `src/tt_equality.c` into `src/tt_glue.c` / `src/tt_glue.h`.

@@ -41,6 +41,10 @@ struct lizard_runtime {
   const char *logic_last_set_bundle;
   struct hit_registry_entry *hit_registry_head;
   struct lizard_tt_flag *flag_list;
+  /* Phase 1M: kernel/proof state is runtime-owned, not process-global. */
+  void *kernel_current_proof;
+  void *kernel_meta_ctx;
+  void *kernel_kdef_ctx;
   /* Phase C: module loader. */
   lizard_module_entry_t *modules_head;
   lizard_search_path_t *search_path_head;

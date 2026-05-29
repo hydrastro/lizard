@@ -28,7 +28,6 @@ int main(void) {
   TEST_ASSERT(diagnostic->message[0] != '\0');
   TEST_ASSERT(diagnostic->span.start_line > 0);
 
-  /* The same context must remain usable after a parse failure. */
   value = NULL;
   status = lizard_context_eval_string(context, "(+ 1 2)", &value);
   TEST_ASSERT_EQ(status, LIZARD_STATUS_OK);

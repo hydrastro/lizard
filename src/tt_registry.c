@@ -1,15 +1,15 @@
 /* tt_registry.c
  *
- * Per-runtime registries for the type-theory layer: fresh dimensions,
- * HIT declarations, and named logic-rule bundles.  These used to live
- * in tt_equality.c; splitting them out keeps the reduction engine focused
- * on judgmental equality and normalization.
+ * Runtime-owned type-theory registries: fresh dimensions, HIT declarations,
+ * logic-rule configuration, snapshots, and named logic bundles. Split from
+ * tt_equality.c so judgmental equality remains focused on normalization.
  */
 
 #include "primitives.h"
 #include "lizard_internal.h"
 #include "mem.h"
 #include "runtime.h"
+
 #include <stdlib.h>
 #include <string.h>
 

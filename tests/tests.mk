@@ -52,7 +52,9 @@ test-lisp: $(REPL_BIN)
 	    printf "  \033[33mSKIP\033[0m  %s (no .expected file)\n" "$$name"; \
 	    continue; \
 	  fi; \
-	  actual=$$($(RUN_ENV) $(REPL_BIN) < "$$src" 2>&1); \
+	  actual=$$($(RUN_ENV) $(REPL_BIN) < "$$src" 2>&1) || status=$$?; \
+	  status=$${status:-0}; \
+	  unset status; \
 	  if [ "$$actual" = "$$(cat $$expected)" ]; then \
 	    printf "  \033[32mPASS\033[0m  %s\n" "$$name"; \
 	  else \
