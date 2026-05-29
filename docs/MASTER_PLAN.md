@@ -42,6 +42,26 @@ and type-theory references.
 - Added `docs/OWNERSHIP.md` as the baseline for the future object-level
   non-moving mark/sweep transition.
 
+
+### Phase 3B progress (#7 — splitting the monsters)
+
+- Eliminated the ~450-line duplicate `sexp_to_kterm` in `primitives.c`: all
+  call sites now use the already-compiled `lizard_kernel_sexp_to_kterm`
+  (`kernel_sexp.c`).  This was the duplication whose silent drift previously
+  broke the proof/`kernel-reduce` flow; collapsing it removes the hazard.
+- Removed the stale, uncompiled extraction scaffolds (`prims_kernel*.c`,
+  `prims_kernel_util.h`, `tt_registry.c`, `tt_faces.c`, ~1.5k lines).  They
+  pre-dated the current kernel-state isolation and bridge fixes, so wiring them
+  up would have reintroduced old bugs; #7 must continue as a *fresh* extraction
+  from current code, not by reviving these.
+- Net: `primitives.c` 8787 → 8334 lines and ~1,989 dead/duplicate lines gone,
+  with `make ci` fully green (93/93 C, 5/5 Lisp, examples, audits, smoke).
+- **Next #7 target:** `tt_equality.c` (~6.9k lines) carries static
+  `make_glue`/`make_ua`/`make_u_max`/`make_u_suc`/`make_u_min`/
+  `make_couniverse_set` that parallel the compiled `lizard_tt_make_*` in
+  `tt_glue.c`/`tt_lattice.c`.  Worth collapsing, but each helper needs
+  byte-identity verification before repointing — the cubical core is delicate.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

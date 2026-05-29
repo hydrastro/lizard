@@ -44,6 +44,12 @@ struct lizard_runtime {
   /* Phase C: module loader. */
   lizard_module_entry_t *modules_head;
   lizard_search_path_t *search_path_head;
+  /* Phase 3: per-runtime kernel/proof state (isolation).  Opaque to avoid
+   * pulling kernel.h/tactics.h into this header; primitives.c casts them to
+   * proof_state_t* / meta_ctx_t* / kdef_ctx_t*. */
+  void *kernel_proof_state;
+  void *kernel_meta_ctx;
+  void *kernel_def_ctx;
 };
 
 struct lizard_context {
@@ -60,5 +66,6 @@ struct lizard_context {
 
 void lizard_runtime_set_error(lizard_runtime_t *runtime, const char *message);
 void lizard_context_set_error(lizard_context_t *context, const char *message);
+lizard_runtime_t *lizard_runtime_current(void);
 
 #endif /* LIZARD_RUNTIME_H */

@@ -19,6 +19,10 @@
 
 lizard_heap_t *heap = NULL;
 
+static lizard_runtime_t *g_current_runtime = NULL;
+
+lizard_runtime_t *lizard_runtime_current(void) { return g_current_runtime; }
+
 static void copy_error(char *dst, size_t dst_size, const char *message) {
   size_t n;
   if (dst == NULL || dst_size == 0U) {
@@ -139,6 +143,9 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->logic_last_set_bundle = NULL;
   runtime->hit_registry_head = NULL;
   runtime->flag_list = NULL;
+  runtime->kernel_proof_state = NULL;
+  runtime->kernel_meta_ctx = NULL;
+  runtime->kernel_def_ctx = NULL;
   /* Phase C: module loader starts with "lib/" on the search path. */
   runtime->modules_head = NULL;
   {
@@ -175,6 +182,7 @@ void lizard_runtime_destroy(lizard_runtime_t *runtime) {
 void lizard_runtime_make_current(lizard_runtime_t *runtime) {
   if (runtime != NULL) {
     heap = runtime->heap;
+    g_current_runtime = runtime;
   }
 }
 

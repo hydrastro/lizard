@@ -310,10 +310,26 @@ int main(int argc, char **argv) {
   int exit_code;
   const char *eval_expr;
   const char *file_path;
+  int opt_trace_expansion;
+  int opt_print_trace;
+  const char *opt_trace_file;
+  int opt_expand_only;
+  const char *opt_expand_format;
+  int opt_list_schemas;
+  const char *opt_list_format;
+  const char *opt_require_schema;
 
   eval_expr = NULL;
   file_path = NULL;
   exit_code = 0;
+  opt_trace_expansion = 0;
+  opt_print_trace = 0;
+  opt_trace_file = NULL;
+  opt_expand_only = 0;
+  opt_expand_format = "text";
+  opt_list_schemas = 0;
+  opt_list_format = "text";
+  opt_require_schema = NULL;
 
   for (argi = 1; argi < argc; argi++) {
     if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
@@ -333,12 +349,123 @@ int main(int argc, char **argv) {
       eval_expr = argv[argi];
       continue;
     }
+    if (strcmp(argv[argi], "--trace-expansion") == 0) {
+      opt_trace_expansion = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--print-expansion-trace") == 0) {
+      opt_trace_expansion = 1;
+      opt_print_trace = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--trace-expansion-file") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--trace-expansion-file expects a path\n");
+        return 2;
+      }
+      opt_trace_expansion = 1;
+      opt_trace_file = argv[argi];
+      continue;
+    }
+    if (strcmp(argv[argi], "--expand-only") == 0) {
+      opt_expand_only = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--expand-only-format") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--expand-only-format expects a format\n");
+        return 2;
+      }
+      opt_expand_format = argv[argi];
+      continue;
+    }
+    if (strcmp(argv[argi], "--list-report-schemas") == 0) {
+      opt_list_schemas = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--list-report-schemas-format") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--list-report-schemas-format expects a format\n");
+        return 2;
+      }
+      opt_list_format = argv[argi];
+      continue;
+    }
+    if (strcmp(argv[argi], "--require-report-schema") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--require-report-schema expects type:version:format\n");
+        return 2;
+      }
+      opt_require_schema = argv[argi];
+      continue;
+    }
     if (file_path == NULL) {
       file_path = argv[argi];
     } else {
       print_usage(argv[0]);
       return 2;
     }
+  }
+  if (opt_list_schemas) {
+    if (eval_expr != NULL || file_path != NULL) {
+      fprintf(stderr, "--list-report-schemas cannot be combined with evaluation\n");
+      return 2;
+    }
+    if (strcmp(opt_list_format, "text") != 0 &&
+        strcmp(opt_list_format, "json") != 0) {
+      fprintf(stderr, "invalid --list-report-schemas-format: %s\n",
+              opt_list_format);
+      return 2;
+    }
+    if (strcmp(opt_list_format, "json") == 0) {
+      lizard_report_schema_list_fprint_json(stdout);
+    } else {
+      lizard_report_schema_list_fprint(stdout);
+    }
+    printf("\n");
+    return 0;
+  }
+  if (opt_require_schema != NULL) {
+    char spec[256];
+    char *colon1;
+    char *colon2;
+    const char *rtype;
+    const char *rfmt;
+    int rver;
+    lizard_report_schema_info_t rinfo;
+    if (eval_expr != NULL || file_path != NULL) {
+      fprintf(stderr, "--require-report-schema cannot be combined with evaluation\n");
+      return 2;
+    }
+    strncpy(spec, opt_require_schema, sizeof(spec) - 1U);
+    spec[sizeof(spec) - 1U] = '\0';
+    colon1 = strchr(spec, ':');
+    colon2 = (colon1 != NULL) ? strchr(colon1 + 1, ':') : NULL;
+    if (colon1 == NULL || colon2 == NULL) {
+      fprintf(stderr, "invalid --require-report-schema format: %s\n",
+              opt_require_schema);
+      return 2;
+    }
+    *colon1 = '\0';
+    *colon2 = '\0';
+    rtype = spec;
+    rver = atoi(colon1 + 1);
+    rfmt = colon2 + 1;
+    if (strcmp(rfmt, "text") != 0 && strcmp(rfmt, "json") != 0) {
+      fprintf(stderr, "invalid --require-report-schema format: %s\n",
+              opt_require_schema);
+      return 2;
+    }
+    if (!lizard_report_schema_require(rtype, rver, rfmt, &rinfo)) {
+      fprintf(stderr, "required report schema not supported: %s\n",
+              opt_require_schema);
+      return 2;
+    }
+    return 0;
   }
   if (eval_expr != NULL && file_path != NULL) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");
@@ -367,8 +494,69 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    if (eval_expr != NULL) {
+    if (opt_expand_only) {
+      if (strcmp(opt_expand_format, "text") != 0 &&
+          strcmp(opt_expand_format, "json") != 0) {
+        fprintf(stderr, "invalid --expand-only-format: %s\n", opt_expand_format);
+        exit_code = 2;
+      } else if (eval_expr == NULL) {
+        fprintf(stderr, "--expand-only requires --eval\n");
+        exit_code = 2;
+      } else {
+        lizard_syntax_expansion_report_t *rep;
+        rep = lizard_context_syntax_expansion_report(context, eval_expr,
+                                                     "<eval>");
+        if (rep == NULL) {
+          fprintf(stderr, "failed to build expansion report\n");
+          exit_code = 1;
+        } else {
+          if (strcmp(opt_expand_format, "json") == 0) {
+            lizard_syntax_expansion_report_fprint_json(stdout, rep);
+            printf("\n");
+          } else {
+            unsigned long n;
+            unsigned long ti;
+            lizard_expansion_trace_event_t ev;
+            lizard_syntax_expansion_report_fprint(stdout, rep);
+            /* The text header does not embed the trace; emit the recorded
+             * stages so tooling and humans can see macro-expand events. */
+            n = lizard_syntax_expansion_report_trace_count(rep);
+            for (ti = 0; ti < n; ti++) {
+              if (lizard_syntax_expansion_report_trace_event(rep, ti, &ev)) {
+                printf("event\tindex=%lu\tstage=%s\n", ti,
+                       ev.stage != NULL ? ev.stage : "");
+              }
+            }
+          }
+          lizard_syntax_expansion_report_destroy(rep);
+        }
+      }
+    } else if (eval_expr != NULL) {
+      if (opt_trace_expansion) {
+        lizard_context_set_trace_expansion(context, 1);
+      }
       exit_code = eval_source(context, eval_expr, 0);
+      if (opt_trace_expansion) {
+        lizard_expansion_trace_report_t *tr;
+        tr = lizard_context_expansion_trace_report(context);
+        if (tr != NULL) {
+          if (opt_trace_file != NULL) {
+            FILE *tf;
+            tf = fopen(opt_trace_file, "wb");
+            if (tf != NULL) {
+              lizard_expansion_trace_report_fprint(tf, tr);
+              fclose(tf);
+            } else {
+              fprintf(stderr, "unable to open trace file: %s\n", opt_trace_file);
+            }
+          }
+          if (opt_print_trace) {
+            printf("Expansion trace:\n");
+            lizard_expansion_trace_report_fprint(stdout, tr);
+          }
+          lizard_expansion_trace_report_destroy(tr);
+        }
+      }
     } else {
       while (1) {
         interactive = isatty(STDIN_FILENO);
