@@ -456,7 +456,6 @@ lizard_ast_node_t *lizard_primitive_tt_extensionp(lz_list_t *, lizard_env_t *, l
 lizard_ast_node_t *lizard_primitive_tt_extension_name(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 lizard_ast_node_t *lizard_primitive_tt_extension_args(lz_list_t *, lizard_env_t *, lizard_heap_t *);
 
-#endif /* LIZARD_PRIMITIVES_H */
 
 /* ----- Type-theory notation primitives (no semantic checking) ----- */
 lizard_ast_node_t *lizard_primitive_tt_pi(lz_list_t *, lizard_env_t *, lizard_heap_t *);
@@ -977,3 +976,5 @@ lizard_ast_node_t *lizard_primitive_tt_system_next(lz_list_t *, lizard_env_t *, 
 /* System lookup (Turn 11). */
 lizard_ast_node_t *lizard_tt_system_lookup(lizard_ast_node_t *system, lizard_ast_node_t *phi);
 lizard_ast_node_t *lizard_primitive_tt_system_lookup(lz_list_t *, lizard_env_t *, lizard_heap_t *);
+
+#endif /* LIZARD_PRIMITIVES_H */

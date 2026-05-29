@@ -1,3 +1,96 @@
+# Phase 2Q — shared report writer module
+
+- Added `src/report_writer.c` / `src/report_writer.h` as the single implementation point for stable text-field and JSON-string escaping used by expansion trace, syntax expansion, and diagnostic reports.
+- Refactored `expansion_trace_report.c`, `syntax_expansion_report.c`, and `diagnostic_report.c` to use the shared writer helpers while preserving public report formats.
+- Added `tests/report_writer_test.c` covering text escaping, JSON escaping, NULL handling, and control-byte escaping under the same strict warning policy.
+- Kept evaluator and macro semantics unchanged.
+
+# Phase 2P — diagnostic report API
+
+- Fixed strict `-Wbad-function-cast` test regression by storing syntax report
+  status in a local `lizard_status_t` before using `TEST_ASSERT_EQ`.
+- Added owned `lizard_diagnostic_report_t` snapshots for context and syntax
+  expansion diagnostics.
+- Added text and JSON diagnostic report writers.
+- Syntax expansion reports now embed diagnostic reports in text/JSON output, so
+  `--expand-only` failures use the same tooling surface as successful reports.
+- Added `tests/diagnostic_report_test.c`.
+
+# Phase 2O — JSON expansion reports
+
+- Added JSON writers for expansion trace reports and syntax expansion reports.
+- Added `--expand-only-format text|json`; text remains the default report format.
+- Added CLI tests for JSON expand-only output and invalid format diagnostics.
+- Added API-level JSON output coverage for syntax expansion reports.
+- Kept evaluator and macro semantics unchanged; no strict/security flags were removed.
+
+# Phase 2N — syntax expansion report / expand-only tooling
+
+- Added owned `lizard_syntax_expansion_report_t` reports for parse+macro-expansion without evaluation.
+- Added public report APIs for status, diagnostics, source span, phase, scope summary, expanded AST summary, and trace events.
+- Added `--expand-only` CLI mode that prints a stable syntax-expansion report and does not evaluate the input.
+- Extended trace CLI tests and added `tests/syntax_expansion_report_test.c`.
+- Kept evaluator and macro semantics unchanged; tracing/expand-only remain opt-in.
+
+# Phase 2M — expansion trace file export
+- Added `--trace-expansion-file PATH`, which enables traced expansion and writes owned expansion trace reports to a file.
+- Added `lizard_expansion_trace_report_fprint`, a stable line-oriented trace export API for tooling.
+- Extended CLI trace tests to verify file output is opt-in, line-oriented, and does not pollute normal stdout/stderr.
+- Kept tracing disabled by default and preserved evaluator/macro semantics.
+
+# Phase 2L — REPL expansion trace printing
+- Added CLI flags `--trace-expansion` and `--print-expansion-trace`.
+- Tracing remains disabled by default; printing a trace opts into traced expansion.
+- Expansion trace reports are printed from owned report snapshots, not borrowed context internals.
+- Added `tests/repl_trace_cli_test.c` to verify normal `--eval` output remains clean and traced output includes macro-expansion events.
+- Kept strict compiler/security flags intact; no warning suppressions were added.
+
+# Phase 2K — expansion trace report snapshots and strictness contract
+- Added an owned `lizard_expansion_trace_report_t` API so callers can snapshot expansion traces independent of the current context's latest expansion.
+- Added `src/expansion_trace_report.c` / `.h` with malloc-owned copies of trace event strings; no `const` is cast away to free report-owned memory.
+- Added `tests/expansion_trace_report_snapshot_test.c` to prove reports survive later evaluations and context/runtime destruction.
+- Added `docs/STRICTNESS.md` and `make strict` to document that warning/security flags are non-negotiable.
+
+# Phase 2J — expansion trace report API
+
+- Fixed `src/primitives.h` include guard so all primitive prototypes are protected; this removes `-Wredundant-decls` failures when the header is included more than once.
+- Added public structured expansion-trace event reporting APIs on `lizard_context_t`.
+- Added SurfaceTerm trace-event accessors and bounded event formatting helpers.
+- Added `tests/runtime_expansion_trace_report_test.c` to cover full trace-event retrieval.
+- Kept traced expansion opt-in and evaluator/macro semantics unchanged.
+
+# Phase 2I — optional runtime expansion tracing
+
+- Added an opt-in traced expansion path to `lizard_context_eval_string` and `lizard_context_eval_file`.
+- Added public API toggles/accessors for traced expansion metadata.
+- When tracing is enabled, evaluation parses through `SurfaceTerm`, expands through the Phase 2H adapter, records trace metadata, and still evaluates the same expanded runtime AST.
+- Default evaluation remains unchanged and does not allocate syntax-object traces.
+- Added `tests/runtime_expansion_trace_test.c` to prove traced and untraced evaluation coexist.
+
+# Phase 2H — macro-expander SurfaceTerm adapter
+- Added `src/syntax_expander.c` / `src/syntax_expander.h`, a scaffold adapter that accepts `SurfaceTerm` plus `ExpansionContext`, delegates semantics to the existing macro expander, and returns both the expanded runtime AST and a metadata-preserving SurfaceTerm.
+- Added trace metadata around adapter expansion without changing macro or evaluator behavior.
+- Added `tests/syntax_expander_adapter_test.c` to prove the adapter preserves source span, phase, scopes, properties, and produces the same runtime result as the old macro path.
+
+# Phase 2G — expansion context scaffold
+
+- Added `src/expansion_context.c` / `src/expansion_context.h`.
+- Added fresh macro-scope allocation through `lizard_expansion_context_fresh_scope`.
+- Added `lizard_expansion_context_introduce` for untrusted macro-introduction metadata.
+- Added `lizard_expansion_context_rewrite` for future rewrite/macro-step trace hooks.
+- Added `lizard_surface_origin_chain_debug_string` for syntax-object origin debugging.
+- Added `tests/expansion_context_scaffold_test.c`.
+- Updated syntax-object and representation-boundary documentation.
+
+# Phase 2F — SurfaceTerm transformation tracing scaffold
+
+- Added untrusted SurfaceTerm transformation trace records for future macro/rewrite debugging.
+- Added APIs to attach, copy, count, inspect, and debug-print transformation traces.
+- SurfaceTerm debug strings now include trace counts.
+- `lizard_surface_copy_metadata` and `lizard_surface_from_ast_like` now preserve trace chains.
+- Added `tests/surface_trace_scaffold_test.c`.
+- Evaluator and macro behavior remain unchanged.
+
 # Phase 2E — SurfaceTerm metadata propagation hooks
 - Added `lizard_surface_from_ast_like` and `lizard_surface_from_quoted_datum` for source/span/scope/property-preserving syntax rewrites.
 - Added `lizard_surface_copy_scopes`, `lizard_surface_copy_properties`, and `lizard_surface_copy_metadata`.

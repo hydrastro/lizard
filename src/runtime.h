@@ -11,6 +11,7 @@
 struct logic_rule_entry;
 struct hit_registry_entry;
 struct lizard_tt_flag;
+struct lizard_surface_term;
 
 /* Phase C: module loader. */
 typedef struct lizard_module_entry {
@@ -56,6 +57,10 @@ struct lizard_context {
   lizard_ast_node_t *last_value;
   char last_error[256];
   lizard_diagnostic_t diagnostic;
+  /* Phase 2I: optional traced expansion path. */
+  int trace_expansion;
+  struct lizard_surface_term *last_surface;
+  struct lizard_surface_term *last_expanded_surface;
 };
 
 void lizard_runtime_set_error(lizard_runtime_t *runtime, const char *message);

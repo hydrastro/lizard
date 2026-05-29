@@ -20,6 +20,17 @@ typedef struct lizard_surface_property {
   lizard_ast_node_t *value;
 } lizard_surface_property_t;
 
+struct lizard_surface_trace_event {
+  struct lizard_surface_trace_event *next;
+  const char *stage;
+  const char *detail;
+  const char *origin_filename;
+  int origin_line;
+  int origin_column;
+  int origin_phase;
+  unsigned long origin_scope_summary;
+};
+
 typedef struct lizard_surface_scope_node {
   struct lizard_surface_scope_node *next;
   unsigned long scope;
@@ -39,6 +50,7 @@ struct lizard_surface_term {
   int phase;
   lizard_surface_scope_set_t *scopes;
   lizard_surface_property_t *properties;
+  lizard_surface_trace_event_t *trace;
 };
 
 static void span_clear(lizard_source_span_t *span) {
@@ -81,16 +93,24 @@ static void diagnostic_parse_error(lizard_diagnostic_t *diagnostic,
   }
 }
 
-static const char *surface_copy_key(lizard_heap_t *heap, const char *key) {
+static int surface_trace_copy_all(lizard_heap_t *heap,
+                                  lizard_surface_term_t *dst,
+                                  const lizard_surface_term_t *src);
+
+static const char *surface_copy_string(lizard_heap_t *heap, const char *text) {
   char *copy;
   size_t len;
-  if (heap == NULL || key == NULL) {
+  if (heap == NULL || text == NULL) {
     return NULL;
   }
-  len = strlen(key) + 1U;
+  len = strlen(text) + 1U;
   copy = (char *)lizard_heap_alloc(len);
-  memcpy(copy, key, len);
+  memcpy(copy, text, len);
   return copy;
+}
+
+static const char *surface_copy_key(lizard_heap_t *heap, const char *key) {
+  return surface_copy_string(heap, key);
 }
 
 
@@ -197,6 +217,7 @@ lizard_surface_term_t *lizard_surface_from_ast_span(lizard_heap_t *heap,
   term->phase = 0;
   term->scopes = lizard_surface_scope_set_empty(heap);
   term->properties = NULL;
+  term->trace = NULL;
   return term;
 }
 
@@ -285,6 +306,9 @@ int lizard_surface_copy_metadata(lizard_heap_t *heap,
   if (!lizard_surface_copy_scopes(heap, dst, src)) {
     return 0;
   }
+  if (!surface_trace_copy_all(heap, dst, src)) {
+    return 0;
+  }
   if (copy_properties) {
     return lizard_surface_copy_properties(heap, dst, src);
   }
@@ -310,6 +334,7 @@ char *lizard_surface_debug_string(lizard_heap_t *heap,
   int phase;
   unsigned long scope_count;
   unsigned long scope_summary;
+  unsigned long trace_count;
   const char *kind;
 
   if (heap == NULL) {
@@ -328,12 +353,317 @@ char *lizard_surface_debug_string(lizard_heap_t *heap,
   phase = term->phase;
   scope_count = lizard_surface_scope_set_count(term->scopes);
   scope_summary = lizard_surface_scope_set_summary(term->scopes);
+  trace_count = lizard_surface_trace_count(term);
   kind = surface_kind_name(term->kind);
 
-  out = (char *)lizard_heap_alloc(384U);
+  out = (char *)lizard_heap_alloc(448U);
   sprintf(out,
-          "#<surface kind=%s phase=%d scopes=%lu summary=%lu at %s:%d:%d>",
-          kind, phase, scope_count, scope_summary, filename, line, column);
+          "#<surface kind=%s phase=%d scopes=%lu summary=%lu traces=%lu at %s:%d:%d>",
+          kind, phase, scope_count, scope_summary, trace_count, filename,
+          line, column);
+  return out;
+}
+
+int lizard_surface_trace_add(lizard_heap_t *heap,
+                             lizard_surface_term_t *term,
+                             const char *stage,
+                             const char *detail,
+                             const lizard_surface_term_t *origin) {
+  lizard_surface_trace_event_t *event;
+
+  if (heap == NULL || term == NULL || stage == NULL) {
+    return 0;
+  }
+
+  event = (lizard_surface_trace_event_t *)lizard_heap_alloc(sizeof(*event));
+  event->next = term->trace;
+  event->stage = surface_copy_string(heap, stage);
+  event->detail = detail != NULL ? surface_copy_string(heap, detail) : NULL;
+  event->origin_filename = NULL;
+  event->origin_line = 0;
+  event->origin_column = 0;
+  event->origin_phase = 0;
+  event->origin_scope_summary = 0UL;
+
+  if (event->stage == NULL) {
+    return 0;
+  }
+  if (detail != NULL && event->detail == NULL) {
+    return 0;
+  }
+
+  if (origin != NULL) {
+    event->origin_filename = origin->span.filename;
+    event->origin_line = origin->span.start_line;
+    event->origin_column = origin->span.start_column;
+    event->origin_phase = origin->phase;
+    event->origin_scope_summary = lizard_surface_scope_set_summary(
+        origin->scopes);
+  }
+
+  term->trace = event;
+  return 1;
+}
+
+static int surface_trace_copy_reversed(lizard_heap_t *heap,
+                                       lizard_surface_term_t *dst,
+                                       const lizard_surface_trace_event_t *ev) {
+  lizard_surface_term_t origin_stub;
+  lizard_surface_trace_event_t *current;
+
+  if (ev == NULL) {
+    return 1;
+  }
+  if (!surface_trace_copy_reversed(heap, dst, ev->next)) {
+    return 0;
+  }
+
+  memset(&origin_stub, 0, sizeof(origin_stub));
+  span_clear(&origin_stub.span);
+  origin_stub.span.filename = ev->origin_filename;
+  origin_stub.span.start_line = ev->origin_line;
+  origin_stub.span.start_column = ev->origin_column;
+  origin_stub.phase = ev->origin_phase;
+  origin_stub.scopes = lizard_surface_scope_set_empty(heap);
+  if (origin_stub.scopes != NULL) {
+    origin_stub.scopes->summary = ev->origin_scope_summary;
+  }
+
+  if (!lizard_surface_trace_add(heap, dst, ev->stage, ev->detail,
+                                &origin_stub)) {
+    return 0;
+  }
+  current = dst->trace;
+  if (current != NULL) {
+    current->origin_scope_summary = ev->origin_scope_summary;
+  }
+  return 1;
+}
+
+
+static void surface_trace_event_clear(lizard_expansion_trace_event_t *event) {
+  if (event == NULL) {
+    return;
+  }
+  event->stage = NULL;
+  event->detail = NULL;
+  event->origin_filename = NULL;
+  event->origin_line = 0;
+  event->origin_column = 0;
+  event->origin_phase = 0;
+  event->origin_scope_summary = 0UL;
+}
+
+static const lizard_surface_trace_event_t *surface_trace_event_at(
+    const lizard_surface_term_t *term, unsigned long index) {
+  const lizard_surface_trace_event_t *iter;
+  unsigned long i;
+
+  if (term == NULL) {
+    return NULL;
+  }
+  iter = term->trace;
+  i = 0UL;
+  while (iter != NULL) {
+    if (i == index) {
+      return iter;
+    }
+    iter = iter->next;
+    i++;
+  }
+  return NULL;
+}
+
+static void surface_copy_trace_event_view(
+    lizard_expansion_trace_event_t *out_event,
+    const lizard_surface_trace_event_t *event) {
+  surface_trace_event_clear(out_event);
+  if (out_event == NULL || event == NULL) {
+    return;
+  }
+  out_event->stage = event->stage;
+  out_event->detail = event->detail;
+  out_event->origin_filename = event->origin_filename;
+  out_event->origin_line = event->origin_line;
+  out_event->origin_column = event->origin_column;
+  out_event->origin_phase = event->origin_phase;
+  out_event->origin_scope_summary = event->origin_scope_summary;
+}
+
+static void surface_copy_limited(char *buffer, size_t buffer_size,
+                                 const char *text) {
+  size_t i;
+  if (buffer == NULL || buffer_size == 0U) {
+    return;
+  }
+  if (text == NULL) {
+    text = "";
+  }
+  i = 0U;
+  while (i + 1U < buffer_size && text[i] != '\0') {
+    buffer[i] = text[i];
+    i++;
+  }
+  buffer[i] = '\0';
+}
+
+static int surface_trace_event_format(
+    const lizard_surface_trace_event_t *event, char *buffer,
+    size_t buffer_size) {
+  char tmp[512];
+  const char *stage;
+  const char *detail;
+  const char *filename;
+
+  if (buffer == NULL || buffer_size == 0U) {
+    return 0;
+  }
+  if (event == NULL) {
+    surface_copy_limited(buffer, buffer_size, "#<surface-trace-event null>");
+    return 0;
+  }
+
+  stage = event->stage != NULL ? event->stage : "<none>";
+  detail = event->detail != NULL ? event->detail : "";
+  filename = event->origin_filename != NULL ? event->origin_filename
+                                            : "<unknown>";
+  sprintf(tmp,
+          "#<surface-trace-event stage=%s detail=\"%s\" origin=%s:%d:%d phase=%d scope-summary=%lu>",
+          stage, detail, filename, event->origin_line, event->origin_column,
+          event->origin_phase, event->origin_scope_summary);
+  surface_copy_limited(buffer, buffer_size, tmp);
+  return 1;
+}
+
+static int surface_trace_copy_all(lizard_heap_t *heap,
+                                  lizard_surface_term_t *dst,
+                                  const lizard_surface_term_t *src) {
+  if (heap == NULL || dst == NULL || src == NULL) {
+    return 0;
+  }
+  dst->trace = NULL;
+  return surface_trace_copy_reversed(heap, dst, src->trace);
+}
+
+int lizard_surface_trace_copy(lizard_heap_t *heap,
+                              lizard_surface_term_t *dst,
+                              const lizard_surface_term_t *src) {
+  return surface_trace_copy_all(heap, dst, src);
+}
+
+unsigned long lizard_surface_trace_count(const lizard_surface_term_t *term) {
+  unsigned long count;
+  const lizard_surface_trace_event_t *iter;
+
+  count = 0UL;
+  if (term == NULL) {
+    return 0UL;
+  }
+  for (iter = term->trace; iter != NULL; iter = iter->next) {
+    count++;
+  }
+  return count;
+}
+
+const char *lizard_surface_trace_latest_stage(
+    const lizard_surface_term_t *term) {
+  if (term == NULL || term->trace == NULL) {
+    return NULL;
+  }
+  return term->trace->stage;
+}
+
+const char *lizard_surface_trace_latest_detail(
+    const lizard_surface_term_t *term) {
+  if (term == NULL || term->trace == NULL) {
+    return NULL;
+  }
+  return term->trace->detail;
+}
+
+
+int lizard_surface_trace_event_at(const lizard_surface_term_t *term,
+                                  unsigned long index,
+                                  lizard_expansion_trace_event_t *out_event) {
+  const lizard_surface_trace_event_t *event;
+  event = surface_trace_event_at(term, index);
+  surface_copy_trace_event_view(out_event, event);
+  return event != NULL;
+}
+
+int lizard_surface_trace_event_string(lizard_heap_t *heap,
+                                      const lizard_surface_term_t *term,
+                                      unsigned long index,
+                                      char *buffer,
+                                      size_t buffer_size) {
+  const lizard_surface_trace_event_t *event;
+  (void)heap;
+  event = surface_trace_event_at(term, index);
+  return surface_trace_event_format(event, buffer, buffer_size);
+}
+
+char *lizard_surface_trace_debug_string(lizard_heap_t *heap,
+                                        const lizard_surface_term_t *term) {
+  char *out;
+  const char *stage;
+  const char *detail;
+  const char *filename;
+  unsigned long count;
+
+  if (heap == NULL) {
+    return NULL;
+  }
+  if (term == NULL) {
+    out = (char *)lizard_heap_alloc(56U);
+    sprintf(out, "#<surface-trace null>");
+    return out;
+  }
+
+  count = lizard_surface_trace_count(term);
+  stage = lizard_surface_trace_latest_stage(term);
+  detail = lizard_surface_trace_latest_detail(term);
+  filename = term->trace != NULL && term->trace->origin_filename != NULL
+                 ? term->trace->origin_filename
+                 : "<unknown>";
+  if (stage == NULL) {
+    stage = "<none>";
+  }
+  if (detail == NULL) {
+    detail = "";
+  }
+
+  out = (char *)lizard_heap_alloc(512U);
+  sprintf(out,
+          "#<surface-trace count=%lu latest=%s detail=\"%s\" origin=%s:%d:%d phase=%d scope-summary=%lu>",
+          count, stage, detail, filename,
+          term->trace != NULL ? term->trace->origin_line : 0,
+          term->trace != NULL ? term->trace->origin_column : 0,
+          term->trace != NULL ? term->trace->origin_phase : 0,
+          term->trace != NULL ? term->trace->origin_scope_summary : 0UL);
+  return out;
+}
+
+char *lizard_surface_origin_chain_debug_string(
+    lizard_heap_t *heap, const lizard_surface_term_t *term) {
+  char *out;
+  char *trace;
+  const char *kind;
+  unsigned long trace_count;
+
+  if (heap == NULL) {
+    return NULL;
+  }
+  if (term == NULL) {
+    out = (char *)lizard_heap_alloc(64U);
+    sprintf(out, "#<surface-origin-chain null>");
+    return out;
+  }
+  trace = lizard_surface_trace_debug_string(heap, term);
+  kind = surface_kind_name(term->kind);
+  trace_count = lizard_surface_trace_count(term);
+  out = (char *)lizard_heap_alloc(768U);
+  sprintf(out, "#<surface-origin-chain kind=%s traces=%lu %s>",
+          kind, trace_count, trace != NULL ? trace : "#<surface-trace null>");
   return out;
 }
 

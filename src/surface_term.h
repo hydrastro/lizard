@@ -16,6 +16,7 @@ typedef enum {
 
 typedef struct lizard_surface_term lizard_surface_term_t;
 typedef struct lizard_surface_scope_set lizard_surface_scope_set_t;
+typedef struct lizard_surface_trace_event lizard_surface_trace_event_t;
 
 typedef struct lizard_surface_list_node {
   lz_list_node_t node;
@@ -47,6 +48,35 @@ int lizard_surface_copy_metadata(lizard_heap_t *heap,
                                  int copy_properties);
 char *lizard_surface_debug_string(lizard_heap_t *heap,
                                   const lizard_surface_term_t *term);
+
+/* Transformation tracing scaffold for future macro expansion / rewrite
+ * steppers. Trace records are untrusted debugging metadata. */
+int lizard_surface_trace_add(lizard_heap_t *heap,
+                             lizard_surface_term_t *term,
+                             const char *stage,
+                             const char *detail,
+                             const lizard_surface_term_t *origin);
+int lizard_surface_trace_copy(lizard_heap_t *heap,
+                              lizard_surface_term_t *dst,
+                              const lizard_surface_term_t *src);
+unsigned long lizard_surface_trace_count(const lizard_surface_term_t *term);
+const char *lizard_surface_trace_latest_stage(
+    const lizard_surface_term_t *term);
+const char *lizard_surface_trace_latest_detail(
+    const lizard_surface_term_t *term);
+int lizard_surface_trace_event_at(const lizard_surface_term_t *term,
+                                  unsigned long index,
+                                  lizard_expansion_trace_event_t *out_event);
+int lizard_surface_trace_event_string(lizard_heap_t *heap,
+                                      const lizard_surface_term_t *term,
+                                      unsigned long index,
+                                      char *buffer,
+                                      size_t buffer_size);
+char *lizard_surface_trace_debug_string(lizard_heap_t *heap,
+                                        const lizard_surface_term_t *term);
+char *lizard_surface_origin_chain_debug_string(
+    lizard_heap_t *heap, const lizard_surface_term_t *term);
+
 
 lizard_surface_kind_t lizard_surface_kind(const lizard_surface_term_t *term);
 lizard_ast_node_t *lizard_surface_ast(const lizard_surface_term_t *term);

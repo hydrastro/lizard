@@ -6,6 +6,7 @@
 #include "primitives.h"
 #include "printer.h"
 #include "tokenizer.h"
+#include "syntax_expansion_report.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,8 +19,16 @@
 #define LIZARD_VERSION "0.1.0-dev"
 
 static void print_usage(const char *argv0) {
-  printf("usage: %s [--help] [--version] [--eval EXPR] [file]\n", argv0);
+  printf("usage: %s [--help] [--version] [--trace-expansion] "
+         "[--print-expansion-trace] [--trace-expansion-file PATH] "
+         "[--expand-only] [--expand-only-format text|json] [--eval EXPR] [file]\n", argv0);
   printf("Run Lizard interactively, evaluate EXPR, or evaluate a file/stdin in script mode.\n");
+  printf("  --trace-expansion        enable traced SurfaceTerm macro expansion\n");
+  printf("  --print-expansion-trace  print an owned expansion trace report after each evaluation\n");
+  printf("  --trace-expansion-file PATH\n");
+  printf("                           write line-oriented expansion trace reports to PATH\n");
+  printf("  --expand-only             expand input and print a syntax expansion report; do not evaluate\n");
+  printf("  --expand-only-format FMT  choose expand-only output: text or json\n");
 }
 
 static char *history[HISTORY_SIZE] = {0};
@@ -262,8 +271,122 @@ static char *read_input(void) {
 
 /* primitive registration is now provided by liblizard so tests can use it */
 
+static void print_expansion_trace_report(lizard_context_t *context,
+                                         FILE *fp) {
+  lizard_expansion_trace_report_t *report;
+  unsigned long count;
+  unsigned long i;
+  char line[1024];
+
+  if (context == NULL || fp == NULL) {
+    return;
+  }
+
+  report = lizard_context_expansion_trace_report(context);
+  if (report == NULL) {
+    fprintf(fp, "Expansion trace: <allocation failed>\n");
+    return;
+  }
+
+  count = lizard_expansion_trace_report_count(report);
+  fprintf(fp, "Expansion trace: %lu event(s)\n", count);
+  for (i = 0UL; i < count; i++) {
+    line[0] = '\0';
+    if (lizard_expansion_trace_report_event_string(report, i, line,
+                                                   sizeof(line))) {
+      fprintf(fp, "  [%lu] %s\n", i, line);
+    }
+  }
+  lizard_expansion_trace_report_destroy(report);
+}
+
+static int write_expansion_trace_report(lizard_context_t *context,
+                                        FILE *fp) {
+  lizard_expansion_trace_report_t *report;
+  int ok;
+
+  if (context == NULL || fp == NULL) {
+    return 1;
+  }
+
+  report = lizard_context_expansion_trace_report(context);
+  if (report == NULL) {
+    return 0;
+  }
+  ok = lizard_expansion_trace_report_fprint(fp, report);
+  lizard_expansion_trace_report_destroy(report);
+  if (fflush(fp) != 0) {
+    ok = 0;
+  }
+  return ok;
+}
+
+static int maybe_emit_expansion_trace(lizard_context_t *context,
+                                      int print_trace, FILE *trace_file) {
+  int ok;
+
+  ok = 1;
+  if (print_trace) {
+    print_expansion_trace_report(context, stderr);
+  }
+  if (trace_file != NULL) {
+    ok = write_expansion_trace_report(context, trace_file);
+    if (!ok) {
+      fprintf(stderr, "failed to write expansion trace report\n");
+    }
+  }
+  return ok;
+}
+
+
+static int expand_source_only(lizard_context_t *context, const char *source,
+                              FILE *trace_file, int json_output) {
+  lizard_syntax_expansion_report_t *report;
+  const lizard_diagnostic_t *diagnostic;
+  lizard_status_t status;
+  int ok;
+
+  if (context == NULL || source == NULL) {
+    return 1;
+  }
+  report = lizard_context_syntax_expansion_report(context, source,
+                                                  "<string>");
+  if (report == NULL) {
+    fprintf(stderr, "failed to create syntax expansion report\n");
+    return 1;
+  }
+  status = lizard_syntax_expansion_report_status(report);
+  if (status != LIZARD_STATUS_OK) {
+    diagnostic = lizard_syntax_expansion_report_diagnostic(report);
+    if (diagnostic != NULL && diagnostic->message[0] != '\0') {
+      if (diagnostic->span.start_line > 0) {
+        fprintf(stderr, "error at %d:%d: %s\n",
+                diagnostic->span.start_line,
+                diagnostic->span.start_column,
+                diagnostic->message);
+      } else {
+        fprintf(stderr, "error: %s\n", diagnostic->message);
+      }
+    }
+    lizard_syntax_expansion_report_destroy(report);
+    return 1;
+  }
+
+  ok = json_output ? lizard_syntax_expansion_report_fprint_json(stdout, report)
+                   : lizard_syntax_expansion_report_fprint(stdout, report);
+  if (trace_file != NULL) {
+    ok = (json_output ? lizard_syntax_expansion_report_fprint_json(trace_file, report)
+                      : lizard_syntax_expansion_report_fprint(trace_file, report)) && ok;
+    if (fflush(trace_file) != 0) {
+      ok = 0;
+    }
+  }
+  lizard_syntax_expansion_report_destroy(report);
+  return ok ? 0 : 1;
+}
+
 static int eval_source(lizard_context_t *context, const char *source,
-                       int interactive) {
+                       int interactive, int print_trace, FILE *trace_file) {
   lizard_value_t *result;
   lizard_status_t status;
 
@@ -288,6 +411,7 @@ static int eval_source(lizard_context_t *context, const char *source,
         }
       }
     }
+    (void)maybe_emit_expansion_trace(context, print_trace, trace_file);
     return 1;
   }
   if (interactive) {
@@ -299,6 +423,9 @@ static int eval_source(lizard_context_t *context, const char *source,
     lizard_print_value(result);
     printf("\n");
   }
+  if (!maybe_emit_expansion_trace(context, print_trace, trace_file)) {
+    return 1;
+  }
   return 0;
 }
 
@@ -308,12 +435,24 @@ int main(int argc, char **argv) {
   int argi;
   int interactive;
   int exit_code;
+  int trace_expansion;
+  int print_expansion_trace;
+  int expand_only;
+  int expand_only_json;
+  const char *trace_expansion_file_path;
+  FILE *trace_expansion_file;
   const char *eval_expr;
   const char *file_path;
 
   eval_expr = NULL;
   file_path = NULL;
+  trace_expansion_file_path = NULL;
+  trace_expansion_file = NULL;
   exit_code = 0;
+  trace_expansion = 0;
+  print_expansion_trace = 0;
+  expand_only = 0;
+  expand_only_json = 0;
 
   for (argi = 1; argi < argc; argi++) {
     if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
@@ -323,6 +462,46 @@ int main(int argc, char **argv) {
     if (strcmp(argv[argi], "--version") == 0) {
       printf("lizard %s\n", LIZARD_VERSION);
       return 0;
+    }
+    if (strcmp(argv[argi], "--trace-expansion") == 0) {
+      trace_expansion = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--print-expansion-trace") == 0) {
+      trace_expansion = 1;
+      print_expansion_trace = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--trace-expansion-file") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--trace-expansion-file expects a path\n");
+        return 2;
+      }
+      trace_expansion = 1;
+      trace_expansion_file_path = argv[argi];
+      continue;
+    }
+    if (strcmp(argv[argi], "--expand-only") == 0) {
+      trace_expansion = 1;
+      expand_only = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--expand-only-format") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--expand-only-format expects text or json\n");
+        return 2;
+      }
+      if (strcmp(argv[argi], "text") == 0) {
+        expand_only_json = 0;
+      } else if (strcmp(argv[argi], "json") == 0) {
+        expand_only_json = 1;
+      } else {
+        fprintf(stderr, "invalid --expand-only-format: %s\n", argv[argi]);
+        return 2;
+      }
+      continue;
     }
     if (strcmp(argv[argi], "--eval") == 0 || strcmp(argv[argi], "-e") == 0) {
       argi++;
@@ -344,7 +523,17 @@ int main(int argc, char **argv) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");
     return 2;
   }
+  if (trace_expansion_file_path != NULL) {
+    trace_expansion_file = fopen(trace_expansion_file_path, "w");
+    if (trace_expansion_file == NULL) {
+      perror(trace_expansion_file_path);
+      return 1;
+    }
+  }
   if (file_path != NULL && freopen(file_path, "r", stdin) == NULL) {
+    if (trace_expansion_file != NULL) {
+      fclose(trace_expansion_file);
+    }
     perror(file_path);
     return 1;
   }
@@ -358,17 +547,32 @@ int main(int argc, char **argv) {
     runtime = lizard_runtime_create(NULL);
     if (runtime == NULL) {
       fprintf(stderr, "failed to create lizard runtime\n");
+      if (trace_expansion_file != NULL) {
+        fclose(trace_expansion_file);
+      }
       return 1;
     }
     context = lizard_context_create(runtime);
     if (context == NULL) {
       fprintf(stderr, "failed to create lizard context\n");
       lizard_runtime_destroy(runtime);
+      if (trace_expansion_file != NULL) {
+        fclose(trace_expansion_file);
+      }
       return 1;
     }
 
+    lizard_context_set_trace_expansion(context, trace_expansion);
+
     if (eval_expr != NULL) {
-      exit_code = eval_source(context, eval_expr, 0);
+      if (expand_only) {
+        exit_code = expand_source_only(context, eval_expr,
+                                       trace_expansion_file,
+                                       expand_only_json);
+      } else {
+        exit_code = eval_source(context, eval_expr, 0, print_expansion_trace,
+                                trace_expansion_file);
+      }
     } else {
       while (1) {
         interactive = isatty(STDIN_FILENO);
@@ -388,7 +592,13 @@ int main(int argc, char **argv) {
           free(input);
           continue;
         }
-        if (eval_source(context, input, interactive) != 0) {
+        if (expand_only) {
+          if (expand_source_only(context, input, trace_expansion_file,
+                                 expand_only_json) != 0) {
+            exit_code = 1;
+          }
+        } else if (eval_source(context, input, interactive, print_expansion_trace,
+                               trace_expansion_file) != 0) {
           exit_code = 1;
         }
         free(input);
@@ -396,6 +606,9 @@ int main(int argc, char **argv) {
     }
     lizard_context_destroy(context);
     lizard_runtime_destroy(runtime);
+  }
+  if (trace_expansion_file != NULL) {
+    fclose(trace_expansion_file);
   }
   for (i = 0; i < HISTORY_SIZE; i++) {
     free(history[i]);

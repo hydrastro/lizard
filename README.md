@@ -195,3 +195,34 @@ for what is checked vs. scaffolded.
 (Set as appropriate for your context. The Scheme core inherits from the
 project's original licensing; the type-theory and library additions are
 the author's work.)
+
+### Expansion trace debugging
+
+Use `build/lizard --trace-expansion --print-expansion-trace --eval EXPR` to print an owned macro-expansion trace report. Tracing is disabled by default.
+
+For tool/editor integration, write a stable line-oriented report to a file:
+
+```sh
+build/lizard --trace-expansion-file trace.tsv --eval '(+ 1 2)'
+```
+
+The file format starts with `lizard-expansion-trace\tv=1` and then one
+`event` line per trace event. Normal stdout/stderr stays evaluation-focused
+unless `--print-expansion-trace` is also supplied.
+
+
+### Expansion reports
+
+Use `--expand-only` to inspect parsed/macro-expanded syntax without evaluation:
+
+```sh
+build/lizard --expand-only --eval '(+ 1 2)'
+
+JSON output for editor/tooling integration:
+
+```sh
+build/lizard --expand-only --expand-only-format json --eval '(+ 1 2)'
+```
+```
+
+This is opt-in tooling infrastructure; normal evaluation is unchanged.

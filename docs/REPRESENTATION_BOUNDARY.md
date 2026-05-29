@@ -106,3 +106,135 @@ input SurfaceTerm
 
 This prepares the syntax layer for macro expansion, syntax debugging, and
 source-preserving rewrites without changing the runtime AST evaluator path.
+
+## Phase 2F tracing boundary
+
+SurfaceTerm now also has untrusted transformation-trace metadata.  This is the
+first scaffold for a future syntax debugger / macro stepper.  Trace metadata is
+not part of CoreTerm, KernelTerm, or runtime Value semantics; it is an
+explanation layer attached to surface syntax only.
+
+This preserves the desired trust boundary:
+
+```text
+SurfaceTerm: source spans, phase, scopes, properties, traces
+CoreTerm:    future elaborator output, still untrusted
+KernelTerm:  trusted de-Bruijn checked term
+Value:       runtime evaluator object
+```
+
+## Phase 2G: expansion-context scaffold
+
+The SurfaceTerm layer now has an explicit expansion-context scaffold.  This
+provides fresh macro scopes and trace hooks for future macro expansion without
+changing evaluator behavior.
+
+The trust boundary remains unchanged:
+
+```text
+ExpansionContext + SurfaceTerm metadata: untrusted tooling/debug data
+CoreTerm: future elaborator output, still untrusted
+KernelTerm: trusted checked representation
+Value: runtime evaluator representation
+```
+
+A future macro expander can now allocate a scope, attach it to introduced
+syntax, and record a trace event using one context-owned API instead of directly
+mutating the surface object in ad-hoc ways.
+
+## Phase 2H adapter boundary
+
+The syntax-expander adapter is the first executable bridge from the old AST
+macro expansion path into the new representation-boundary scaffold:
+
+```text
+SurfaceTerm + ExpansionContext
+  -> existing lizard_expand_macros(AST)
+  -> expanded runtime AST
+  -> SurfaceTerm wrapper with copied metadata and a macro-expand trace
+```
+
+The evaluator still consumes runtime AST values. The adapter exists so future
+hygienic expansion can be introduced behind a stable API while existing macro
+semantics remain testable.
+
+
+## Phase 2I: Optional runtime expansion tracing
+
+The runtime API now has an opt-in traced expansion mode.  It does not change
+default evaluation.  When enabled on a `lizard_context_t`, evaluation wraps
+parsed forms as `SurfaceTerm`, expands through the adapter, stores the latest
+expanded surface term, and exposes trace metadata through public API accessors.
+
+This is a bridge for tools: REPLs, editors, macro steppers, and diagnostics can
+observe expansion provenance without trusting it and without making the evaluator
+consume syntax objects directly.
+
+
+## Phase 2J: expansion trace reports
+
+The traced expansion path now exposes structured trace events through the public
+context API.  The old `last_expansion_stage/detail/span` helpers remain as
+convenience accessors; embedders that need macro-stepper-like information should
+use the indexed trace event API.  Index `0` is the newest event, matching the
+existing "latest" helpers.
+
+The trace report remains untrusted metadata.  The evaluator and kernel continue
+to ignore it.
+
+
+## Phase 2K: owned trace reports
+
+Runtime expansion tracing originally exposed borrowed views into the latest
+expanded `SurfaceTerm`. Phase 2K adds `lizard_expansion_trace_report_t`, an
+owned snapshot object. This is the safer API for editors, REPL tooling, and
+macro steppers: callers can capture a report, continue evaluating, or destroy
+the context without invalidating the report.
+
+Reports are still untrusted debugging metadata. The evaluator and kernel do not
+consult them.
+
+
+## Phase 2L: REPL trace reporting
+
+The command-line executable can now opt into traced expansion and print the
+owned expansion trace report. This exposes SurfaceTerm metadata to tooling while
+leaving the evaluator path unchanged by default.
+
+## Phase 2M: trace export boundary
+
+Trace reports now have a tooling-facing export boundary.
+`lizard_expansion_trace_report_fprint` writes an owned report in a stable
+line-oriented format, and the REPL exposes it through
+`--trace-expansion-file PATH`.  This keeps expansion metadata observable without
+changing the runtime value/evaluator boundary.
+
+## Phase 2N: syntax expansion reports
+
+`lizard_syntax_expansion_report_t` snapshots parse and macro-expansion output
+without evaluating it. Reports own their strings and expose status, diagnostics,
+source span, phase, scope summary, expanded AST summary, and trace events. This
+keeps editor/macro-stepper tooling independent from the evaluator.
+
+
+
+## Phase 2O: report formats
+
+Syntax expansion reports now have two stable writers: the existing line-oriented text format and a JSON writer. Both are generated from owned report snapshots, not borrowed context internals.
+
+## Phase 2P: Diagnostic report snapshots
+
+Diagnostics now have an owned report layer parallel to expansion traces.
+`lizard_context_diagnostic_report` and
+`lizard_syntax_expansion_report_diagnostic_report` copy the current diagnostic
+into a stable `lizard_diagnostic_report_t`.  Text and JSON writers make parser,
+tokenizer, and expansion failures available to editors without borrowing mutable
+context state.  Syntax expansion reports include this diagnostic report in their
+text/JSON output, including `--expand-only` failures.
+
+## Phase 2Q: shared report formatting
+
+Expansion trace reports, syntax expansion reports, and diagnostic reports now
+share `report_writer.c` for text-field and JSON-string escaping. This keeps
+tooling-facing report output stable while the representation boundary evolves.
+

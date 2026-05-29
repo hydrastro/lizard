@@ -81,7 +81,7 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := runtime surface_term core_term lizard env mem parser primitives prims_kernel_util prims_kernel_core prims_kernel_proof prims_kernel_meta prims_kernel_defs prims_hits prims_trunc prims_theory_ext prims_logic tokenizer printer tt_equality tt_registry tt_lattice tt_faces tt_glue tt_check gc bytecode kernel_sexp kernel tactics
+LIB_SRCS := runtime surface_term report_writer expansion_trace_report diagnostic_report syntax_expansion_report expansion_context syntax_expander core_term lizard env mem parser primitives prims_kernel_util prims_kernel_core prims_kernel_proof prims_kernel_meta prims_kernel_defs prims_hits prims_trunc prims_theory_ext prims_logic tokenizer printer tt_equality tt_registry tt_lattice tt_faces tt_glue tt_check gc bytecode kernel_sexp kernel tactics
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------
@@ -90,12 +90,13 @@ LIB_SHARED := $(BUILD_DIR)/liblizard.so
 REPL_BIN   := $(BUILD_DIR)/lizard
 REPL_OBJ   := $(BUILD_DIR)/repl.o
 
-.PHONY: all check ci clean distclean doctor install uninstall lint-tree test examples \
+.PHONY: all check ci strict clean distclean doctor install uninstall lint-tree test examples \
         debug asan coverage profile format smoke help
 
 all: $(LIB_STATIC) $(LIB_SHARED) $(REPL_BIN)
 check: test examples
 ci: lint-tree test examples smoke
+strict: lint-tree test examples smoke
 
 debug:
 	$(MAKE) MODE=debug all
@@ -190,7 +191,7 @@ distclean: clean
 	@./scripts/clean.sh
 
 help:
-	@echo "Targets:    all test examples check ci smoke doctor lint-tree clean distclean install uninstall format"
+	@echo "Targets:    all test examples check ci strict smoke doctor lint-tree clean distclean install uninstall format"
 	@echo "Modes:      make MODE=debug | make MODE=asan test | make MODE=coverage"
 	@echo "Tooling:    make debug | make asan | make coverage | make profile"
 	@echo "Runtime:    set RUN_ENV='LD_LIBRARY_PATH=/path/to/ds/lib' when needed"

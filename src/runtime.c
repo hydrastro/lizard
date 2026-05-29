@@ -1,4 +1,5 @@
 #include "runtime.h"
+#include "expansion_trace_report.h"
 
 #include "env.h"
 #include "mem.h"
@@ -6,6 +7,9 @@
 #include "primitives.h"
 #include "printer.h"
 #include "tokenizer.h"
+#include "surface_term.h"
+#include "expansion_context.h"
+#include "syntax_expander.h"
 
 #include <gmp.h>
 #include <stdio.h>
@@ -174,6 +178,9 @@ lizard_context_t *lizard_context_create(lizard_runtime_t *runtime) {
   context->last_value = NULL;
   context->last_error[0] = '\0';
   set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
+  context->trace_expansion = 0;
+  context->last_surface = NULL;
+  context->last_expanded_surface = NULL;
   context->env = lizard_env_create(runtime->heap, NULL);
   if (context->env == NULL) {
     free(context);
@@ -227,6 +234,108 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
   return LIZARD_STATUS_OK;
 }
 
+static lizard_status_t eval_surface_forms(lizard_context_t *context,
+                                          lz_list_t *surface_list,
+                                          lizard_value_t **out_value) {
+  lz_list_node_t *iter;
+  lizard_expansion_context_t *expansion;
+  lizard_ast_node_t *expanded_ast;
+  lizard_surface_term_t *expanded_surface;
+  lizard_ast_node_t *result;
+
+  expansion = NULL;
+  result = lizard_make_nil(context->runtime->heap);
+  context->last_surface = NULL;
+  context->last_expanded_surface = NULL;
+
+  if (surface_list == NULL) {
+    if (out_value != NULL) {
+      *out_value = result;
+    }
+    return LIZARD_STATUS_OK;
+  }
+
+  expansion = lizard_expansion_context_new(context->runtime->heap, 0,
+                                           "context-eval");
+  if (expansion == NULL) {
+    lizard_context_set_error(context, "unable to allocate expansion context");
+    return LIZARD_STATUS_OUT_OF_MEMORY;
+  }
+
+  for (iter = surface_list->head; iter != surface_list->nil; iter = iter->next) {
+    lizard_surface_list_node_t *surface_node;
+    surface_node = (lizard_surface_list_node_t *)iter;
+    expanded_ast = NULL;
+    expanded_surface = NULL;
+    context->last_surface = surface_node->term;
+    if (!lizard_syntax_expand_surface(expansion, context->env,
+                                      surface_node->term,
+                                      &expanded_surface, &expanded_ast)) {
+      lizard_context_set_error(context, "macro expansion failed");
+      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      if (context->runtime != NULL) {
+        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      }
+      return LIZARD_STATUS_EVAL_ERROR;
+    }
+    context->last_expanded_surface = expanded_surface;
+    result = lizard_eval(expanded_ast, context->env, context->runtime->heap,
+                         lizard_identity_cont);
+    context->last_value = result;
+    if (result != NULL && result->type == AST_ERROR) {
+      lizard_context_set_error(context, "evaluation returned a Lizard error");
+      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      if (context->runtime != NULL) {
+        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
+      }
+      if (out_value != NULL) {
+        *out_value = result;
+      }
+      return LIZARD_STATUS_EVAL_ERROR;
+    }
+  }
+  context->last_value = result;
+  if (out_value != NULL) {
+    *out_value = result;
+  }
+  context->last_error[0] = '\0';
+  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
+  set_diagnostic(&context->runtime->diagnostic, LIZARD_STATUS_OK, "");
+  return LIZARD_STATUS_OK;
+}
+
+static lizard_status_t eval_traced_source(lizard_context_t *context,
+                                          const char *source,
+                                          const char *filename,
+                                          lizard_value_t **out_value) {
+  lz_list_t *surface_list;
+  lizard_diagnostic_t diagnostic;
+
+  diagnostic.status = LIZARD_STATUS_OK;
+  clear_span(&diagnostic.span);
+  diagnostic.message[0] = '\0';
+  context->last_surface = NULL;
+  context->last_expanded_surface = NULL;
+
+  surface_list = lizard_surface_parse_source(context->runtime->heap, source,
+                                             filename, &diagnostic);
+  if (surface_list == NULL) {
+    context->diagnostic = diagnostic;
+    copy_error(context->last_error, sizeof(context->last_error),
+               diagnostic.message);
+    if (context->runtime != NULL) {
+      context->runtime->diagnostic = diagnostic;
+      copy_error(context->runtime->last_error,
+                 sizeof(context->runtime->last_error), diagnostic.message);
+    }
+    if (context->diagnostic.status == LIZARD_STATUS_OK) {
+      context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
+    }
+    return LIZARD_STATUS_PARSE_ERROR;
+  }
+  return eval_surface_forms(context, surface_list, out_value);
+}
+
 lizard_status_t lizard_context_eval_string(lizard_context_t *context,
                                            const char *source,
                                            lizard_value_t **out_value) {
@@ -240,6 +349,11 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
     return LIZARD_STATUS_INVALID_ARGUMENT;
   }
   lizard_runtime_make_current(context->runtime);
+  context->last_surface = NULL;
+  context->last_expanded_surface = NULL;
+  if (context->trace_expansion) {
+    return eval_traced_source(context, source, "<string>", out_value);
+  }
   tokens = lizard_tokenize_source(source, "<string>", &context->diagnostic);
   if (tokens == NULL) {
     const lizard_diagnostic_t *td;
@@ -334,6 +448,13 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
   }
   source[file_size] = '\0';
   lizard_runtime_make_current(context->runtime);
+  context->last_surface = NULL;
+  context->last_expanded_surface = NULL;
+  if (context->trace_expansion) {
+    status = eval_traced_source(context, source, path, out_value);
+    free(source);
+    return status;
+  }
   {
     lz_list_t *tokens;
     lz_list_t *ast_list;
@@ -381,6 +502,102 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
   }
   free(source);
   return status;
+}
+
+void lizard_context_set_trace_expansion(lizard_context_t *context,
+                                        int enabled) {
+  if (context != NULL) {
+    context->trace_expansion = enabled != 0;
+    if (!context->trace_expansion) {
+      context->last_surface = NULL;
+      context->last_expanded_surface = NULL;
+    }
+  }
+}
+
+int lizard_context_trace_expansion_enabled(lizard_context_t *context) {
+  return context != NULL ? context->trace_expansion : 0;
+}
+
+unsigned long lizard_context_last_expansion_trace_count(
+    lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return 0UL;
+  }
+  return lizard_surface_trace_count(context->last_expanded_surface);
+}
+
+const char *lizard_context_last_expansion_stage(lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return NULL;
+  }
+  return lizard_surface_trace_latest_stage(context->last_expanded_surface);
+}
+
+const char *lizard_context_last_expansion_detail(lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return NULL;
+  }
+  return lizard_surface_trace_latest_detail(context->last_expanded_surface);
+}
+
+int lizard_context_last_expansion_span(lizard_context_t *context,
+                                       lizard_source_span_t *out_span) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      out_span == NULL) {
+    return 0;
+  }
+  return lizard_surface_span(context->last_expanded_surface, out_span);
+}
+
+
+unsigned long lizard_context_expansion_trace_count(lizard_context_t *context) {
+  return lizard_context_last_expansion_trace_count(context);
+}
+
+int lizard_context_expansion_trace_event(lizard_context_t *context,
+                                         unsigned long index,
+                                         lizard_expansion_trace_event_t *out_event) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      out_event == NULL) {
+    if (out_event != NULL) {
+      out_event->stage = NULL;
+      out_event->detail = NULL;
+      out_event->origin_filename = NULL;
+      out_event->origin_line = 0;
+      out_event->origin_column = 0;
+      out_event->origin_phase = 0;
+      out_event->origin_scope_summary = 0UL;
+    }
+    return 0;
+  }
+  return lizard_surface_trace_event_at(context->last_expanded_surface,
+                                       index, out_event);
+}
+
+int lizard_context_expansion_trace_event_string(lizard_context_t *context,
+                                                unsigned long index,
+                                                char *buffer,
+                                                size_t buffer_size) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      buffer == NULL || buffer_size == 0U) {
+    if (buffer != NULL && buffer_size > 0U) {
+      buffer[0] = '\0';
+    }
+    return 0;
+  }
+  return lizard_surface_trace_event_string(context->runtime->heap,
+                                           context->last_expanded_surface,
+                                           index, buffer, buffer_size);
+}
+
+lizard_expansion_trace_report_t *lizard_context_expansion_trace_report(
+    lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return lizard_expansion_trace_report_from_surface(NULL);
+  }
+  return lizard_expansion_trace_report_from_surface(
+      context->last_expanded_surface);
 }
 
 lizard_value_t *lizard_context_last_value(lizard_context_t *context) {

@@ -155,6 +155,112 @@ and type-theory references.
 - Evaluator and macro behavior remain unchanged; this is still scaffold for the
   future hygienic expander.
 
+
+### Phase 2F progress
+
+- SurfaceTerm now has untrusted transformation tracing for future macro/rewrite
+  debugging.
+- Metadata propagation copies trace chains, so rewritten surface syntax can
+  preserve an explanation history.
+- Evaluator and macro semantics remain unchanged; the trace chain is tooling
+  metadata only.
+
+
+### Phase 2G progress
+
+- Added `src/expansion_context.c` / `.h`, a scaffold for future hygienic macro
+  expansion contexts.
+- Expansion contexts allocate fresh macro scopes, carry a phase/name, and attach
+  `macro-introduce` / rewrite trace events to SurfaceTerm values.
+- Added origin-chain debug formatting for SurfaceTerm traces.
+- Evaluator and macro semantics remain unchanged; this is still syntax-tooling
+  metadata only.
+
+
+### Phase 2H progress
+
+- Added a syntax-expander adapter API that accepts `SurfaceTerm` plus
+  `ExpansionContext` and delegates semantics to the existing macro expander.
+- Expansion adapter results preserve spans, phase, scopes, properties, and trace
+  metadata while returning the old expanded runtime AST for evaluation.
+- This is the first bridge from syntax-object metadata into the macro pipeline;
+  it does not change macro semantics yet.
+
+
+### Phase 2I progress
+
+- Runtime contexts now have an opt-in traced expansion path.  By default,
+  `lizard_context_eval_string` and `lizard_context_eval_file` keep the old
+  parser/evaluator path.  When tracing is enabled, the same source flows through
+  `SurfaceTerm` parsing and the syntax-expander adapter before evaluating the
+  resulting runtime AST.
+- The public API can enable/disable tracing and inspect the latest expansion
+  trace count, stage, detail, and source span.  This makes syntax-object
+  infrastructure observable through the runtime API without making the evaluator
+  depend on it.
+- Added regression coverage proving traced expansion and normal evaluation
+  coexist in one context.
+
+
+### Phase 2J progress
+
+- Expansion trace metadata is now reportable through the stable context API.
+  Callers can retrieve indexed trace events with stage/detail/origin fields and
+  can format individual events into caller-owned buffers.
+- Fixed the primitive header guard so the type-theory prototype block is no
+  longer outside the include guard, eliminating duplicate-declaration warnings
+  under `-Wredundant-decls -Werror`.
+- The evaluator remains unchanged; trace reporting is still opt-in tooling
+  metadata on top of the SurfaceTerm adapter path.
+
+
+### Phase 2K progress
+
+- Expansion traces can now be snapshotted into an owned
+  `lizard_expansion_trace_report_t`. Reports copy trace event strings and are
+  valid after later evaluations or context destruction.
+- Added a strictness contract document and `make strict`; warning/security
+  flags remain part of the design, not optional comfort settings.
+- The runtime still keeps tracing opt-in and evaluator semantics unchanged.
+
+
+### Phase 2L progress
+
+- Added REPL/CLI hooks for expansion tracing. `--trace-expansion` enables the
+  traced SurfaceTerm path; `--print-expansion-trace` prints an owned trace report
+  after each evaluation.
+- Tracing is still off by default, and evaluation semantics remain unchanged.
+- Added CLI regression coverage so future tooling work cannot accidentally print
+  traces in normal execution mode.
+
+### Phase 2M progress
+
+- Expansion trace reports can now be exported to a stable line-oriented file
+  format via `--trace-expansion-file PATH` and
+  `lizard_expansion_trace_report_fprint`.
+- The export path uses owned trace report snapshots and leaves normal evaluator
+  output untouched unless tracing is explicitly requested.
+
+
+### Phase 2P progress
+
+- Added an owned diagnostic report layer for parser/tokenizer/expansion
+  failures.  This keeps strict warning policy intact while giving tooling a
+  stable text/JSON diagnostic surface.
+- `--expand-only` failure reports now contain structured diagnostics alongside
+  expansion metadata; evaluator and macro semantics are unchanged.
+
+
+### Phase 2Q progress
+
+- Shared report-format escaping now lives in `src/report_writer.c` /
+  `src/report_writer.h`.  Expansion trace, syntax expansion, and diagnostic
+  reports all use the same strict text/JSON escaping implementation.
+- Public report formats are preserved; this is an internal hardening step so
+  future editor/tooling output cannot drift across report types.
+- Added direct report-writer tests for tab/newline/carriage-return/backslash,
+  JSON quote/backslash/control-byte escaping, and NULL field behavior.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,
@@ -678,3 +784,20 @@ the untrusted tower, and let each phase stand on its own.
   origin span, phase, scopes, and optional properties.
 - Added debug-string support for syntax-object tooling; it is intentionally
   untrusted and ignored by evaluator/kernel paths.
+
+### Phase 2N progress
+
+- Added owned syntax expansion reports for tooling and macro-stepper work.
+- Added `--expand-only`, which parses and macro-expands input but does not
+  evaluate it.
+- Reports expose source span, phase, scope summary, expanded AST summary, and
+  trace events while preserving the old evaluator path.
+
+
+
+### Phase 2O progress
+
+- Added JSON writers for expansion trace reports and syntax expansion reports.
+- Added `--expand-only-format text|json`; the text format remains the default.
+- Added CLI/API tests for JSON report output and invalid format diagnostics.
+- Evaluation and macro semantics remain unchanged.

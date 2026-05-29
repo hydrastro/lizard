@@ -27,7 +27,7 @@ $(BUILD_DIR)/tests/%: $(TEST_DIR)/%.c $(TEST_HELPER_OBJ) $(LIB_STATIC) | $(BUILD
 test: test-c test-lisp
 	@echo "All tests passed."
 
-test-c: $(TEST_C_BINS)
+test-c: $(REPL_BIN) $(TEST_C_BINS)
 	@set -e; failures=0; total=0; \
 	for t in $(TEST_C_BINS); do \
 	  total=$$((total+1)); \
