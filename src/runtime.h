@@ -11,7 +11,6 @@
 struct logic_rule_entry;
 struct hit_registry_entry;
 struct lizard_tt_flag;
-struct lizard_surface_term;
 
 /* Phase C: module loader. */
 typedef struct lizard_module_entry {
@@ -42,10 +41,6 @@ struct lizard_runtime {
   const char *logic_last_set_bundle;
   struct hit_registry_entry *hit_registry_head;
   struct lizard_tt_flag *flag_list;
-  /* Phase 1M: kernel/proof state is runtime-owned, not process-global. */
-  void *kernel_current_proof;
-  void *kernel_meta_ctx;
-  void *kernel_kdef_ctx;
   /* Phase C: module loader. */
   lizard_module_entry_t *modules_head;
   lizard_search_path_t *search_path_head;
@@ -57,7 +52,7 @@ struct lizard_context {
   lizard_ast_node_t *last_value;
   char last_error[256];
   lizard_diagnostic_t diagnostic;
-  /* Phase 2I: optional traced expansion path. */
+  /* Phase 2I: optional traced macro-expansion path. */
   int trace_expansion;
   struct lizard_surface_term *last_surface;
   struct lizard_surface_term *last_expanded_surface;

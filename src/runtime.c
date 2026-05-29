@@ -1,6 +1,6 @@
 #include "runtime.h"
-#include "expansion_trace_report.h"
 
+#include "diagnostics.h"
 #include "env.h"
 #include "mem.h"
 #include "parser.h"
@@ -10,6 +10,7 @@
 #include "surface_term.h"
 #include "expansion_context.h"
 #include "syntax_expander.h"
+#include "expansion_trace_report.h"
 
 #include <gmp.h>
 #include <stdio.h>
@@ -34,40 +35,50 @@ static void copy_error(char *dst, size_t dst_size, const char *message) {
   dst[n] = '\0';
 }
 
-static void clear_span(lizard_source_span_t *span) {
-  if (span == NULL) {
+
+static void lizard_context_set_diagnostic(lizard_context_t *context,
+                                          const lizard_diagnostic_t *diagnostic) {
+  if (context == NULL || diagnostic == NULL) {
     return;
   }
-  span->filename = NULL;
-  span->start_line = 0;
-  span->start_column = 0;
-  span->end_line = 0;
-  span->end_column = 0;
-  span->start_offset = 0;
-  span->end_offset = 0;
+  lizard_diagnostic_copy(&context->diagnostic, diagnostic);
+  copy_error(context->last_error, sizeof(context->last_error),
+             diagnostic->message);
+  if (context->runtime != NULL) {
+    lizard_diagnostic_copy(&context->runtime->diagnostic, diagnostic);
+    copy_error(context->runtime->last_error,
+               sizeof(context->runtime->last_error), diagnostic->message);
+  }
 }
 
-static void set_diagnostic(lizard_diagnostic_t *diagnostic,
-                           lizard_status_t status, const char *message) {
-  if (diagnostic == NULL) {
+static void lizard_context_set_simple_diagnostic(
+    lizard_context_t *context, lizard_status_t status,
+    lizard_diagnostic_category_t category, const char *message) {
+  if (context == NULL) {
     return;
   }
-  diagnostic->status = status;
-  clear_span(&diagnostic->span);
-  copy_error(diagnostic->message, sizeof(diagnostic->message), message);
+  lizard_diagnostic_set_simple(&context->diagnostic, status, category, message);
+  copy_error(context->last_error, sizeof(context->last_error), message);
+  if (context->runtime != NULL) {
+    lizard_diagnostic_set_simple(&context->runtime->diagnostic, status,
+                                 category, message);
+    copy_error(context->runtime->last_error,
+               sizeof(context->runtime->last_error), message);
+  }
 }
-
 void lizard_runtime_set_error(lizard_runtime_t *runtime, const char *message) {
   if (runtime != NULL) {
     copy_error(runtime->last_error, sizeof(runtime->last_error), message);
-    set_diagnostic(&runtime->diagnostic, LIZARD_STATUS_ERROR, message);
+    lizard_diagnostic_set_simple(&runtime->diagnostic, LIZARD_STATUS_ERROR,
+                                 LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN, message);
   }
 }
 
 void lizard_context_set_error(lizard_context_t *context, const char *message) {
   if (context != NULL) {
     copy_error(context->last_error, sizeof(context->last_error), message);
-    set_diagnostic(&context->diagnostic, LIZARD_STATUS_ERROR, message);
+    lizard_diagnostic_set_simple(&context->diagnostic, LIZARD_STATUS_ERROR,
+                                 LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN, message);
     lizard_runtime_set_error(context->runtime, message);
   }
 }
@@ -96,7 +107,7 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->initial_heap_size = options->initial_heap_size;
   runtime->max_segment_size = options->max_segment_size;
   runtime->last_error[0] = '\0';
-  set_diagnostic(&runtime->diagnostic, LIZARD_STATUS_OK, "");
+  lizard_diagnostic_clear(&runtime->diagnostic);
 
   mp_set_memory_functions(lizard_heap_alloc, lizard_heap_realloc,
                           lizard_heap_free_wrapper);
@@ -120,10 +131,6 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->logic_last_set_bundle = NULL;
   runtime->hit_registry_head = NULL;
   runtime->flag_list = NULL;
-  /* Phase 1M: kernel/proof state starts empty per runtime. */
-  runtime->kernel_current_proof = NULL;
-  runtime->kernel_meta_ctx = NULL;
-  runtime->kernel_kdef_ctx = NULL;
   /* Phase C: module loader starts with "lib/" on the search path. */
   runtime->modules_head = NULL;
   {
@@ -177,7 +184,7 @@ lizard_context_t *lizard_context_create(lizard_runtime_t *runtime) {
   context->runtime = runtime;
   context->last_value = NULL;
   context->last_error[0] = '\0';
-  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
+  lizard_diagnostic_clear(&context->diagnostic);
   context->trace_expansion = 0;
   context->last_surface = NULL;
   context->last_expanded_surface = NULL;
@@ -214,14 +221,10 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
     context->last_value = result;
     if (result != NULL && result->type == AST_ERROR) {
       lizard_context_set_error(context, "evaluation returned a Lizard error");
-      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      if (context->runtime != NULL) {
-        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      }
       if (out_value != NULL) {
         *out_value = result;
       }
-      return LIZARD_STATUS_EVAL_ERROR;
+      return LIZARD_STATUS_ERROR;
     }
   }
   context->last_value = result;
@@ -229,8 +232,8 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
     *out_value = result;
   }
   context->last_error[0] = '\0';
-  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
-  set_diagnostic(&context->runtime->diagnostic, LIZARD_STATUS_OK, "");
+  lizard_diagnostic_clear(&context->diagnostic);
+  lizard_diagnostic_clear(&context->runtime->diagnostic);
   return LIZARD_STATUS_OK;
 }
 
@@ -258,11 +261,14 @@ static lizard_status_t eval_surface_forms(lizard_context_t *context,
   expansion = lizard_expansion_context_new(context->runtime->heap, 0,
                                            "context-eval");
   if (expansion == NULL) {
-    lizard_context_set_error(context, "unable to allocate expansion context");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_OUT_OF_MEMORY,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN,
+                                         "unable to allocate expansion context");
     return LIZARD_STATUS_OUT_OF_MEMORY;
   }
 
-  for (iter = surface_list->head; iter != surface_list->nil; iter = iter->next) {
+  for (iter = surface_list->head; iter != surface_list->nil;
+       iter = iter->next) {
     lizard_surface_list_node_t *surface_node;
     surface_node = (lizard_surface_list_node_t *)iter;
     expanded_ast = NULL;
@@ -271,11 +277,9 @@ static lizard_status_t eval_surface_forms(lizard_context_t *context,
     if (!lizard_syntax_expand_surface(expansion, context->env,
                                       surface_node->term,
                                       &expanded_surface, &expanded_ast)) {
-      lizard_context_set_error(context, "macro expansion failed");
-      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      if (context->runtime != NULL) {
-        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      }
+      lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_EVAL_ERROR,
+                                           LIZARD_DIAGNOSTIC_CATEGORY_MACRO,
+                                           "macro expansion failed");
       return LIZARD_STATUS_EVAL_ERROR;
     }
     context->last_expanded_surface = expanded_surface;
@@ -283,11 +287,9 @@ static lizard_status_t eval_surface_forms(lizard_context_t *context,
                          lizard_identity_cont);
     context->last_value = result;
     if (result != NULL && result->type == AST_ERROR) {
-      lizard_context_set_error(context, "evaluation returned a Lizard error");
-      context->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      if (context->runtime != NULL) {
-        context->runtime->diagnostic.status = LIZARD_STATUS_EVAL_ERROR;
-      }
+      lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_EVAL_ERROR,
+                                           LIZARD_DIAGNOSTIC_CATEGORY_EVAL,
+                                           "evaluation returned a Lizard error");
       if (out_value != NULL) {
         *out_value = result;
       }
@@ -298,9 +300,8 @@ static lizard_status_t eval_surface_forms(lizard_context_t *context,
   if (out_value != NULL) {
     *out_value = result;
   }
-  context->last_error[0] = '\0';
-  set_diagnostic(&context->diagnostic, LIZARD_STATUS_OK, "");
-  set_diagnostic(&context->runtime->diagnostic, LIZARD_STATUS_OK, "");
+  lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_OK,
+                                       LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN, "");
   return LIZARD_STATUS_OK;
 }
 
@@ -311,27 +312,18 @@ static lizard_status_t eval_traced_source(lizard_context_t *context,
   lz_list_t *surface_list;
   lizard_diagnostic_t diagnostic;
 
-  diagnostic.status = LIZARD_STATUS_OK;
-  clear_span(&diagnostic.span);
-  diagnostic.message[0] = '\0';
+  lizard_diagnostic_clear(&diagnostic);
   context->last_surface = NULL;
   context->last_expanded_surface = NULL;
 
   surface_list = lizard_surface_parse_source(context->runtime->heap, source,
                                              filename, &diagnostic);
   if (surface_list == NULL) {
-    context->diagnostic = diagnostic;
-    copy_error(context->last_error, sizeof(context->last_error),
-               diagnostic.message);
-    if (context->runtime != NULL) {
-      context->runtime->diagnostic = diagnostic;
-      copy_error(context->runtime->last_error,
-                 sizeof(context->runtime->last_error), diagnostic.message);
+    if (diagnostic.status == LIZARD_STATUS_OK) {
+      diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
     }
-    if (context->diagnostic.status == LIZARD_STATUS_OK) {
-      context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-    }
-    return LIZARD_STATUS_PARSE_ERROR;
+    lizard_context_set_diagnostic(context, &diagnostic);
+    return diagnostic.status;
   }
   return eval_surface_forms(context, surface_list, out_value);
 }
@@ -354,25 +346,17 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
   if (context->trace_expansion) {
     return eval_traced_source(context, source, "<string>", out_value);
   }
-  tokens = lizard_tokenize_source(source, "<string>", &context->diagnostic);
+  tokens = lizard_tokenize(source);
   if (tokens == NULL) {
     const lizard_diagnostic_t *td;
     td = lizard_tokenizer_last_diagnostic();
     if (td != NULL && td->message[0] != '\0') {
-      copy_error(context->last_error, sizeof(context->last_error), td->message);
-      context->diagnostic = *td;
-      if (context->runtime != NULL) {
-        copy_error(context->runtime->last_error,
-                   sizeof(context->runtime->last_error), td->message);
-        context->runtime->diagnostic = *td;
-      }
-    } else {
-      lizard_context_set_error(context, "tokenization failed");
-      context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-      if (context->runtime != NULL) {
-        context->runtime->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-      }
+      lizard_context_set_diagnostic(context, td);
+      return td->status;
     }
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_PARSE_ERROR,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_TOKENIZER,
+                                         "tokenization failed");
     return LIZARD_STATUS_PARSE_ERROR;
   }
   ast_list = lizard_parse(tokens, context->runtime->heap);
@@ -380,21 +364,13 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
     const lizard_diagnostic_t *pd;
     pd = lizard_parser_last_diagnostic();
     if (pd != NULL && pd->message[0] != '\0') {
-      copy_error(context->last_error, sizeof(context->last_error), pd->message);
-      context->diagnostic = *pd; /* keep PARSE_ERROR status + source span */
-      if (context->runtime != NULL) {
-        copy_error(context->runtime->last_error,
-                   sizeof(context->runtime->last_error), pd->message);
-        context->runtime->diagnostic = *pd;
-      }
-      return pd->status;
+      lizard_context_set_diagnostic(context, pd);
+    } else {
+      lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_PARSE_ERROR,
+                                           LIZARD_DIAGNOSTIC_CATEGORY_PARSER,
+                                           "parse failed");
     }
-    lizard_context_set_error(context, "parse failed");
-    context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-    if (context->runtime != NULL) {
-      context->runtime->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-    }
-    return LIZARD_STATUS_PARSE_ERROR;
+    return context->diagnostic.status;
   }
   return eval_parsed_forms(context, ast_list, out_value);
 }
@@ -416,188 +392,48 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
   }
   fp = fopen(path, "rb");
   if (fp == NULL) {
-    lizard_context_set_error(context, "unable to open file");
-    set_diagnostic(&context->diagnostic, LIZARD_STATUS_IO_ERROR,
-                   "unable to open file");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_IO_ERROR,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_IO,
+                                         "unable to open file");
     return LIZARD_STATUS_IO_ERROR;
   }
   if (fseek(fp, 0L, SEEK_END) != 0) {
     fclose(fp);
-    lizard_context_set_error(context, "unable to seek file");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_IO_ERROR,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_IO,
+                                         "unable to seek file");
     return LIZARD_STATUS_IO_ERROR;
   }
   file_size = ftell(fp);
   if (file_size < 0L) {
     fclose(fp);
-    lizard_context_set_error(context, "unable to determine file size");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_IO_ERROR,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_IO,
+                                         "unable to determine file size");
     return LIZARD_STATUS_IO_ERROR;
   }
   rewind(fp);
   source = (char *)malloc((size_t)file_size + 1U);
   if (source == NULL) {
     fclose(fp);
-    lizard_context_set_error(context, "unable to allocate source buffer");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_OUT_OF_MEMORY,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN,
+                                         "unable to allocate source buffer");
     return LIZARD_STATUS_OUT_OF_MEMORY;
   }
   got = fread(source, 1U, (size_t)file_size, fp);
   fclose(fp);
   if (got != (size_t)file_size) {
     free(source);
-    lizard_context_set_error(context, "unable to read file");
+    lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_IO_ERROR,
+                                         LIZARD_DIAGNOSTIC_CATEGORY_IO,
+                                         "unable to read file");
     return LIZARD_STATUS_IO_ERROR;
   }
   source[file_size] = '\0';
-  lizard_runtime_make_current(context->runtime);
-  context->last_surface = NULL;
-  context->last_expanded_surface = NULL;
-  if (context->trace_expansion) {
-    status = eval_traced_source(context, source, path, out_value);
-    free(source);
-    return status;
-  }
-  {
-    lz_list_t *tokens;
-    lz_list_t *ast_list;
-    tokens = lizard_tokenize_source(source, path, &context->diagnostic);
-    if (tokens == NULL) {
-      const lizard_diagnostic_t *td;
-      td = lizard_tokenizer_last_diagnostic();
-      if (td != NULL && td->message[0] != '\0') {
-        copy_error(context->last_error, sizeof(context->last_error), td->message);
-        context->diagnostic = *td;
-        if (context->runtime != NULL) {
-          copy_error(context->runtime->last_error,
-                     sizeof(context->runtime->last_error), td->message);
-          context->runtime->diagnostic = *td;
-        }
-      } else {
-        lizard_context_set_error(context, "tokenization failed");
-        context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-      }
-      free(source);
-      return LIZARD_STATUS_PARSE_ERROR;
-    }
-    ast_list = lizard_parse(tokens, context->runtime->heap);
-    if (ast_list == NULL) {
-      const lizard_diagnostic_t *pd;
-      pd = lizard_parser_last_diagnostic();
-      if (pd != NULL && pd->message[0] != '\0') {
-        copy_error(context->last_error, sizeof(context->last_error), pd->message);
-        context->diagnostic = *pd;
-        if (context->runtime != NULL) {
-          copy_error(context->runtime->last_error,
-                     sizeof(context->runtime->last_error), pd->message);
-          context->runtime->diagnostic = *pd;
-        }
-        status = pd->status;
-      } else {
-        lizard_context_set_error(context, "parse failed");
-        context->diagnostic.status = LIZARD_STATUS_PARSE_ERROR;
-        status = LIZARD_STATUS_PARSE_ERROR;
-      }
-      free(source);
-      return status;
-    }
-    status = eval_parsed_forms(context, ast_list, out_value);
-  }
+  status = lizard_context_eval_string(context, source, out_value);
   free(source);
   return status;
-}
-
-void lizard_context_set_trace_expansion(lizard_context_t *context,
-                                        int enabled) {
-  if (context != NULL) {
-    context->trace_expansion = enabled != 0;
-    if (!context->trace_expansion) {
-      context->last_surface = NULL;
-      context->last_expanded_surface = NULL;
-    }
-  }
-}
-
-int lizard_context_trace_expansion_enabled(lizard_context_t *context) {
-  return context != NULL ? context->trace_expansion : 0;
-}
-
-unsigned long lizard_context_last_expansion_trace_count(
-    lizard_context_t *context) {
-  if (context == NULL || context->last_expanded_surface == NULL) {
-    return 0UL;
-  }
-  return lizard_surface_trace_count(context->last_expanded_surface);
-}
-
-const char *lizard_context_last_expansion_stage(lizard_context_t *context) {
-  if (context == NULL || context->last_expanded_surface == NULL) {
-    return NULL;
-  }
-  return lizard_surface_trace_latest_stage(context->last_expanded_surface);
-}
-
-const char *lizard_context_last_expansion_detail(lizard_context_t *context) {
-  if (context == NULL || context->last_expanded_surface == NULL) {
-    return NULL;
-  }
-  return lizard_surface_trace_latest_detail(context->last_expanded_surface);
-}
-
-int lizard_context_last_expansion_span(lizard_context_t *context,
-                                       lizard_source_span_t *out_span) {
-  if (context == NULL || context->last_expanded_surface == NULL ||
-      out_span == NULL) {
-    return 0;
-  }
-  return lizard_surface_span(context->last_expanded_surface, out_span);
-}
-
-
-unsigned long lizard_context_expansion_trace_count(lizard_context_t *context) {
-  return lizard_context_last_expansion_trace_count(context);
-}
-
-int lizard_context_expansion_trace_event(lizard_context_t *context,
-                                         unsigned long index,
-                                         lizard_expansion_trace_event_t *out_event) {
-  if (context == NULL || context->last_expanded_surface == NULL ||
-      out_event == NULL) {
-    if (out_event != NULL) {
-      out_event->stage = NULL;
-      out_event->detail = NULL;
-      out_event->origin_filename = NULL;
-      out_event->origin_line = 0;
-      out_event->origin_column = 0;
-      out_event->origin_phase = 0;
-      out_event->origin_scope_summary = 0UL;
-    }
-    return 0;
-  }
-  return lizard_surface_trace_event_at(context->last_expanded_surface,
-                                       index, out_event);
-}
-
-int lizard_context_expansion_trace_event_string(lizard_context_t *context,
-                                                unsigned long index,
-                                                char *buffer,
-                                                size_t buffer_size) {
-  if (context == NULL || context->last_expanded_surface == NULL ||
-      buffer == NULL || buffer_size == 0U) {
-    if (buffer != NULL && buffer_size > 0U) {
-      buffer[0] = '\0';
-    }
-    return 0;
-  }
-  return lizard_surface_trace_event_string(context->runtime->heap,
-                                           context->last_expanded_surface,
-                                           index, buffer, buffer_size);
-}
-
-lizard_expansion_trace_report_t *lizard_context_expansion_trace_report(
-    lizard_context_t *context) {
-  if (context == NULL || context->last_expanded_surface == NULL) {
-    return lizard_expansion_trace_report_from_surface(NULL);
-  }
-  return lizard_expansion_trace_report_from_surface(
-      context->last_expanded_surface);
 }
 
 lizard_value_t *lizard_context_last_value(lizard_context_t *context) {
@@ -736,4 +572,99 @@ void lizard_value_fprint(FILE *fp, lizard_value_t *value) {
 
 void lizard_value_print(lizard_value_t *value) {
   lizard_value_fprint(stdout, value);
+}
+
+void lizard_context_set_trace_expansion(lizard_context_t *context,
+                                        int enabled) {
+  if (context != NULL) {
+    context->trace_expansion = enabled != 0;
+    if (!context->trace_expansion) {
+      context->last_surface = NULL;
+      context->last_expanded_surface = NULL;
+    }
+  }
+}
+
+int lizard_context_trace_expansion_enabled(lizard_context_t *context) {
+  return context != NULL ? context->trace_expansion : 0;
+}
+
+unsigned long lizard_context_last_expansion_trace_count(
+    lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return 0UL;
+  }
+  return lizard_surface_trace_count(context->last_expanded_surface);
+}
+
+const char *lizard_context_last_expansion_stage(lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return NULL;
+  }
+  return lizard_surface_trace_latest_stage(context->last_expanded_surface);
+}
+
+const char *lizard_context_last_expansion_detail(lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return NULL;
+  }
+  return lizard_surface_trace_latest_detail(context->last_expanded_surface);
+}
+
+int lizard_context_last_expansion_span(lizard_context_t *context,
+                                       lizard_source_span_t *out_span) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      out_span == NULL) {
+    return 0;
+  }
+  return lizard_surface_span(context->last_expanded_surface, out_span);
+}
+
+unsigned long lizard_context_expansion_trace_count(lizard_context_t *context) {
+  return lizard_context_last_expansion_trace_count(context);
+}
+
+int lizard_context_expansion_trace_event(
+    lizard_context_t *context, unsigned long index,
+    lizard_expansion_trace_event_t *out_event) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      out_event == NULL) {
+    if (out_event != NULL) {
+      out_event->stage = NULL;
+      out_event->detail = NULL;
+      out_event->origin_filename = NULL;
+      out_event->origin_line = 0;
+      out_event->origin_column = 0;
+      out_event->origin_phase = 0;
+      out_event->origin_scope_summary = 0UL;
+    }
+    return 0;
+  }
+  return lizard_surface_trace_event_at(context->last_expanded_surface, index,
+                                       out_event);
+}
+
+int lizard_context_expansion_trace_event_string(lizard_context_t *context,
+                                                unsigned long index,
+                                                char *buffer,
+                                                size_t buffer_size) {
+  if (context == NULL || context->last_expanded_surface == NULL ||
+      buffer == NULL || buffer_size == 0U) {
+    if (buffer != NULL && buffer_size > 0U) {
+      buffer[0] = '\0';
+    }
+    return 0;
+  }
+  return lizard_surface_trace_event_string(context->runtime->heap,
+                                           context->last_expanded_surface,
+                                           index, buffer, buffer_size);
+}
+
+lizard_expansion_trace_report_t *lizard_context_expansion_trace_report(
+    lizard_context_t *context) {
+  if (context == NULL || context->last_expanded_surface == NULL) {
+    return lizard_expansion_trace_report_from_surface(NULL);
+  }
+  return lizard_expansion_trace_report_from_surface(
+      context->last_expanded_surface);
 }

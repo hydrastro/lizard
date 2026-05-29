@@ -10,7 +10,7 @@
 #   ./scripts/clean.sh                 # standard cleanup (safe)
 #   ./scripts/clean.sh --dry           # print what would be removed
 #   ./scripts/clean.sh --deep          # also wipe Nix result/.direnv/cache
-# #   ./scripts/clean.sh --nuke-lock     # with --deep, also remove flake.lock
+#   ./scripts/clean.sh --nuke-lock     # with --deep, also remove flake.lock
 #   ./scripts/clean.sh --suspicious    # also list files at top level
 #                                      # that look out of place (NOT
 #                                      # removed automatically — only
@@ -170,8 +170,6 @@ nuke "trace.txt"
 # --- misplaced archives ---------------------------------------------------
 section "misplaced archives"
 nuke "lizard-pro.zip"
-nuke "lizard-*.zip"
-nuke "lizard-*.patch"
 nuke "lizard.zip"
 nuke "lizard.tar.gz"
 nuke "lizard.tar.bz2"
@@ -196,16 +194,6 @@ nuke "*.rej"
 nuke "src/*.rej"
 nuke "examples/*.patch"
 
-
-# --- known scratch / wrong-project leftovers -------------------------------
-section "known scratch / wrong-project leftovers"
-nuke "quit"
-nuke "time2.sh"
-nuke "asd"
-nuke "examples/Makefile"
-nuke "examples/flake.nix"
-nuke "examples/flake.lock"
-
 # --- deep cleanup (opt-in) ------------------------------------------------
 if [[ $deep -eq 1 ]]; then
   section "deep cleanup"
@@ -226,7 +214,7 @@ if [[ $suspicious -eq 1 ]]; then
   echo "${c_dim}  These are NOT removed automatically. They're listed so${c_off}"
   echo "${c_dim}  you can review and decide.${c_off}"
 
-  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|\.git|\.gitmodules|\.github|build|src|include|tests|examples|scripts|docs|lib|prelude\.lisp|LICENSE.*)$'
+  expected_re='^(README\.md|CHANGELOG\.md|DESIGN\.md|LIMITATIONS\.md|Makefile|flake\.nix|flake\.lock|\.gitignore|\.gitattributes|build|src|include|tests|examples|scripts|docs|lib|prelude\.lisp|LICENSE.*)$'
 
   found_any=0
   # Iterate over normal entries first, then dotfiles (safely).

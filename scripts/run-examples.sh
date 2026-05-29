@@ -46,6 +46,7 @@ err_fail=0
 exp_pass=0
 exp_fail=0
 missing=0
+manifest_missing=0
 
 fail_list=""
 
@@ -123,11 +124,16 @@ for f in "$EXAMPLE_DIR"/*.lisp; do
 done
 
 # --- detect manifest entries with no file ---
-grep -oE '"[^"]+\.lisp"' "$MANIFEST" | tr -d '"' | while read -r name; do
-  if [ ! -f "$EXAMPLE_DIR/$name" ]; then
+manifest_entries="${TMPDIR:-/tmp}/lz_manifest_entries.$$"
+grep -oE '"[^"]+\.lisp"' "$MANIFEST" | tr -d '"' > "$manifest_entries"
+while IFS= read -r name; do
+  if [ -n "$name" ] && [ ! -f "$EXAMPLE_DIR/$name" ]; then
     echo "  MANIFEST-ENTRY-NO-FILE $name"
+    manifest_missing=$((manifest_missing + 1))
+    fail_list="$fail_list\n  manifest-entry-no-file: $name"
   fi
-done
+done < "$manifest_entries"
+rm -f "$manifest_entries"
 
 echo ""
 echo "Summary:"
@@ -135,8 +141,9 @@ echo "  pass:         $pass_ok ok, $pass_fail failed"
 echo "  error:        $err_ok ok, $err_fail failed"
 echo "  experimental: $exp_pass passing, $exp_fail incomplete (non-gating)"
 echo "  missing from manifest: $missing"
+echo "  manifest entries without files: $manifest_missing"
 
-if [ "$pass_fail" -ne 0 ] || [ "$err_fail" -ne 0 ] || [ "$missing" -ne 0 ]; then
+if [ "$pass_fail" -ne 0 ] || [ "$err_fail" -ne 0 ] || [ "$missing" -ne 0 ] || [ "$manifest_missing" -ne 0 ]; then
   echo ""
   echo "FAILURES:"
   printf "%b\n" "$fail_list"

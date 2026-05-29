@@ -196,55 +196,60 @@ for what is checked vs. scaffolded.
 project's original licensing; the type-theory and library additions are
 the author's work.)
 
-### Expansion trace debugging
 
-Use `build/lizard --trace-expansion --print-expansion-trace --eval EXPR` to print an owned macro-expansion trace report. Tracing is disabled by default.
+### Header/include audits
 
-For tool/editor integration, write a stable line-oriented report to a file:
-
-```sh
-build/lizard --trace-expansion-file trace.tsv --eval '(+ 1 2)'
-```
-
-The file format starts with `lizard-expansion-trace\tv=1` and then one
-`event` line per trace event. Normal stdout/stderr stays evaluation-focused
-unless `--print-expansion-trace` is also supplied.
-
-
-### Expansion reports
-
-Use `--expand-only` to inspect parsed/macro-expanded syntax without evaluation:
+For strict C API hygiene, run:
 
 ```sh
-build/lizard --expand-only --eval '(+ 1 2)'
+make api-audit
+make header-audit
+make include-audit
+```
 
-JSON output for editor/tooling integration:
+These targets check public report/tooling API visibility, direct public-type
+includes, and internal header include-layering.
+
+### Ownership audit
+
+Runtime ownership conventions can be checked with:
 
 ```sh
-build/lizard --expand-only --expand-only-format json --eval '(+ 1 2)'
+make ownership-audit
 ```
-```
 
-This is opt-in tooling infrastructure; normal evaluation is unchanged.
+This verifies current AST heap-allocation and report-snapshot ownership rules in
+preparation for the object-level non-moving GC transition.
 
-### Report schema discovery
+### GC metadata scaffold
 
-External tooling can discover the available report schemas without evaluating
-code:
+Phase 3B introduces a non-moving, off-object GC metadata side table.  It records
+heap allocation kind/size/trace-policy metadata for audits and future
+object-level mark/sweep work without changing evaluator behavior or object
+layout.
+
+### Build graph audit
+
+Run this after adding any `src/*.c` implementation module:
 
 ```sh
-build/lizard --list-report-schemas
-build/lizard --list-report-schemas --list-report-schemas-format json
+make build-graph-audit
 ```
 
-Tools can also require a specific schema before using a report parser:
+It verifies that `liblizard.a` is closed over implementation sources and avoids
+linker failures where tests see a header but the corresponding object file is
+missing from the archive.
+
+### Phase 3D recovery helper
+
+If a local tree mixed several Phase 2/Phase 3 patches and starts compiling
+experimental `src/*.c` files, run:
 
 ```sh
-build/lizard --require-report-schema lizard-syntax-expansion:1:json
+python3 scripts/phase3d-recover-build.py
+make build-graph-audit
 ```
 
-The format component is one of `any`, `text`, or `json`.  This command is a
-standalone preflight check and does not evaluate code.
-
-The schema listing reports each schema type, version, and whether the current
-binary supports stable text output, JSON output, and the stable-v1 contract.
+The helper restores the conservative allowlisted build graph and repairs common
+public/report header boundary regressions without changing strict compiler
+flags.

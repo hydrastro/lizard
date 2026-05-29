@@ -1,6 +1,7 @@
 #ifndef LIZARD_PARSER_H
 #define LIZARD_PARSER_H
 
+#include "lizard_api.h"
 #include "lizard_internal.h"
 
 lizard_ast_node_t *lizard_get_canonical_nil(lizard_heap_t *heap);
@@ -16,5 +17,7 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
 /* Returns the last parser diagnostic if the most recent lizard_parse()
  * failed (returned NULL), or NULL if it succeeded. */
 const lizard_diagnostic_t *lizard_parser_last_diagnostic(void);
+lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *datum,
+                                           lizard_heap_t *heap);
 
 #endif /* LIZARD_PARSER_H */

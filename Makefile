@@ -81,7 +81,13 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := runtime surface_term report_schema report_writer expansion_trace_report diagnostic_report syntax_expansion_report expansion_context syntax_expander core_term lizard env mem parser primitives prims_kernel_util prims_kernel_core prims_kernel_proof prims_kernel_meta prims_kernel_defs prims_hits prims_trunc prims_theory_ext prims_logic tokenizer printer tt_equality tt_registry tt_lattice tt_faces tt_glue tt_check gc bytecode kernel_sexp kernel tactics
+# Keep the core order explicit, but close over any additional implementation
+# modules present in src/.  This prevents scaffold/test modules from compiling
+# against headers whose .c file was accidentally left out of liblizard.a.
+LIB_CORE_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel tactics
+LIB_OPTIONAL_SRCS := diagnostics object_model gc_metadata report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice
+EXISTING_OPTIONAL_LIB_SRCS := $(foreach m,$(LIB_OPTIONAL_SRCS),$(if $(wildcard $(SRC_DIR)/$(m).c),$(m)))
+LIB_SRCS := $(LIB_CORE_SRCS) $(filter-out $(LIB_CORE_SRCS),$(EXISTING_OPTIONAL_LIB_SRCS))
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------
@@ -90,13 +96,12 @@ LIB_SHARED := $(BUILD_DIR)/liblizard.so
 REPL_BIN   := $(BUILD_DIR)/lizard
 REPL_OBJ   := $(BUILD_DIR)/repl.o
 
-.PHONY: all check ci strict clean distclean doctor install uninstall lint-tree test examples \
+.PHONY: all check ci clean distclean doctor install uninstall lint-tree test examples examples-audit api-audit header-audit include-audit ownership-audit build-graph-audit \
         debug asan coverage profile format smoke help
 
 all: $(LIB_STATIC) $(LIB_SHARED) $(REPL_BIN)
 check: test examples
-ci: lint-tree test examples smoke
-strict: lint-tree test examples smoke
+ci: lint-tree api-audit header-audit include-audit ownership-audit build-graph-audit test examples smoke
 
 debug:
 	$(MAKE) MODE=debug all
@@ -132,6 +137,24 @@ include tests/tests.mk
 # --- examples ------------------------------------------------------------
 examples: $(REPL_BIN)
 	@$(RUN_ENV) ./scripts/run-examples.sh $(REPL_BIN)
+
+examples-audit:
+	@./scripts/check-example-manifest.sh --suggest
+
+api-audit:
+	@./scripts/check-public-api.sh
+
+header-audit:
+	@./scripts/check-header-boundaries.sh
+
+include-audit:
+	@./scripts/check-include-layers.py
+
+ownership-audit:
+	@./scripts/check-ownership-audit.py
+
+build-graph-audit:
+	@./scripts/check-build-graph.py
 
 # --- profiling / coverage -----------------------------------------------
 smoke: $(REPL_BIN)
@@ -191,7 +214,7 @@ distclean: clean
 	@./scripts/clean.sh
 
 help:
-	@echo "Targets:    all test examples check ci strict smoke doctor lint-tree clean distclean install uninstall format"
+	@echo "Targets:    all test examples examples-audit api-audit header-audit include-audit ownership-audit check ci smoke doctor lint-tree clean distclean install uninstall format"
 	@echo "Modes:      make MODE=debug | make MODE=asan test | make MODE=coverage"
 	@echo "Tooling:    make debug | make asan | make coverage | make profile"
 	@echo "Runtime:    set RUN_ENV='LD_LIBRARY_PATH=/path/to/ds/lib' when needed"

@@ -5,6 +5,7 @@
 
 #include "kernel_sexp.h"
 #include "mem.h"
+#include "parser.h"
 
 #include <string.h>
 

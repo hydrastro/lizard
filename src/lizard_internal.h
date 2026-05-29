@@ -547,6 +547,7 @@ typedef enum {
 typedef struct lizard_ast_node lizard_ast_node_t;
 typedef struct lizard_env lizard_env_t;
 typedef struct lizard_heap lizard_heap_t;
+typedef struct lizard_gc_metadata_table lizard_gc_metadata_table_t;
 
 typedef lizard_ast_node_t *(*lizard_primitive_func_t)(lz_list_t *args,
                                                       lizard_env_t *env,
@@ -1040,6 +1041,8 @@ struct lizard_heap {
    * heaps created directly via lizard_heap_create. Functions that need
    * runtime state check heap->runtime != NULL before accessing it. */
   lizard_runtime_t *runtime;
+  /* Phase 3B: per-object metadata side table. C-owned, non-moving. */
+  lizard_gc_metadata_table_t *gc_metadata;
 };
 
 typedef struct lizard_env_entry {
@@ -1069,8 +1072,6 @@ lizard_ast_node_t *lizard_primitive_delay(lz_list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_force(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap);
 
-lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
-                                        lizard_heap_t *heap);
 lizard_ast_node_t *lizard_eval(lizard_ast_node_t *node, lizard_env_t *env,
                                lizard_heap_t *heap, lizard_continuation_t cont);
 lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,

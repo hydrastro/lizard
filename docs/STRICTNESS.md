@@ -1,91 +1,99 @@
-# Strictness Contract
 
-Lizard deliberately keeps its C build hostile to accidental looseness.
-Compiler warnings are treated as build failures because this project is meant
-for embedders, future concurrency, and proof/type-theory experiments where
-undefined behavior and ambiguous APIs are especially costly.
+## Report API visibility
 
-## Non-negotiable rules
+Tests and embedders must include only `lizard_api.h`.  Any public report object
+used by tests must have its opaque typedef and prototypes declared there; do not
+make tests include internal headers to compensate for missing API declarations.
 
-- Do not remove warning flags for convenience.
-- Do not add local `#pragma` warning suppressions to land a refactor.
-- Do not silence a warning by hiding code behind unused variables or dummy casts
-  unless the cast is required and documented by the C interface.
-- Avoid aggregate-return APIs; use out-parameters for structs.
-- Keep declarations before statements for C89 compatibility.
-- Keep public prototypes inside include guards.
-- Keep non-static functions declared in headers included by their `.c` files.
-- Keep file splits behavior-preserving unless the change is deliberately tested
-  as a semantic change.
+## Public API boundary audit
 
-## Expected validation loop
+Headers under `src/` may mention public report/event types only if those types
+are guaranteed by `include/lizard_api.h`.  Run `make api-audit` after touching
+report, syntax-object, diagnostic, or expansion-trace APIs.  The audit checks
+that opaque report handles and public event structs remain visible to embedders
+and internal headers alike.
+
+## Header boundary audit
+
+Any implementation header under `src/` that exposes public API types must include
+`lizard_api.h` directly. Do not rely on include order from another header or C
+file. Run `make header-audit` after touching syntax-object, report, diagnostic,
+or public API boundary headers.
+
+## Include layering
+
+Headers must not rely on accidental transitive includes.  If a header exposes a
+public API type, it includes `lizard_api.h` directly.  Public headers must not
+include implementation headers, and implementation header dependencies must stay
+acyclic.  Use `make header-audit` and `make include-audit` before merging.
+
+
+## Diagnostic construction
+
+All new diagnostics must be built through the canonical helpers in
+`diagnostics.c` / `diagnostics.h`.  Do not hand-initialize diagnostic fields in
+new tokenizer/parser/runtime/report code.  Use `lizard_diagnostic_set` when a
+source span is known and `lizard_diagnostic_set_simple` when there is no span.
+This keeps status, severity, category, span, and bounded message-copy behavior
+consistent under the strict warning profile.
+
+## Ownership audit
+
+`make ownership-audit` is part of the runtime-hardening gate.  Direct AST heap
+allocation must initialize the AST type before the value escapes.  Report
+snapshots must remain C-owned and must not allocate from the Lizard heap.
+
+Do not disable this audit to land GC/concurrency work; update the ownership
+model and tests intentionally when ownership rules change.
+
+## GC metadata side table strictness
+
+GC metadata must remain C-owned and off-object until the collector transition is
+explicitly scheduled.  Metadata registration must not change allocation success
+semantics: allocation can succeed even if metadata registration fails, but the
+failure must be counted for diagnostics/audits.
+
+## Build graph closure
+
+Every implementation module in `src/*.c`, except `src/repl.c`, must be linked
+into `liblizard.a`.  Tests must not depend on object files that are omitted from
+the library archive.  Run:
 
 ```sh
-nix develop
-make clean
-make -j
-make test
-make examples
-make smoke
-./scripts/clean.sh --check
+make build-graph-audit
 ```
 
-For the strictest local check, use:
+before changing source lists, syntax-object scaffolding, report modules, or GC
+metadata modules.
 
-```sh
-make strict
-```
+## Conservative build graph closure
 
-`make strict` is intentionally not a softer path. It is the normal strict
-build/test/example/smoke/lint chain bundled into one target.
+`liblizard.a` must include implementation files required by enabled headers and
+tests, but it must not automatically compile every `src/*.c` file.  Some source
+files are experimental or partial scaffolds and become hard errors under strict
+flags if pulled into the build early.  Build graph closure is therefore an
+allowlisted policy: add an implementation module to `LIB_OPTIONAL_SRCS` when it
+is intentionally part of the library surface.
 
-## If a warning appears
+## Public API duplicate definitions
 
-Treat it as a design signal. Preferred fixes:
+`include/lizard_api.h` must define each public struct/enum exactly once.  Patch
+recovery scripts must normalize existing public API blocks before inserting
+missing declarations.  `make api-audit` runs `scripts/check-public-api-duplicates.py`
+to catch duplicate definitions such as repeated `lizard_expansion_trace_event_t`.
 
-- change API shape, for example struct out-parameters instead of struct returns;
-- split declarations into the right internal header;
-- remove unused helpers after moving code;
-- make ownership explicit rather than casting away `const`;
-- make fallback behavior explicit rather than relying on silent defaults.
+## Tokenizer/source wrapper strictness
 
-The rule is simple: if Lizard cannot satisfy its own warning policy, the code
-is not ready to merge.
+If a header declares a non-static function, the corresponding implementation
+must be present in the library archive. Do not leave scaffold prototypes without
+definitions under the strict test build; they become link-time regressions.
 
-## Test harness strictness note
-
-`TEST_ASSERT_EQ` intentionally casts its operands to `long`; callers must not
-pass function calls returning enum types directly when `-Wbad-function-cast` is
-enabled.  Store enum-returning function results in a local variable first, then
-assert on that variable.
-
-## Shared report writers
-
-Text and JSON escaping for tooling reports must go through `report_writer.c`.
-Do not duplicate escaping logic in individual report modules; duplicated
-escaping tends to drift and creates subtle editor/tooling bugs.
-
-## Report schema constants
-
-Tooling-visible report type names and versions must be centralized in
-`report_schema.c` / `report_schema.h`. Do not reintroduce hardcoded
-`lizard-...` report names in individual report writers unless the schema
-registry test is updated intentionally.
+Known-kind heap constructors should use `lizard_heap_alloc_tagged` instead of
+relying on size inference when the object kind and trace policy are known.
 
 
-## Report/tooling strictness
+## Context trace API visibility
 
-Tooling report formats are part of the public debugging surface.  Schema names,
-versions, and capabilities must be centralized in the report schema registry;
-do not duplicate string literals or silently change schema versions in writer
-modules.  Any new report schema must declare whether it supports stable text,
-JSON, and the stable-v1 contract.
-
-
-## Phase 2T: report schema requirements
-
-Report schema discovery now has a preflight requirement API and CLI command.
-External tools can require a schema type, minimum version, and format support
-(`any`, `text`, or `json`) before requesting expansion, trace, or diagnostic
-reports.  This keeps editor/tooling integrations explicit without changing
-evaluator or macro semantics.
+Tests and embedders may use the context-level expansion trace API directly.
+`include/lizard_api.h` must declare the trace controls and owned snapshot API;
+otherwise strict builds fail with implicit declarations under `-Werror`.

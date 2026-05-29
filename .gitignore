@@ -1,34 +1,26 @@
-# --- build artifacts -------------------------------------------------
+# Build output
 /build/
 *.o
+*.d
 *.a
 *.so
-*.dylib
 *.gcno
 *.gcda
 *.gcov
 /coverage/
 
-# --- never commit release bundles ------------------------------------
-*.zip
-*.tar
-*.tar.gz
-*.tgz
+# Compiled REPL / binaries
+/build/lizard
 
-# --- editor / OS ------------------------------------------------------
+# Editor / OS cruft
 *.swp
-*.swo
 *~
 .DS_Store
-.idea/
-.vscode/
 
-# --- logs / scratch --------------------------------------------------
-*.log
-*.bak
-/scratch/
-perf.data*
+# Profiling
+perf.data
+perf.data.old
 
-# --- Nix --------------------------------------------------------------
+# Nix
 result
 result-*

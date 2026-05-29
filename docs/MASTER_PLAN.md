@@ -11,276 +11,36 @@ and type-theory references.
 ---
 
 
-### Phase 1H progress
-
-- Equiv / Glue / ua / system constructors have been split into `src/tt_glue.c` with `src/tt_glue.h` as the internal API.
-- `tt_equality.c` still owns the actual reduction and judgmental equality rules; this phase only makes constructors reusable and removes another chunk of infrastructure from the monolith.
-- The next split target is the Glue/ua reduction rules themselves, followed by HIT/truncation computation.
-
-
-### Phase 1I progress
-
-- The type-theory monolith has been split again. Runtime-owned registries now
-  live in `src/tt_registry.c`, universe/couniverse lattice operations live in
-  `src/tt_lattice.c` / `src/tt_lattice.h`, and cubical face entailment/system
-  lookup live in `src/tt_faces.c`.
-- Added direct regression tests for the moved registry, lattice, and face APIs.
-  These are important because the next architectural step is separating runtime
-  values from checked kernel terms; the existing theory behavior must stay
-  pinned down while that representation boundary is introduced.
-- `tt_equality.c` is now closer to its intended role: normalization,
-  judgmental equality, and reducer orchestration. Remaining split targets are
-  HIT/truncation computation and, later, the reducer switch itself.
-
-
-### Phase 1J progress
-
-- HIT construction/lookup primitives now live in `src/prims_hits.c` instead of
-  the monolithic `src/primitives.c`.
-- Propositional truncation primitives now live in `src/prims_trunc.c`.  This
-  keeps primitive registration centralized while moving implementation bodies
-  into theory-specific files.
-- Added `tests/tt_primitive_split_test.c` to guard the moved HIT/truncation
-  primitive entry points directly through normal evaluation.
-- The next theory split should move HIT/truncation *normalization and equality*
-  helper logic out of `tt_equality.c`; this phase deliberately avoided changing
-  reducer semantics.
-
-
-### Phase 1K progress
-
-- Optional proof-theory scaffolds are no longer embedded in the monolithic
-  primitive implementation: S¹ and user theory-extension constructors now live
-  in `src/prims_theory_ext.c`.
-- Named logic-bundle primitives now live in `src/prims_logic.c`; the registry
-  implementation remains in `tt_registry.c`.
-- Added a split-regression test for optional S¹/theory-extension and named
-  logic-bundle entry points.
-- The next primitive split target is the proof/tactic interface, but that first
-  requires exposing or moving the kernel S-expression converter so the split
-  does not create hidden cross-file coupling.
-
-
-### Phase 1L progress
-
-- `src/prims_kernel.c` now owns kernel/proof/tactic primitives and the
-  S-expression-to-kernel-term bridge.  This keeps tactics as ordinary optional
-  front-end functions and removes proof-facing code from the general primitive
-  monolith.
-- `src/primitives.c` still owns registration, but implementation bodies are now
-  split enough to prepare the later `SurfaceTerm / CoreTerm / KernelTerm / Value`
-  boundary.
-- The build hotfix also removes the unused `no_args` helper left behind by the
-  previous theory-extension split.
-
-
-### Phase 1M progress
-
-- Kernel S-expression conversion now lives in `src/kernel_sexp.c` /
-  `src/kernel_sexp.h`, rather than inside the proof primitive file.
-- Quoted pair-chain data such as `'(Id Nat 0 0)` is reparsed before kernel
-  conversion, fixing the split-regression in `kernel_primitive_split_test`.
-- Proof state, metavariable context, and kernel definition context are now
-  runtime-owned fields, preparing the kernel/proof layer for future
-  thread-safe contexts.
-- `scripts/clean.sh` no longer recursively invokes itself from the usage
-  block, fixing the shell-level explosion after CI-like command chains.
-
-
-### Phase 1N progress
-
-- Kernel/proof primitives are now split by family. `src/prims_kernel_core.c`
-  owns infer/check/reduce/equality primitives; `src/prims_kernel_proof.c` owns
-  proof state and tactic front-end primitives; `src/prims_kernel_meta.c` owns
-  holes/metavariables/unification; and `src/prims_kernel_defs.c` owns named
-  kernel definitions. Shared string formatting lives in `src/prims_kernel_util.c`.
-- The split keeps tactics optional and unprivileged: every tactic primitive still
-  emits/checks kernel terms through the same public runtime path.
-- The next architectural target is no longer more file splitting; it is the
-  representation boundary: SurfaceTerm / CoreTerm / KernelTerm / Value.
-
-
-### Phase 1N hotfix note
-
-- `src/prims_kernel.c` is now a marker/documentation file only and is not compiled.
-  This avoids an empty-translation-unit failure under strict C89/`-Wpedantic` while
-  preserving the directory-level explanation of the kernel primitive family split.
-- `scripts/clean.sh` now treats generated `lizard-*.zip` and `lizard-*.patch` files
-  as removable release artifacts.
-
-
-### Phase 2A progress
-
-- Added the first explicit representation-boundary scaffold: `SurfaceTerm`,
-  `CoreTerm`, existing `KernelTerm` (`kterm_t`), and runtime `Value` now have
-  named paths in the codebase.
-- This phase is deliberately non-invasive: the evaluator still uses the runtime
-  AST, while the new wrappers make reader/macro/elaborator/kernel routing
-  testable before changing semantics.
-- Added `docs/REPRESENTATION_BOUNDARY.md` and a regression test proving that the
-  four paths are distinct.
-
-
-### Phase 2B progress
-
-- Parser output can now be wrapped as `SurfaceTerm` values with source spans
-  preserved from tokenizer/parser output.
-- `lizard_surface_parse_source` is the first concrete bridge from the existing
-  AST parser into the SurfaceTerm boundary.
-- `lizard_core_from_surface` gives the future elaborator path a preferred name
-  while preserving the old runtime-AST-backed CoreTerm scaffold.
-- Evaluator semantics are unchanged; this is an integration boundary, not a
-  new elaborator yet.
-
-
-### Phase 2C progress
-
-- SurfaceTerm now carries the first syntax-object scaffold: source span, phase,
-  a compact lexical-scope marker, and an untrusted property table for future
-  macro/debugger/tool metadata.
-- Added a direct syntax-object scaffold regression test. Evaluator and macro
-  semantics remain unchanged; this is a boundary/data-model step only.
-- Next direction: replace the compact scope marker with a persistent scope-set
-  object and start preserving syntax metadata through quote/quasiquote and
-  macro expansion.
-
-
-### Phase 2D progress
-
-- `SurfaceTerm` now stores a small explicit scope-set object rather than a
-  single unsigned-long placeholder.  The compatibility summary API remains,
-  but future hygiene work can compare real scope sets.
-- Added scope-set add/remove/contains/equal/count/summary APIs and a direct
-  regression test for scope-set behavior.
-- Evaluator and macro behavior remain unchanged; this is still scaffold for the
-  future hygienic expander.
-
-
-### Phase 2F progress
-
-- SurfaceTerm now has untrusted transformation tracing for future macro/rewrite
-  debugging.
-- Metadata propagation copies trace chains, so rewritten surface syntax can
-  preserve an explanation history.
-- Evaluator and macro semantics remain unchanged; the trace chain is tooling
-  metadata only.
-
-
-### Phase 2G progress
-
-- Added `src/expansion_context.c` / `.h`, a scaffold for future hygienic macro
-  expansion contexts.
-- Expansion contexts allocate fresh macro scopes, carry a phase/name, and attach
-  `macro-introduce` / rewrite trace events to SurfaceTerm values.
-- Added origin-chain debug formatting for SurfaceTerm traces.
-- Evaluator and macro semantics remain unchanged; this is still syntax-tooling
-  metadata only.
-
-
-### Phase 2H progress
-
-- Added a syntax-expander adapter API that accepts `SurfaceTerm` plus
-  `ExpansionContext` and delegates semantics to the existing macro expander.
-- Expansion adapter results preserve spans, phase, scopes, properties, and trace
-  metadata while returning the old expanded runtime AST for evaluation.
-- This is the first bridge from syntax-object metadata into the macro pipeline;
-  it does not change macro semantics yet.
-
-
-### Phase 2I progress
-
-- Runtime contexts now have an opt-in traced expansion path.  By default,
-  `lizard_context_eval_string` and `lizard_context_eval_file` keep the old
-  parser/evaluator path.  When tracing is enabled, the same source flows through
-  `SurfaceTerm` parsing and the syntax-expander adapter before evaluating the
-  resulting runtime AST.
-- The public API can enable/disable tracing and inspect the latest expansion
-  trace count, stage, detail, and source span.  This makes syntax-object
-  infrastructure observable through the runtime API without making the evaluator
-  depend on it.
-- Added regression coverage proving traced expansion and normal evaluation
-  coexist in one context.
-
-
-### Phase 2J progress
-
-- Expansion trace metadata is now reportable through the stable context API.
-  Callers can retrieve indexed trace events with stage/detail/origin fields and
-  can format individual events into caller-owned buffers.
-- Fixed the primitive header guard so the type-theory prototype block is no
-  longer outside the include guard, eliminating duplicate-declaration warnings
-  under `-Wredundant-decls -Werror`.
-- The evaluator remains unchanged; trace reporting is still opt-in tooling
-  metadata on top of the SurfaceTerm adapter path.
-
-
-### Phase 2K progress
-
-- Expansion traces can now be snapshotted into an owned
-  `lizard_expansion_trace_report_t`. Reports copy trace event strings and are
-  valid after later evaluations or context destruction.
-- Added a strictness contract document and `make strict`; warning/security
-  flags remain part of the design, not optional comfort settings.
-- The runtime still keeps tracing opt-in and evaluator semantics unchanged.
-
-
-### Phase 2L progress
-
-- Added REPL/CLI hooks for expansion tracing. `--trace-expansion` enables the
-  traced SurfaceTerm path; `--print-expansion-trace` prints an owned trace report
-  after each evaluation.
-- Tracing is still off by default, and evaluation semantics remain unchanged.
-- Added CLI regression coverage so future tooling work cannot accidentally print
-  traces in normal execution mode.
-
-### Phase 2M progress
-
-- Expansion trace reports can now be exported to a stable line-oriented file
-  format via `--trace-expansion-file PATH` and
-  `lizard_expansion_trace_report_fprint`.
-- The export path uses owned trace report snapshots and leaves normal evaluator
-  output untouched unless tracing is explicitly requested.
-
-
-### Phase 2P progress
-
-- Added an owned diagnostic report layer for parser/tokenizer/expansion
-  failures.  This keeps strict warning policy intact while giving tooling a
-  stable text/JSON diagnostic surface.
-- `--expand-only` failure reports now contain structured diagnostics alongside
-  expansion metadata; evaluator and macro semantics are unchanged.
-
-
-### Phase 2Q progress
-
-- Shared report-format escaping now lives in `src/report_writer.c` /
-  `src/report_writer.h`.  Expansion trace, syntax expansion, and diagnostic
-  reports all use the same strict text/JSON escaping implementation.
-- Public report formats are preserved; this is an internal hardening step so
-  future editor/tooling output cannot drift across report types.
-- Added direct report-writer tests for tab/newline/carriage-return/backslash,
-  JSON quote/backslash/control-byte escaping, and NULL field behavior.
-
-
-### Phase 2R progress
-
-- Added a stable report schema registry in `src/report_schema.c` /
-  `src/report_schema.h`. Report type names and version numbers for syntax
-  expansion, expansion traces, and diagnostics now live in one place.
-- Report writers still emit the same text/JSON formats, but no longer duplicate
-  schema constants across files. This reduces editor/tooling drift risk.
-- Added regression coverage for schema names, versions, validity checks, and JSON
-  type-field printing.
-
-
-### Phase 2T progress
-
-- Added report schema requirement checking. Tools can now require a schema type,
-  minimum version, and format capability before consuming a report.
-- Added `--require-report-schema TYPE:VERSION:FORMAT` as a standalone CLI
-  preflight check. This keeps editor integrations explicit and fail-fast.
-- Existing report formats remain stable; this phase adds compatibility checking
-  rather than changing report contents.
+### Phase 2X progress
+
+- Fixed the `surface_term.h` public type include-order regression by requiring
+  implementation headers that expose public API types to include `lizard_api.h`
+  themselves.
+- Added `make header-audit`, wired into `make ci`, so future syntax/report
+  headers cannot accidentally depend on transitive include order.
+- This protects the syntax-object/reporting boundary while keeping strict
+  warning flags intact.
+
+
+### Phase 2Y progress
+
+- Added include-layer auditing after the public API/header-boundary audits.
+  The tree now checks public header purity, implementation-header acyclicity,
+  and selected leaf-tooling header independence.
+- `make ci` now runs `include-audit` before the full tests/examples path.  This
+  prevents include-order and layering regressions from reappearing as syntax and
+  report tooling grow.
+
+
+### Phase 3A progress
+
+- Began the Phase 3 runtime hardening spine with an ownership model scaffold.
+- Added object ownership and trace-policy metadata without changing allocator or
+  GC behavior.
+- Added `make ownership-audit`, which checks AST allocation type initialization,
+  C-owned module boundaries, and report snapshot ownership rules.
+- Added `docs/OWNERSHIP.md` as the baseline for the future object-level
+  non-moving mark/sweep transition.
 
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
@@ -797,36 +557,76 @@ Then: build the example test runner (#2) and start splitting
 The throughline: keep the trusted core tiny, push everything else into
 the untrusted tower, and let each phase stand on its own.
 
-### Phase 2E progress
+### Phase 2W progress
 
-- SurfaceTerm now has explicit metadata propagation helpers for future reader
-  and macro-expansion transformations.
-- Quoted datum can be reparsed and wrapped as a SurfaceTerm while preserving the
-  origin span, phase, scopes, and optional properties.
-- Added debug-string support for syntax-object tooling; it is intentionally
-  untrusted and ignored by evaluator/kernel paths.
+- Fixed the public report/type boundary by restoring the expansion trace event
+  type in `lizard_api.h`.
+- Added `make api-audit` and a script-level guard so future report/syntax
+  refactors cannot accidentally remove public types required by internal syntax
+  headers.
+- Added strict compile coverage for public report/event type visibility.
 
-### Phase 2N progress
+### Phase 2Z progress
 
-- Added owned syntax expansion reports for tooling and macro-stepper work.
-- Added `--expand-only`, which parses and macro-expands input but does not
-  evaluate it.
-- Reports expose source span, phase, scope summary, expanded AST summary, and
-  trace events while preserving the old evaluator path.
+- Added canonical diagnostic/span construction helpers and refactored tokenizer,
+  parser, runtime, and syntax-expansion report paths to use them.
+- Diagnostic severity/category mapping now lives with diagnostic construction,
+  reducing drift across runtime and report tooling.
+- Added direct helper tests plus runtime-path tests for tokenizer/parser/IO
+  diagnostic categories. Diagnostic report v2 remains stable.
+
+### Phase 3B progress
+
+- Added a per-heap GC metadata side table scaffold.
+- Heap allocation now registers metadata for allocated objects without changing
+  object layout, object addresses, mark traversal, or sweep behavior.
+- Added metadata stats and lookup helpers so future GC work can audit object
+  classes and trace policies before object-level collection is enabled.
+- Added `gc_metadata_test.c` and ownership-audit checks for the side table.
+
+### Phase 3C progress
+
+- Added a build-graph closure audit after a linker failure showed that syntax
+  scaffold tests could reference functions whose implementation objects were not
+  archived into `liblizard.a`.
+- `LIB_SRCS` now keeps its explicit core order but automatically closes over
+  additional `src/*.c` implementation modules present in the tree. This protects
+  syntax/report/gc scaffold files from being forgotten in the Makefile.
+- `make ci` now includes `build-graph-audit` alongside API, header, include,
+  and ownership audits.
+
+### Phase 3D progress
+
+- Recovered the build graph from the overly aggressive Phase 3C automatic
+  `src/*.c` closure.
+- The library now closes over an allowlisted optional module set, pulling in
+  syntax/report/GC scaffolds when present while avoiding incomplete experimental
+  modules.
+- Added a recovery script and allowlist-aware build-graph audit so local trees
+  with mixed Phase 2/Phase 3 patches can be repaired without weakening compiler
+  strictness.
+
+### Phase 3E progress
+
+- Added a public API duplicate-definition audit after a local recovery merge
+  produced two `lizard_expansion_trace_event_t` definitions in `lizard_api.h`.
+- Hardened the recovery script so repeated runs de-duplicate public API struct
+  blocks before adding missing declarations.
+
+### Phase 3F progress
+
+- Implemented `lizard_tokenize_source`, fixing a scaffold link failure in
+  syntax/surface tests.
+- Added explicit GC metadata classification through `lizard_heap_alloc_tagged`
+  and started moving core constructors away from size-only object-kind
+  inference.
+- Extended metadata stats and tests while keeping allocator and collector
+  semantics behavior-preserving.
 
 
+### Phase 3G progress
 
-### Phase 2O progress
-
-- Added JSON writers for expansion trace reports and syntax expansion reports.
-- Added `--expand-only-format text|json`; the text format remains the default.
-- Added CLI/API tests for JSON report output and invalid format diagnostics.
-- Evaluation and macro semantics remain unchanged.
-
-### Phase 2S progress
-
-- Added report schema capability discovery APIs.
-- Added `--list-report-schemas` and JSON/text schema-list output.
-- Tooling can now query available report schemas before requesting expansion,
-  trace, or diagnostic reports.
-- Existing evaluator and macro semantics remain unchanged.
+- Recovered the context-level expansion trace API in the public header after the
+  Phase 3 recovery patches dropped those declarations.
+- Added an audit/recovery helper so syntax-object trace tests cannot regress to
+  implicit declarations.

@@ -7,6 +7,7 @@
 #define LIZARD_GC_H
 
 #include "lizard_internal.h"
+#include "gc_metadata.h"
 
 typedef struct lizard_gc_stats {
   size_t total_segments;
@@ -39,5 +40,13 @@ void lizard_gc_collect_stats(lizard_heap_t *heap, lizard_env_t *env,
  * that contains zero live objects. Returns the number of bytes freed.
  * Does NOT move objects — no pointer updating needed. */
 size_t lizard_gc_collect(lizard_heap_t *heap, lizard_env_t *env);
+
+
+/* Phase 3B: non-invasive metadata side-table inspection. */
+void lizard_gc_metadata_stats(lizard_heap_t *heap,
+                              lizard_gc_metadata_stats_t *out_stats);
+int lizard_gc_metadata_lookup_object(
+    lizard_heap_t *heap, const void *ptr, lizard_gc_object_kind_t *out_kind,
+    size_t *out_size, lizard_object_trace_policy_t *out_trace_policy);
 
 #endif /* LIZARD_GC_H */

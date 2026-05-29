@@ -498,3 +498,23 @@ size_t lizard_gc_collect(lizard_heap_t *h, lizard_env_t *env) {
   }
   return freed;
 }
+
+
+void lizard_gc_metadata_stats(lizard_heap_t *heap,
+                              lizard_gc_metadata_stats_t *out_stats) {
+  if (heap == NULL) {
+    lizard_gc_metadata_collect_stats(NULL, out_stats);
+    return;
+  }
+  lizard_gc_metadata_collect_stats(heap->gc_metadata, out_stats);
+}
+
+int lizard_gc_metadata_lookup_object(
+    lizard_heap_t *heap, const void *ptr, lizard_gc_object_kind_t *out_kind,
+    size_t *out_size, lizard_object_trace_policy_t *out_trace_policy) {
+  if (heap == NULL) {
+    return 0;
+  }
+  return lizard_gc_metadata_lookup(heap->gc_metadata, ptr, out_kind, out_size,
+                                   out_trace_policy);
+}

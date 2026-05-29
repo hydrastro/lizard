@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "diagnostics.h"
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
@@ -35,30 +36,17 @@ static lizard_diagnostic_t lz_parse_diag;
 
 static LZ_NORETURN void lizard_parser_fail(const char *msg,
                                            const lizard_token_t *tok) {
+  lizard_source_span_t span;
+
   lz_parse_failed = 1;
-  lz_parse_diag.status = LIZARD_STATUS_PARSE_ERROR;
-  lz_parse_diag.span.filename = tok != NULL ? tok->filename : NULL;
   if (tok != NULL) {
-    lz_parse_diag.span.start_line = tok->line;
-    lz_parse_diag.span.start_column = tok->column;
-    lz_parse_diag.span.end_line = tok->line;
-    lz_parse_diag.span.end_column = tok->column;
-    lz_parse_diag.span.start_offset = tok->offset;
-    lz_parse_diag.span.end_offset = tok->offset;
+    lizard_source_span_set(&span, NULL, tok->line, tok->column, tok->line,
+                           tok->column, tok->offset, tok->offset);
   } else {
-    lz_parse_diag.span.start_line = 0;
-    lz_parse_diag.span.start_column = 0;
-    lz_parse_diag.span.end_line = 0;
-    lz_parse_diag.span.end_column = 0;
-    lz_parse_diag.span.start_offset = 0;
-    lz_parse_diag.span.end_offset = 0;
+    lizard_source_span_clear(&span);
   }
-  if (msg != NULL) {
-    strncpy(lz_parse_diag.message, msg, sizeof(lz_parse_diag.message) - 1);
-    lz_parse_diag.message[sizeof(lz_parse_diag.message) - 1] = '\0';
-  } else {
-    lz_parse_diag.message[0] = '\0';
-  }
+  lizard_diagnostic_set(&lz_parse_diag, LIZARD_STATUS_PARSE_ERROR,
+                        LIZARD_DIAGNOSTIC_CATEGORY_PARSER, &span, msg);
   if (lz_parse_active) {
     longjmp(lz_parse_recovery, 1);
   }
@@ -79,7 +67,7 @@ static void lizard_set_node_span_from_token(lizard_ast_node_t *node,
   if (node == NULL || token == NULL) {
     return;
   }
-  node->span.filename = token->filename;
+  node->span.filename = NULL;
   node->span.start_line = token->line;
   node->span.start_column = token->column;
   node->span.end_line = token->line;
@@ -936,6 +924,7 @@ lz_list_t *lizard_parse(lz_list_t *token_list, lizard_heap_t *heap) {
    * here instead of killing the process. */
   prev_active = lz_parse_active;
   lz_parse_failed = 0;
+  lizard_diagnostic_clear(&lz_parse_diag);
   if (setjmp(lz_parse_recovery)) {
     lz_parse_active = prev_active;
     return NULL; /* a syntax error was recorded in lz_parse_diag */

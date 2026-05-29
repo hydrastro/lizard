@@ -1,10 +1,3 @@
-/* src/report_writer.c -- shared text/JSON escaping for tooling reports.
- *
- * Keep report formatting logic centralized so syntax, trace, and diagnostic
- * reports cannot drift apart.  This file is intentionally tiny and strict-C89:
- * no warning suppressions, no aggregate returns, no allocation.
- */
-
 #include "report_writer.h"
 
 int lizard_report_fprint_text_field(FILE *fp, const char *text) {
@@ -54,9 +47,7 @@ int lizard_report_fprint_json_string(FILE *fp, const char *text) {
     p = (const unsigned char *)text;
     while (*p != '\0') {
       if (*p == '"' || *p == '\\') {
-        if (fputc('\\', fp) == EOF || fputc((int)*p, fp) == EOF) {
-          return 0;
-        }
+        if (fputc('\\', fp) == EOF || fputc((int)*p, fp) == EOF) return 0;
       } else if (*p == '\b') {
         if (fputs("\\b", fp) < 0) return 0;
       } else if (*p == '\f') {

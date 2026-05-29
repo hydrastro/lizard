@@ -27,7 +27,7 @@ $(BUILD_DIR)/tests/%: $(TEST_DIR)/%.c $(TEST_HELPER_OBJ) $(LIB_STATIC) | $(BUILD
 test: test-c test-lisp
 	@echo "All tests passed."
 
-test-c: $(REPL_BIN) $(TEST_C_BINS)
+test-c: $(TEST_C_BINS)
 	@set -e; failures=0; total=0; \
 	for t in $(TEST_C_BINS); do \
 	  total=$$((total+1)); \
@@ -52,9 +52,7 @@ test-lisp: $(REPL_BIN)
 	    printf "  \033[33mSKIP\033[0m  %s (no .expected file)\n" "$$name"; \
 	    continue; \
 	  fi; \
-	  actual=$$($(RUN_ENV) $(REPL_BIN) < "$$src" 2>&1) || status=$$?; \
-	  status=$${status:-0}; \
-	  unset status; \
+	  actual=$$($(RUN_ENV) $(REPL_BIN) < "$$src" 2>&1); \
 	  if [ "$$actual" = "$$(cat $$expected)" ]; then \
 	    printf "  \033[32mPASS\033[0m  %s\n" "$$name"; \
 	  else \

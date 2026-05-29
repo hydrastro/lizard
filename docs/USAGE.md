@@ -127,3 +127,21 @@ evaluate (self-hosting). Run it to see the tracks compose.
   ops use `map2` (defined in `matrix.lisp`) or a manual recursion.
 - Numbers are arbitrary-precision (GMP). `123^12312` is fine.
 - For exact fractions use `rational.lisp`; CAS works symbolically.
+
+## Example manifest auditing
+
+Use this before running the full example suite:
+
+```sh
+make examples-audit
+```
+
+It checks the manifest statically: duplicate entries, unlisted `.lisp` files,
+manifest entries without files, and invalid `:expect` values. `make examples`
+still runs the examples and checks reality against the manifest.
+
+## Diagnostic metadata consistency
+
+Diagnostics exposed through the C API and report writers are now constructed by
+a shared helper layer.  Tooling can rely on consistent status/severity/category
+mapping for tokenizer, parser, runtime IO, and syntax-expansion failures.

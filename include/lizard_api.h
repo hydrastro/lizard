@@ -25,6 +25,58 @@ typedef struct lizard_diagnostic_report lizard_diagnostic_report_t;
 typedef struct lizard_syntax_expansion_report lizard_syntax_expansion_report_t;
 typedef struct lizard_ast_node lizard_value_t;
 
+
+typedef struct lizard_expansion_trace_event {
+  const char *stage;
+  const char *detail;
+  const char *origin_filename;
+  int origin_line;
+  int origin_column;
+  int origin_phase;
+  unsigned long origin_scope_summary;
+} lizard_expansion_trace_event_t;
+
+void lizard_expansion_trace_report_destroy(
+    lizard_expansion_trace_report_t *report);
+unsigned long lizard_expansion_trace_report_count(
+    const lizard_expansion_trace_report_t *report);
+int lizard_expansion_trace_report_event(
+    const lizard_expansion_trace_report_t *report,
+    unsigned long index,
+    lizard_expansion_trace_event_t *out_event);
+int lizard_expansion_trace_report_event_string(
+    const lizard_expansion_trace_report_t *report,
+    unsigned long index,
+    char *buffer,
+    size_t buffer_size);
+int lizard_expansion_trace_report_fprint(
+    FILE *fp,
+    const lizard_expansion_trace_report_t *report);
+int lizard_expansion_trace_report_fprint_json(
+    FILE *fp,
+    const lizard_expansion_trace_report_t *report);
+
+
+typedef struct lizard_report_schema_info {
+  const char *type;
+  int version;
+  int supports_text;
+  int supports_json;
+  int stable_v1;
+} lizard_report_schema_info_t;
+
+unsigned long lizard_report_schema_count(void);
+int lizard_report_schema_get(unsigned long index,
+                             lizard_report_schema_info_t *out_info);
+const char *lizard_report_schema_list_type(void);
+int lizard_report_schema_list_version(void);
+int lizard_report_schema_list_fprint(FILE *fp);
+int lizard_report_schema_list_fprint_json(FILE *fp);
+int lizard_report_schema_require(const char *type,
+                                 int min_version,
+                                 const char *format,
+                                 lizard_report_schema_info_t *out_info);
+
 typedef enum {
   LIZARD_STATUS_OK = 0,
   LIZARD_STATUS_ERROR = 1,
@@ -35,6 +87,23 @@ typedef enum {
   LIZARD_STATUS_EVAL_ERROR = 6,
   LIZARD_STATUS_TYPE_ERROR = 7
 } lizard_status_t;
+
+typedef enum {
+  LIZARD_DIAGNOSTIC_SEVERITY_INFO = 0,
+  LIZARD_DIAGNOSTIC_SEVERITY_WARNING = 1,
+  LIZARD_DIAGNOSTIC_SEVERITY_ERROR = 2
+} lizard_diagnostic_severity_t;
+
+typedef enum {
+  LIZARD_DIAGNOSTIC_CATEGORY_UNKNOWN = 0,
+  LIZARD_DIAGNOSTIC_CATEGORY_TOKENIZER = 1,
+  LIZARD_DIAGNOSTIC_CATEGORY_PARSER = 2,
+  LIZARD_DIAGNOSTIC_CATEGORY_MACRO = 3,
+  LIZARD_DIAGNOSTIC_CATEGORY_EVAL = 4,
+  LIZARD_DIAGNOSTIC_CATEGORY_TYPE = 5,
+  LIZARD_DIAGNOSTIC_CATEGORY_KERNEL = 6,
+  LIZARD_DIAGNOSTIC_CATEGORY_IO = 7
+} lizard_diagnostic_category_t;
 
 typedef struct lizard_source_span {
   const char *filename;
@@ -48,32 +117,38 @@ typedef struct lizard_source_span {
 
 typedef struct lizard_diagnostic {
   lizard_status_t status;
+  lizard_diagnostic_severity_t severity;
+  lizard_diagnostic_category_t category;
   lizard_source_span_t span;
   char message[256];
 } lizard_diagnostic_t;
 
-
-typedef struct lizard_expansion_trace_event {
-  const char *stage;
-  const char *detail;
-  const char *origin_filename;
-  int origin_line;
-  int origin_column;
-  int origin_phase;
-  unsigned long origin_scope_summary;
-} lizard_expansion_trace_event_t;
-
-
-typedef struct lizard_report_schema_info {
-  const char *type;
-  int version;
-  int supports_text;
-  int supports_json;
-  int stable_v1;
-} lizard_report_schema_info_t;
+void lizard_source_span_clear(lizard_source_span_t *span);
+void lizard_source_span_set(lizard_source_span_t *span,
+                            const char *filename,
+                            int start_line,
+                            int start_column,
+                            int end_line,
+                            int end_column,
+                            int start_offset,
+                            int end_offset);
+void lizard_diagnostic_clear(lizard_diagnostic_t *diagnostic);
+void lizard_diagnostic_set(lizard_diagnostic_t *diagnostic,
+                           lizard_status_t status,
+                           lizard_diagnostic_category_t category,
+                           const lizard_source_span_t *span,
+                           const char *message);
+void lizard_diagnostic_set_simple(lizard_diagnostic_t *diagnostic,
+                                  lizard_status_t status,
+                                  lizard_diagnostic_category_t category,
+                                  const char *message);
+void lizard_diagnostic_copy(lizard_diagnostic_t *dst,
+                            const lizard_diagnostic_t *src);
 
 typedef struct lizard_diagnostic_event {
   lizard_status_t status;
+  lizard_diagnostic_severity_t severity;
+  lizard_diagnostic_category_t category;
   const char *message;
   const char *filename;
   int start_line;
@@ -83,19 +158,6 @@ typedef struct lizard_diagnostic_event {
   int start_offset;
   int end_offset;
 } lizard_diagnostic_event_t;
-
-
-/* Phase 2S: report schema/capability discovery for tooling. */
-unsigned long lizard_report_schema_count(void);
-int lizard_report_schema_get(unsigned long index,
-                             lizard_report_schema_info_t *out_info);
-const char *lizard_report_schema_list_type(void);
-int lizard_report_schema_list_version(void);
-int lizard_report_schema_list_fprint(FILE *fp);
-int lizard_report_schema_list_fprint_json(FILE *fp);
-int lizard_report_schema_require(const char *type, int min_version,
-                                 const char *format,
-                                 lizard_report_schema_info_t *out_info);
 
 typedef enum {
   LIZARD_VALUE_STRING,
@@ -140,11 +202,11 @@ const char *lizard_context_last_error(lizard_context_t *context);
 const lizard_diagnostic_t *lizard_context_last_diagnostic(
     lizard_context_t *context);
 
-/* Phase 2I: optional traced macro-expansion path.  Disabled by default; when
- * enabled, context evaluation still returns the same runtime values but records
- * untrusted SurfaceTerm expansion metadata for tooling. */
-void lizard_context_set_trace_expansion(lizard_context_t *context,
-                                        int enabled);
+/* Context-level expansion trace controls and borrowed/latest trace access.
+ * These are required by syntax-object tooling tests and embedders that want
+ * trace snapshots after normal evaluation.  The owned snapshot API remains
+ * lizard_context_expansion_trace_report(). */
+void lizard_context_set_trace_expansion(lizard_context_t *context, int enabled);
 int lizard_context_trace_expansion_enabled(lizard_context_t *context);
 unsigned long lizard_context_last_expansion_trace_count(
     lizard_context_t *context);
@@ -152,9 +214,6 @@ const char *lizard_context_last_expansion_stage(lizard_context_t *context);
 const char *lizard_context_last_expansion_detail(lizard_context_t *context);
 int lizard_context_last_expansion_span(lizard_context_t *context,
                                        lizard_source_span_t *out_span);
-
-/* Phase 2J: full expansion trace reporting.  Index 0 is the latest event,
- * matching lizard_context_last_expansion_* accessors. */
 unsigned long lizard_context_expansion_trace_count(lizard_context_t *context);
 int lizard_context_expansion_trace_event(lizard_context_t *context,
                                          unsigned long index,
@@ -163,39 +222,19 @@ int lizard_context_expansion_trace_event_string(lizard_context_t *context,
                                                 unsigned long index,
                                                 char *buffer,
                                                 size_t buffer_size);
-
-/* Phase 2K: owned expansion trace reports.  A report snapshots trace events
- * from the latest traced expansion and remains valid until explicitly
- * destroyed, even if the context later evaluates other code or is destroyed. */
 lizard_expansion_trace_report_t *lizard_context_expansion_trace_report(
     lizard_context_t *context);
-void lizard_expansion_trace_report_destroy(
-    lizard_expansion_trace_report_t *report);
-unsigned long lizard_expansion_trace_report_count(
-    const lizard_expansion_trace_report_t *report);
-int lizard_expansion_trace_report_event(
-    const lizard_expansion_trace_report_t *report,
-    unsigned long index,
-    lizard_expansion_trace_event_t *out_event);
-int lizard_expansion_trace_report_event_string(
-    const lizard_expansion_trace_report_t *report,
-    unsigned long index,
-    char *buffer,
-    size_t buffer_size);
-int lizard_expansion_trace_report_fprint(
-    FILE *fp,
-    const lizard_expansion_trace_report_t *report);
-int lizard_expansion_trace_report_fprint_json(
-    FILE *fp,
-    const lizard_expansion_trace_report_t *report);
+lizard_diagnostic_severity_t lizard_status_default_severity(
+    lizard_status_t status);
+lizard_diagnostic_category_t lizard_status_default_category(
+    lizard_status_t status);
+const char *lizard_diagnostic_severity_name(
+    lizard_diagnostic_severity_t severity);
+const char *lizard_diagnostic_category_name(
+    lizard_diagnostic_category_t category);
 
-/* Phase 2P: owned diagnostic reports.  These snapshot diagnostics so tooling
- * can inspect parser/tokenizer/expansion failures independently of context
- * lifetime or later evaluations. */
 lizard_diagnostic_report_t *lizard_context_diagnostic_report(
     lizard_context_t *context);
-lizard_diagnostic_report_t *lizard_syntax_expansion_report_diagnostic_report(
-    const lizard_syntax_expansion_report_t *report);
 void lizard_diagnostic_report_destroy(lizard_diagnostic_report_t *report);
 unsigned long lizard_diagnostic_report_count(
     const lizard_diagnostic_report_t *report);
@@ -215,11 +254,10 @@ int lizard_diagnostic_report_fprint_json(
     FILE *fp,
     const lizard_diagnostic_report_t *report);
 
-/* Phase 2N: owned syntax expansion reports. These parse and macro-expand
- * source without evaluating it, so tooling can inspect expansion output and
- * trace data independently of the evaluator. */
 lizard_syntax_expansion_report_t *lizard_context_syntax_expansion_report(
-    lizard_context_t *context, const char *source, const char *filename);
+    lizard_context_t *context,
+    const char *source,
+    const char *filename);
 void lizard_syntax_expansion_report_destroy(
     lizard_syntax_expansion_report_t *report);
 lizard_status_t lizard_syntax_expansion_report_status(
@@ -235,13 +273,13 @@ int lizard_syntax_expansion_report_span(
     lizard_source_span_t *out_span);
 int lizard_syntax_expansion_report_phase(
     const lizard_syntax_expansion_report_t *report);
-unsigned long lizard_syntax_expansion_report_scope_summary(
-    const lizard_syntax_expansion_report_t *report);
 unsigned long lizard_syntax_expansion_report_trace_count(
     const lizard_syntax_expansion_report_t *report);
 int lizard_syntax_expansion_report_trace_event(
     const lizard_syntax_expansion_report_t *report, unsigned long index,
     lizard_expansion_trace_event_t *out_event);
+lizard_diagnostic_report_t *lizard_syntax_expansion_report_diagnostic_report(
+    const lizard_syntax_expansion_report_t *report);
 int lizard_syntax_expansion_report_fprint(
     FILE *fp,
     const lizard_syntax_expansion_report_t *report);

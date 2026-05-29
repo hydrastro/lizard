@@ -48,3 +48,77 @@ active heap, diagnostics, continuation state, module registry, and GC roots into
 - Continue shrinking the compatibility `include/lizard.h` wrapper until embedders
   only need `include/lizard_api.h`.
 - Replace remaining parser/evaluator fatal exits with structured diagnostics.
+
+## Diagnostic metadata
+
+`lizard_diagnostic_t` now includes diagnostic severity and source category:
+
+```c
+lizard_diagnostic_severity_t severity;
+lizard_diagnostic_category_t category;
+```
+
+Use `lizard_diagnostic_severity_name` and `lizard_diagnostic_category_name` for
+tooling output instead of inferring categories from diagnostic text.
+
+## Diagnostic and syntax expansion reports
+
+The stable C API now exposes owned diagnostic report snapshots:
+
+```c
+lizard_diagnostic_report_t *lizard_context_diagnostic_report(
+    lizard_context_t *context);
+void lizard_diagnostic_report_destroy(lizard_diagnostic_report_t *report);
+```
+
+Diagnostic report v2 includes status, severity, category, source location, and
+message data.  Text and JSON writers are available through
+`lizard_diagnostic_report_fprint` and `lizard_diagnostic_report_fprint_json`.
+
+The syntax expansion report API gives tools a parse/expand-only surface and can
+also produce an owned diagnostic report on failure.
+
+## Report and syntax-tooling boundary
+
+The stable public API exports all report/event handle types needed by syntax and
+reporting headers:
+
+```c
+lizard_expansion_trace_report_t;
+lizard_expansion_trace_event_t;
+lizard_diagnostic_report_t;
+lizard_diagnostic_event_t;
+lizard_syntax_expansion_report_t;
+```
+
+Internal headers must not expose prototypes involving types that are absent from
+`include/lizard_api.h`.  Use `make api-audit` to check the public report/type
+boundary.
+
+## Diagnostic construction helpers
+
+The public API now exposes helper functions for constructing diagnostics and
+source spans consistently:
+
+```c
+void lizard_source_span_clear(lizard_source_span_t *span);
+void lizard_source_span_set(lizard_source_span_t *span, const char *filename,
+                            int start_line, int start_column,
+                            int end_line, int end_column,
+                            int start_offset, int end_offset);
+void lizard_diagnostic_clear(lizard_diagnostic_t *diagnostic);
+void lizard_diagnostic_set(lizard_diagnostic_t *diagnostic,
+                           lizard_status_t status,
+                           lizard_diagnostic_category_t category,
+                           const lizard_source_span_t *span,
+                           const char *message);
+void lizard_diagnostic_set_simple(lizard_diagnostic_t *diagnostic,
+                                  lizard_status_t status,
+                                  lizard_diagnostic_category_t category,
+                                  const char *message);
+void lizard_diagnostic_copy(lizard_diagnostic_t *dst,
+                            const lizard_diagnostic_t *src);
+```
+
+Embedders can use these helpers to build diagnostics with the same severity,
+category, span-clearing, and bounded-message behavior used internally.

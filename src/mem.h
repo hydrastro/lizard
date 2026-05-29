@@ -1,7 +1,9 @@
 #ifndef LIZARD_MEM_H
 #define LIZARD_MEM_H
 
+#include "lizard_api.h"
 #include "lizard_internal.h"
+#include "gc_metadata.h"
 
 extern lizard_heap_t *heap;
 
@@ -11,6 +13,9 @@ void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size);
 lizard_heap_t *lizard_heap_create(size_t initial_size, size_t reserved_size);
 void lizard_heap_destroy(lizard_heap_t *heap);
 void *lizard_heap_alloc(size_t size);
+void *lizard_heap_alloc_tagged(size_t size,
+                               lizard_gc_object_kind_t kind,
+                               lizard_object_trace_policy_t trace_policy);
 void lizard_heap_free(void *ptr);
 void lizard_heap_free_wrapper(void *ptr, size_t size);
 lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,

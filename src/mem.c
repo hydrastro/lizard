@@ -1,5 +1,6 @@
 #include "mem.h"
 #include "env.h"
+#include "gc_metadata.h"
 #include "lang.h"
 #include "lizard_internal.h"
 
@@ -53,6 +54,7 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   heap->head = lizard_create_heap_segment(initial_size);
   heap->current = heap->head;
   heap->runtime = NULL;  /* Phase 0: set by lizard_runtime_create */
+  heap->gc_metadata = lizard_gc_metadata_table_create();
   return heap;
 }
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
@@ -88,17 +90,46 @@ void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
   return new_ptr;
 }
 
-void *lizard_heap_alloc(size_t size) {
+static lizard_object_trace_policy_t lizard_heap_default_trace_policy(
+    lizard_gc_object_kind_t kind) {
+  switch (kind) {
+  case LIZARD_GC_OBJECT_AST_NODE:
+    return LIZARD_OBJECT_TRACE_AST;
+  case LIZARD_GC_OBJECT_AST_LIST_NODE:
+    return LIZARD_OBJECT_TRACE_LIST;
+  case LIZARD_GC_OBJECT_ENV:
+  case LIZARD_GC_OBJECT_ENV_ENTRY:
+    return LIZARD_OBJECT_TRACE_ENV;
+  case LIZARD_GC_OBJECT_KERNEL_TERM:
+    return LIZARD_OBJECT_TRACE_CUSTOM;
+  case LIZARD_GC_OBJECT_UNKNOWN:
+  case LIZARD_GC_OBJECT_RAW:
+    return LIZARD_OBJECT_TRACE_NONE;
+  }
+  return LIZARD_OBJECT_TRACE_NONE;
+}
+
+void *lizard_heap_alloc_tagged(size_t size,
+                               lizard_gc_object_kind_t kind,
+                               lizard_object_trace_policy_t trace_policy) {
   lizard_heap_segment_t *seg;
   void *ptr;
-  size_t current_seg_size, new_segment_size;
+  size_t current_seg_size;
+  size_t new_segment_size;
 
   size = align_size(size);
+  if (kind == LIZARD_GC_OBJECT_UNKNOWN) {
+    kind = lizard_gc_infer_object_kind(size);
+  }
+  if (trace_policy == LIZARD_OBJECT_TRACE_CUSTOM &&
+      kind != LIZARD_GC_OBJECT_KERNEL_TERM) {
+    trace_policy = lizard_heap_default_trace_policy(kind);
+  }
 
   seg = heap->current;
   if (seg->top + size > seg->end) {
     current_seg_size = (size_t)(seg->end - seg->start);
-    new_segment_size = current_seg_size * 2;
+    new_segment_size = current_seg_size * 2U;
     if (new_segment_size < size) {
       new_segment_size = size;
     }
@@ -111,8 +142,22 @@ void *lizard_heap_alloc(size_t size) {
   }
   ptr = seg->top;
   seg->top += size;
-  memset(ptr, 0, size);  /* Phase D: ensure gc_mark and other fields start zeroed */
+  memset(ptr, 0, size);
+  if (heap->gc_metadata != NULL) {
+    (void)lizard_gc_metadata_register(heap->gc_metadata, ptr, size, kind,
+                                      LIZARD_OBJECT_OWNER_HEAP, trace_policy);
+  }
   return ptr;
+}
+
+void *lizard_heap_alloc(size_t size) {
+  size_t aligned_size;
+  lizard_gc_object_kind_t kind;
+
+  aligned_size = align_size(size);
+  kind = lizard_gc_infer_object_kind(aligned_size);
+  return lizard_heap_alloc_tagged(size, kind,
+                                  lizard_heap_default_trace_policy(kind));
 }
 
 void lizard_heap_destroy(lizard_heap_t *heap) {
@@ -128,6 +173,7 @@ void lizard_heap_destroy(lizard_heap_t *heap) {
     free(seg);
     seg = next;
   }
+  lizard_gc_metadata_table_destroy(heap->gc_metadata);
   free(heap);
 }
 
@@ -137,7 +183,9 @@ void lizard_heap_free_wrapper(void *ptr, size_t size) { (void)ptr; }
 
 lizard_ast_node_t *lizard_make_bool(lizard_heap_t *heap, bool value) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                LIZARD_GC_OBJECT_AST_NODE,
+                                LIZARD_OBJECT_TRACE_AST);
   node->type = AST_BOOL;
   node->data.boolean = value;
   return node;
@@ -145,7 +193,9 @@ lizard_ast_node_t *lizard_make_bool(lizard_heap_t *heap, bool value) {
 
 lizard_ast_node_t *lizard_make_nil(lizard_heap_t *heap) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                LIZARD_GC_OBJECT_AST_NODE,
+                                LIZARD_OBJECT_TRACE_AST);
   node->type = AST_NIL;
   return node;
 }
@@ -154,7 +204,9 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,
                                          lizard_ast_node_t *transformer) {
   lizard_ast_node_t *node;
-  node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                LIZARD_GC_OBJECT_AST_NODE,
+                                LIZARD_OBJECT_TRACE_AST);
   node->type = AST_MACRO;
   node->data.macro_def.variable = name;
   node->data.macro_def.transformer = transformer;
@@ -163,14 +215,20 @@ lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
 
 lizard_ast_node_t *lizard_make_error(lizard_heap_t *heap, int error_code) {
   lizard_ast_list_node_t *msg_node;
-  lizard_ast_node_t *node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *node = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                LIZARD_GC_OBJECT_AST_NODE,
+                                LIZARD_OBJECT_TRACE_AST);
   node->type = AST_ERROR;
   node->data.error.code = error_code;
   node->data.error.data =
       list_create_alloc(lizard_heap_alloc, lizard_heap_free);
 
-  msg_node = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
-  msg_node->ast = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  msg_node = lizard_heap_alloc_tagged(sizeof(lizard_ast_list_node_t),
+                                     LIZARD_GC_OBJECT_AST_LIST_NODE,
+                                     LIZARD_OBJECT_TRACE_LIST);
+  msg_node->ast = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                          LIZARD_GC_OBJECT_AST_NODE,
+                                          LIZARD_OBJECT_TRACE_AST);
   msg_node->ast->type = AST_STRING;
   msg_node->ast->data.string =
       lizard_error_messages[LIZARD_LANG_EN][error_code];
@@ -191,7 +249,9 @@ lizard_ast_node_t *lizard_make_continuation(
     lizard_ast_node_t *(*current_cont)(lizard_ast_node_t *, lizard_env_t *,
                                        lizard_heap_t *),
     lizard_heap_t *heap) {
-  lizard_ast_node_t *cont_obj = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  lizard_ast_node_t *cont_obj = lizard_heap_alloc_tagged(
+      sizeof(lizard_ast_node_t), LIZARD_GC_OBJECT_AST_NODE,
+      LIZARD_OBJECT_TRACE_AST);
   cont_obj->type = AST_CONTINUATION;
   cont_obj->data.continuation.captured_cont = current_cont;
   return cont_obj;
