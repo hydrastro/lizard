@@ -105,6 +105,8 @@
 #include "runtime.h"
 #include <string.h>
 #include <stdlib.h>  /* malloc/free for H.1 HIT registry */
+#include "tt_glue.h"
+#include "tt_lattice.h"
 
 /* ----- Flag system --------------------------------------------------- */
 
@@ -287,22 +289,13 @@ static lizard_ast_node_t *make_xport(lizard_heap_t *heap,
                                      lizard_ast_node_t *path,
                                      lizard_ast_node_t *value);
 static lizard_ast_node_t *make_universe(lizard_heap_t *heap, long level);
-static lizard_ast_node_t *make_u_suc(lizard_heap_t *heap, lizard_ast_node_t *u);
-static lizard_ast_node_t *make_u_max(lizard_heap_t *heap,
-                                     lizard_ast_node_t *u,
-                                     lizard_ast_node_t *v);
-static lizard_ast_node_t *make_u_min(lizard_heap_t *heap,
-                                     lizard_ast_node_t *u,
-                                     lizard_ast_node_t *v);
+
+
+
 /* Phase L.4 — couniverse helpers. */
-static lizard_ast_node_t *make_co_max(lizard_heap_t *heap,
-                                      lizard_ast_node_t *u,
-                                      lizard_ast_node_t *v);
-static lizard_ast_node_t *make_co_min(lizard_heap_t *heap,
-                                      lizard_ast_node_t *u,
-                                      lizard_ast_node_t *v);
-static lizard_ast_node_t *make_couniverse_set(lizard_heap_t *heap,
-                                              long *dims, long count);
+
+
+
 /* Cubical-layer helpers. */
 static lizard_ast_node_t *make_i0(lizard_heap_t *heap);
 static lizard_ast_node_t *make_i1(lizard_heap_t *heap);
@@ -351,35 +344,17 @@ static lizard_ast_node_t *make_comp(lizard_heap_t *heap,
                                     lizard_ast_node_t *partial,
                                     lizard_ast_node_t *base);
 /* Equivalence, Glue, ua helpers (Turns 9 & 10). */
-static lizard_ast_node_t *make_equiv_type(lizard_heap_t *heap,
-                                          lizard_ast_node_t *A,
-                                          lizard_ast_node_t *B);
-static lizard_ast_node_t *make_id_equiv(lizard_heap_t *heap,
-                                        lizard_ast_node_t *A);
-static lizard_ast_node_t *make_equiv_fun(lizard_heap_t *heap,
-                                         lizard_ast_node_t *e);
-static lizard_ast_node_t *make_equiv_inv(lizard_heap_t *heap,
-                                         lizard_ast_node_t *e);
-static lizard_ast_node_t *make_glue(lizard_heap_t *heap,
-                                    lizard_ast_node_t *A,
-                                    lizard_ast_node_t *face,
-                                    lizard_ast_node_t *T,
-                                    lizard_ast_node_t *e);
-static lizard_ast_node_t *make_glue_intro(lizard_heap_t *heap,
-                                          lizard_ast_node_t *face,
-                                          lizard_ast_node_t *t,
-                                          lizard_ast_node_t *a);
-static lizard_ast_node_t *make_unglue(lizard_heap_t *heap,
-                                      lizard_ast_node_t *e,
-                                      lizard_ast_node_t *g);
-static lizard_ast_node_t *make_ua(lizard_heap_t *heap,
-                                  lizard_ast_node_t *e);
+
+
+
+
+
+
+
+
 /* System helpers (Turn 11). */
-static lizard_ast_node_t *make_system_nil(lizard_heap_t *heap);
-static lizard_ast_node_t *make_system_cons(lizard_heap_t *heap,
-                                           lizard_ast_node_t *face,
-                                           lizard_ast_node_t *value,
-                                           lizard_ast_node_t *next);
+
+
 
 /* ----- Structural equality (no alpha) -------------------------------- */
 
@@ -1210,19 +1185,19 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
   case AST_TT_U_SUC: {
     lizard_ast_node_t *u = subst_rec(t->data.tt_u_suc.operand, x, v, heap);
     if (u == t->data.tt_u_suc.operand) return t;
-    return make_u_suc(heap, u);
+    return lizard_tt_make_u_suc(heap, u);
   }
   case AST_TT_U_MAX: {
     lizard_ast_node_t *l = subst_rec(t->data.tt_u_max.left, x, v, heap);
     lizard_ast_node_t *r = subst_rec(t->data.tt_u_max.right, x, v, heap);
     if (l == t->data.tt_u_max.left && r == t->data.tt_u_max.right) return t;
-    return make_u_max(heap, l, r);
+    return lizard_tt_make_u_max(heap, l, r);
   }
   case AST_TT_U_MIN: {
     lizard_ast_node_t *l = subst_rec(t->data.tt_u_min.left, x, v, heap);
     lizard_ast_node_t *r = subst_rec(t->data.tt_u_min.right, x, v, heap);
     if (l == t->data.tt_u_min.left && r == t->data.tt_u_min.right) return t;
-    return make_u_min(heap, l, r);
+    return lizard_tt_make_u_min(heap, l, r);
   }
   /* Cubical nodes. Interval vars are a separate namespace from term
    * vars, so term-level substitution doesn't affect them. */
@@ -1320,22 +1295,22 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *A = subst_rec(t->data.tt_equiv_type.domain, x, v, heap);
     lizard_ast_node_t *B = subst_rec(t->data.tt_equiv_type.codomain, x, v, heap);
     if (A == t->data.tt_equiv_type.domain && B == t->data.tt_equiv_type.codomain) return t;
-    return make_equiv_type(heap, A, B);
+    return lizard_tt_make_equiv_type(heap, A, B);
   }
   case AST_TT_ID_EQUIV: {
     lizard_ast_node_t *o = subst_rec(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_id_equiv(heap, o);
+    return lizard_tt_make_id_equiv(heap, o);
   }
   case AST_TT_EQUIV_FUN: {
     lizard_ast_node_t *o = subst_rec(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_equiv_fun(heap, o);
+    return lizard_tt_make_equiv_fun(heap, o);
   }
   case AST_TT_EQUIV_INV: {
     lizard_ast_node_t *o = subst_rec(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_equiv_inv(heap, o);
+    return lizard_tt_make_equiv_inv(heap, o);
   }
   case AST_TT_GLUE: {
     lizard_ast_node_t *A = subst_rec(t->data.tt_glue.base, x, v, heap);
@@ -1344,7 +1319,7 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *e = subst_rec(t->data.tt_glue.equiv, x, v, heap);
     if (A == t->data.tt_glue.base && f == t->data.tt_glue.face &&
         T == t->data.tt_glue.t && e == t->data.tt_glue.equiv) return t;
-    return make_glue(heap, A, f, T, e);
+    return lizard_tt_make_glue(heap, A, f, T, e);
   }
   case AST_TT_GLUE_INTRO: {
     lizard_ast_node_t *f = subst_rec(t->data.tt_glue_intro.face, x, v, heap);
@@ -1352,18 +1327,18 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *aval = subst_rec(t->data.tt_glue_intro.a, x, v, heap);
     if (f == t->data.tt_glue_intro.face && tval == t->data.tt_glue_intro.t &&
         aval == t->data.tt_glue_intro.a) return t;
-    return make_glue_intro(heap, f, tval, aval);
+    return lizard_tt_make_glue_intro(heap, f, tval, aval);
   }
   case AST_TT_UNGLUE: {
     lizard_ast_node_t *e = subst_rec(t->data.tt_unglue.equiv, x, v, heap);
     lizard_ast_node_t *g = subst_rec(t->data.tt_unglue.target, x, v, heap);
     if (e == t->data.tt_unglue.equiv && g == t->data.tt_unglue.target) return t;
-    return make_unglue(heap, e, g);
+    return lizard_tt_make_unglue(heap, e, g);
   }
   case AST_TT_UA: {
     lizard_ast_node_t *e = subst_rec(t->data.tt_ua.equiv, x, v, heap);
     if (e == t->data.tt_ua.equiv) return t;
-    return make_ua(heap, e);
+    return lizard_tt_make_ua(heap, e);
   }
   case AST_TT_SYSTEM_NIL:
     return t;
@@ -1373,7 +1348,7 @@ static lizard_ast_node_t *subst_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *nx = subst_rec(t->data.tt_system_cons.next, x, v, heap);
     if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
         nx == t->data.tt_system_cons.next) return t;
-    return make_system_cons(heap, f, val, nx);
+    return lizard_tt_make_system_cons(heap, f, val, nx);
   }
   case AST_TT_UNIT:
   case AST_TT_TT:
@@ -1614,22 +1589,22 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
     lizard_ast_node_t *A = subst_interval(t->data.tt_equiv_type.domain, x, v, heap);
     lizard_ast_node_t *B = subst_interval(t->data.tt_equiv_type.codomain, x, v, heap);
     if (A == t->data.tt_equiv_type.domain && B == t->data.tt_equiv_type.codomain) return t;
-    return make_equiv_type(heap, A, B);
+    return lizard_tt_make_equiv_type(heap, A, B);
   }
   case AST_TT_ID_EQUIV: {
     lizard_ast_node_t *o = subst_interval(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_id_equiv(heap, o);
+    return lizard_tt_make_id_equiv(heap, o);
   }
   case AST_TT_EQUIV_FUN: {
     lizard_ast_node_t *o = subst_interval(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_equiv_fun(heap, o);
+    return lizard_tt_make_equiv_fun(heap, o);
   }
   case AST_TT_EQUIV_INV: {
     lizard_ast_node_t *o = subst_interval(t->data.tt_equiv_op.operand, x, v, heap);
     if (o == t->data.tt_equiv_op.operand) return t;
-    return make_equiv_inv(heap, o);
+    return lizard_tt_make_equiv_inv(heap, o);
   }
   case AST_TT_GLUE: {
     lizard_ast_node_t *A = subst_interval(t->data.tt_glue.base, x, v, heap);
@@ -1638,7 +1613,7 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
     lizard_ast_node_t *e = subst_interval(t->data.tt_glue.equiv, x, v, heap);
     if (A == t->data.tt_glue.base && f == t->data.tt_glue.face &&
         T == t->data.tt_glue.t && e == t->data.tt_glue.equiv) return t;
-    return make_glue(heap, A, f, T, e);
+    return lizard_tt_make_glue(heap, A, f, T, e);
   }
   case AST_TT_GLUE_INTRO: {
     lizard_ast_node_t *f = subst_interval(t->data.tt_glue_intro.face, x, v, heap);
@@ -1646,18 +1621,18 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
     lizard_ast_node_t *aval = subst_interval(t->data.tt_glue_intro.a, x, v, heap);
     if (f == t->data.tt_glue_intro.face && tval == t->data.tt_glue_intro.t &&
         aval == t->data.tt_glue_intro.a) return t;
-    return make_glue_intro(heap, f, tval, aval);
+    return lizard_tt_make_glue_intro(heap, f, tval, aval);
   }
   case AST_TT_UNGLUE: {
     lizard_ast_node_t *e = subst_interval(t->data.tt_unglue.equiv, x, v, heap);
     lizard_ast_node_t *g = subst_interval(t->data.tt_unglue.target, x, v, heap);
     if (e == t->data.tt_unglue.equiv && g == t->data.tt_unglue.target) return t;
-    return make_unglue(heap, e, g);
+    return lizard_tt_make_unglue(heap, e, g);
   }
   case AST_TT_UA: {
     lizard_ast_node_t *e = subst_interval(t->data.tt_ua.equiv, x, v, heap);
     if (e == t->data.tt_ua.equiv) return t;
-    return make_ua(heap, e);
+    return lizard_tt_make_ua(heap, e);
   }
   case AST_TT_SYSTEM_NIL:
     return t;
@@ -1667,7 +1642,7 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
     lizard_ast_node_t *nx = subst_interval(t->data.tt_system_cons.next, x, v, heap);
     if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
         nx == t->data.tt_system_cons.next) return t;
-    return make_system_cons(heap, f, val, nx);
+    return lizard_tt_make_system_cons(heap, f, val, nx);
   }
   case AST_TT_LAMBDA: {
     lizard_ast_node_t *body = subst_interval(t->data.tt_lambda.body, x, v, heap);
@@ -3071,43 +3046,14 @@ static lizard_ast_node_t *make_universe(lizard_heap_t *heap, long level) {
 lizard_ast_node_t *lizard_tt_make_universe(lizard_heap_t *heap, long level) {
   return make_universe(heap, level);
 }
-static lizard_ast_node_t *make_u_suc(lizard_heap_t *heap,
-                                     lizard_ast_node_t *u) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_U_SUC;
-  n->data.tt_u_suc.operand = u;
-  return n;
-}
-static lizard_ast_node_t *make_u_max(lizard_heap_t *heap,
-                                     lizard_ast_node_t *u,
-                                     lizard_ast_node_t *v) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_U_MAX;
-  n->data.tt_u_max.left = u;
-  n->data.tt_u_max.right = v;
-  return n;
-}
-static lizard_ast_node_t *make_u_min(lizard_heap_t *heap,
-                                     lizard_ast_node_t *u,
-                                     lizard_ast_node_t *v) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_U_MIN;
-  n->data.tt_u_min.left = u;
-  n->data.tt_u_min.right = v;
-  return n;
-}
+
+
+
 
 /* Build a (U-set ...) node from a sorted, deduplicated dims array.
  * Phase L.2 helper. The caller must guarantee the array is sorted
  * and dedup'd; we don't re-sort here. count==0 is the empty set. */
-static lizard_ast_node_t *make_universe_set(lizard_heap_t *heap,
-                                            long *dims, long count) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_UNIVERSE_SET;
-  n->data.tt_universe_set.dims = dims;
-  n->data.tt_universe_set.count = count;
-  return n;
-}
+
 
 /* Sorted-array set union (Phase L.2). Output is sorted, deduped. */
 static lizard_ast_node_t *universe_set_union(lizard_heap_t *heap,
@@ -3117,7 +3063,7 @@ static lizard_ast_node_t *universe_set_union(lizard_heap_t *heap,
   long *out;
   na = a->data.tt_universe_set.count;
   nb = b->data.tt_universe_set.count;
-  if (na + nb == 0) return make_universe_set(heap, NULL, 0);
+  if (na + nb == 0) return lizard_tt_make_universe_set(heap, NULL, 0);
   out = lizard_heap_alloc(sizeof(long) * (size_t)(na + nb));
   ai = 0; bi = 0; oi = 0;
   while (ai < na && bi < nb) {
@@ -3129,7 +3075,7 @@ static lizard_ast_node_t *universe_set_union(lizard_heap_t *heap,
   }
   while (ai < na) out[oi++] = a->data.tt_universe_set.dims[ai++];
   while (bi < nb) out[oi++] = b->data.tt_universe_set.dims[bi++];
-  return make_universe_set(heap, out, oi);
+  return lizard_tt_make_universe_set(heap, out, oi);
 }
 
 /* Sorted-array set intersection (Phase L.2). */
@@ -3141,7 +3087,7 @@ static lizard_ast_node_t *universe_set_intersect(lizard_heap_t *heap,
   na = a->data.tt_universe_set.count;
   nb = b->data.tt_universe_set.count;
   smaller = (na < nb) ? na : nb;
-  if (smaller == 0) return make_universe_set(heap, NULL, 0);
+  if (smaller == 0) return lizard_tt_make_universe_set(heap, NULL, 0);
   out = lizard_heap_alloc(sizeof(long) * (size_t)smaller);
   ai = 0; bi = 0; oi = 0;
   while (ai < na && bi < nb) {
@@ -3151,8 +3097,8 @@ static lizard_ast_node_t *universe_set_intersect(lizard_heap_t *heap,
     else if (av > bv) bi++;
     else { out[oi++] = av; ai++; bi++; }
   }
-  if (oi == 0) return make_universe_set(heap, NULL, 0);
-  return make_universe_set(heap, out, oi);
+  if (oi == 0) return lizard_tt_make_universe_set(heap, NULL, 0);
+  return lizard_tt_make_universe_set(heap, out, oi);
 }
 
 /* Subset test: is A's dim set ⊆ B's? Both must be UNIVERSE_SET.
@@ -3179,32 +3125,9 @@ static int universe_set_subset(lizard_ast_node_t *a, lizard_ast_node_t *b) {
  * on the tt_couniverse_set field. The couniverse lattice is its own
  * lattice — no automatic conversion to/from universe-set.
  */
-static lizard_ast_node_t *make_couniverse_set(lizard_heap_t *heap,
-                                              long *dims, long count) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_COUNIVERSE_SET;
-  n->data.tt_couniverse_set.dims = dims;
-  n->data.tt_couniverse_set.count = count;
-  return n;
-}
-static lizard_ast_node_t *make_co_max(lizard_heap_t *heap,
-                                      lizard_ast_node_t *u,
-                                      lizard_ast_node_t *v) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_CO_MAX;
-  n->data.tt_co_max.left = u;
-  n->data.tt_co_max.right = v;
-  return n;
-}
-static lizard_ast_node_t *make_co_min(lizard_heap_t *heap,
-                                      lizard_ast_node_t *u,
-                                      lizard_ast_node_t *v) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_CO_MIN;
-  n->data.tt_co_min.left = u;
-  n->data.tt_co_min.right = v;
-  return n;
-}
+
+
+
 static lizard_ast_node_t *couniverse_set_union(lizard_heap_t *heap,
                                                lizard_ast_node_t *a,
                                                lizard_ast_node_t *b) {
@@ -3212,7 +3135,7 @@ static lizard_ast_node_t *couniverse_set_union(lizard_heap_t *heap,
   long *out;
   na = a->data.tt_couniverse_set.count;
   nb = b->data.tt_couniverse_set.count;
-  if (na + nb == 0) return make_couniverse_set(heap, NULL, 0);
+  if (na + nb == 0) return lizard_tt_make_couniverse_set(heap, NULL, 0);
   out = lizard_heap_alloc(sizeof(long) * (size_t)(na + nb));
   ai = 0; bi = 0; oi = 0;
   while (ai < na && bi < nb) {
@@ -3224,7 +3147,7 @@ static lizard_ast_node_t *couniverse_set_union(lizard_heap_t *heap,
   }
   while (ai < na) out[oi++] = a->data.tt_couniverse_set.dims[ai++];
   while (bi < nb) out[oi++] = b->data.tt_couniverse_set.dims[bi++];
-  return make_couniverse_set(heap, out, oi);
+  return lizard_tt_make_couniverse_set(heap, out, oi);
 }
 static lizard_ast_node_t *couniverse_set_intersect(lizard_heap_t *heap,
                                                    lizard_ast_node_t *a,
@@ -3234,7 +3157,7 @@ static lizard_ast_node_t *couniverse_set_intersect(lizard_heap_t *heap,
   na = a->data.tt_couniverse_set.count;
   nb = b->data.tt_couniverse_set.count;
   smaller = (na < nb) ? na : nb;
-  if (smaller == 0) return make_couniverse_set(heap, NULL, 0);
+  if (smaller == 0) return lizard_tt_make_couniverse_set(heap, NULL, 0);
   out = lizard_heap_alloc(sizeof(long) * (size_t)smaller);
   ai = 0; bi = 0; oi = 0;
   while (ai < na && bi < nb) {
@@ -3244,8 +3167,8 @@ static lizard_ast_node_t *couniverse_set_intersect(lizard_heap_t *heap,
     else if (av > bv) bi++;
     else { out[oi++] = av; ai++; bi++; }
   }
-  if (oi == 0) return make_couniverse_set(heap, NULL, 0);
-  return make_couniverse_set(heap, out, oi);
+  if (oi == 0) return lizard_tt_make_couniverse_set(heap, NULL, 0);
+  return lizard_tt_make_couniverse_set(heap, out, oi);
 }
 static int couniverse_set_subset(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   long ai, bi, na, nb;
@@ -3401,93 +3324,17 @@ static lizard_ast_node_t *make_comp(lizard_heap_t *heap,
   return n;
 }
 
-static lizard_ast_node_t *make_equiv_type(lizard_heap_t *heap,
-                                          lizard_ast_node_t *A,
-                                          lizard_ast_node_t *B) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_EQUIV_TYPE;
-  n->data.tt_equiv_type.domain = A;
-  n->data.tt_equiv_type.codomain = B;
-  return n;
-}
-static lizard_ast_node_t *make_id_equiv(lizard_heap_t *heap,
-                                        lizard_ast_node_t *A) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_ID_EQUIV;
-  n->data.tt_equiv_op.operand = A;
-  return n;
-}
-static lizard_ast_node_t *make_equiv_fun(lizard_heap_t *heap,
-                                         lizard_ast_node_t *e) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_EQUIV_FUN;
-  n->data.tt_equiv_op.operand = e;
-  return n;
-}
-static lizard_ast_node_t *make_equiv_inv(lizard_heap_t *heap,
-                                         lizard_ast_node_t *e) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_EQUIV_INV;
-  n->data.tt_equiv_op.operand = e;
-  return n;
-}
-static lizard_ast_node_t *make_glue(lizard_heap_t *heap,
-                                    lizard_ast_node_t *A,
-                                    lizard_ast_node_t *face,
-                                    lizard_ast_node_t *T,
-                                    lizard_ast_node_t *e) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_GLUE;
-  n->data.tt_glue.base = A;
-  n->data.tt_glue.face = face;
-  n->data.tt_glue.t = T;
-  n->data.tt_glue.equiv = e;
-  return n;
-}
-static lizard_ast_node_t *make_glue_intro(lizard_heap_t *heap,
-                                          lizard_ast_node_t *face,
-                                          lizard_ast_node_t *t,
-                                          lizard_ast_node_t *a) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_GLUE_INTRO;
-  n->data.tt_glue_intro.face = face;
-  n->data.tt_glue_intro.t = t;
-  n->data.tt_glue_intro.a = a;
-  return n;
-}
-static lizard_ast_node_t *make_unglue(lizard_heap_t *heap,
-                                      lizard_ast_node_t *e,
-                                      lizard_ast_node_t *g) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_UNGLUE;
-  n->data.tt_unglue.equiv = e;
-  n->data.tt_unglue.target = g;
-  return n;
-}
-static lizard_ast_node_t *make_ua(lizard_heap_t *heap,
-                                  lizard_ast_node_t *e) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_UA;
-  n->data.tt_ua.equiv = e;
-  return n;
-}
 
-static lizard_ast_node_t *make_system_nil(lizard_heap_t *heap) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_SYSTEM_NIL;
-  return n;
-}
-static lizard_ast_node_t *make_system_cons(lizard_heap_t *heap,
-                                           lizard_ast_node_t *face,
-                                           lizard_ast_node_t *value,
-                                           lizard_ast_node_t *next) {
-  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_TT_SYSTEM_CONS;
-  n->data.tt_system_cons.face = face;
-  n->data.tt_system_cons.value = value;
-  n->data.tt_system_cons.next = next;
-  return n;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* ----- Memoization table -------------------------------------------- */
 
@@ -4124,35 +3971,35 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
   case AST_TT_U_SUC: {
     lizard_ast_node_t *u = normalize_rec(t->data.tt_u_suc.operand, heap, memo);
     if (u == t->data.tt_u_suc.operand) result = t;
-    else result = make_u_suc(heap, u);
+    else result = lizard_tt_make_u_suc(heap, u);
     break;
   }
   case AST_TT_U_MAX: {
     lizard_ast_node_t *l = normalize_rec(t->data.tt_u_max.left, heap, memo);
     lizard_ast_node_t *r = normalize_rec(t->data.tt_u_max.right, heap, memo);
     if (l == t->data.tt_u_max.left && r == t->data.tt_u_max.right) result = t;
-    else result = make_u_max(heap, l, r);
+    else result = lizard_tt_make_u_max(heap, l, r);
     break;
   }
   case AST_TT_U_MIN: {
     lizard_ast_node_t *l = normalize_rec(t->data.tt_u_min.left, heap, memo);
     lizard_ast_node_t *r = normalize_rec(t->data.tt_u_min.right, heap, memo);
     if (l == t->data.tt_u_min.left && r == t->data.tt_u_min.right) result = t;
-    else result = make_u_min(heap, l, r);
+    else result = lizard_tt_make_u_min(heap, l, r);
     break;
   }
   case AST_TT_CO_MAX: {
     lizard_ast_node_t *l = normalize_rec(t->data.tt_co_max.left, heap, memo);
     lizard_ast_node_t *r = normalize_rec(t->data.tt_co_max.right, heap, memo);
     if (l == t->data.tt_co_max.left && r == t->data.tt_co_max.right) result = t;
-    else result = make_co_max(heap, l, r);
+    else result = lizard_tt_make_co_max(heap, l, r);
     break;
   }
   case AST_TT_CO_MIN: {
     lizard_ast_node_t *l = normalize_rec(t->data.tt_co_min.left, heap, memo);
     lizard_ast_node_t *r = normalize_rec(t->data.tt_co_min.right, heap, memo);
     if (l == t->data.tt_co_min.left && r == t->data.tt_co_min.right) result = t;
-    else result = make_co_min(heap, l, r);
+    else result = lizard_tt_make_co_min(heap, l, r);
     break;
   }
   case AST_TT_INTERVAL:
@@ -4260,25 +4107,25 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *A = normalize_rec(t->data.tt_equiv_type.domain, heap, memo);
     lizard_ast_node_t *B = normalize_rec(t->data.tt_equiv_type.codomain, heap, memo);
     if (A == t->data.tt_equiv_type.domain && B == t->data.tt_equiv_type.codomain) result = t;
-    else result = make_equiv_type(heap, A, B);
+    else result = lizard_tt_make_equiv_type(heap, A, B);
     break;
   }
   case AST_TT_ID_EQUIV: {
     lizard_ast_node_t *o = normalize_rec(t->data.tt_equiv_op.operand, heap, memo);
     if (o == t->data.tt_equiv_op.operand) result = t;
-    else result = make_id_equiv(heap, o);
+    else result = lizard_tt_make_id_equiv(heap, o);
     break;
   }
   case AST_TT_EQUIV_FUN: {
     lizard_ast_node_t *o = normalize_rec(t->data.tt_equiv_op.operand, heap, memo);
     if (o == t->data.tt_equiv_op.operand) result = t;
-    else result = make_equiv_fun(heap, o);
+    else result = lizard_tt_make_equiv_fun(heap, o);
     break;
   }
   case AST_TT_EQUIV_INV: {
     lizard_ast_node_t *o = normalize_rec(t->data.tt_equiv_op.operand, heap, memo);
     if (o == t->data.tt_equiv_op.operand) result = t;
-    else result = make_equiv_inv(heap, o);
+    else result = lizard_tt_make_equiv_inv(heap, o);
     break;
   }
   case AST_TT_GLUE: {
@@ -4288,7 +4135,7 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *e = normalize_rec(t->data.tt_glue.equiv, heap, memo);
     if (A == t->data.tt_glue.base && f == t->data.tt_glue.face &&
         T == t->data.tt_glue.t && e == t->data.tt_glue.equiv) result = t;
-    else result = make_glue(heap, A, f, T, e);
+    else result = lizard_tt_make_glue(heap, A, f, T, e);
     break;
   }
   case AST_TT_GLUE_INTRO: {
@@ -4297,20 +4144,20 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *aval = normalize_rec(t->data.tt_glue_intro.a, heap, memo);
     if (f == t->data.tt_glue_intro.face && tval == t->data.tt_glue_intro.t &&
         aval == t->data.tt_glue_intro.a) result = t;
-    else result = make_glue_intro(heap, f, tval, aval);
+    else result = lizard_tt_make_glue_intro(heap, f, tval, aval);
     break;
   }
   case AST_TT_UNGLUE: {
     lizard_ast_node_t *e = normalize_rec(t->data.tt_unglue.equiv, heap, memo);
     lizard_ast_node_t *g = normalize_rec(t->data.tt_unglue.target, heap, memo);
     if (e == t->data.tt_unglue.equiv && g == t->data.tt_unglue.target) result = t;
-    else result = make_unglue(heap, e, g);
+    else result = lizard_tt_make_unglue(heap, e, g);
     break;
   }
   case AST_TT_UA: {
     lizard_ast_node_t *e = normalize_rec(t->data.tt_ua.equiv, heap, memo);
     if (e == t->data.tt_ua.equiv) result = t;
-    else result = make_ua(heap, e);
+    else result = lizard_tt_make_ua(heap, e);
     break;
   }
   case AST_TT_SYSTEM_NIL:
@@ -4322,7 +4169,7 @@ static lizard_ast_node_t *normalize_rec(lizard_ast_node_t *t,
     lizard_ast_node_t *nx = normalize_rec(t->data.tt_system_cons.next, heap, memo);
     if (f == t->data.tt_system_cons.face && val == t->data.tt_system_cons.value &&
         nx == t->data.tt_system_cons.next) result = t;
-    else result = make_system_cons(heap, f, val, nx);
+    else result = lizard_tt_make_system_cons(heap, f, val, nx);
     break;
   }
   case AST_TT_UNIT:
@@ -4816,7 +4663,7 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       long *dim = lizard_heap_alloc(sizeof(long));
       lizard_ast_node_t *lift;
       dim[0] = l->data.tt_universe.level;
-      lift = make_universe_set(heap, dim, 1);
+      lift = lizard_tt_make_universe_set(heap, dim, 1);
       *changed = 1;
       return universe_set_union(heap, lift, r);
     }
@@ -4825,7 +4672,7 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       long *dim = lizard_heap_alloc(sizeof(long));
       lizard_ast_node_t *lift;
       dim[0] = r->data.tt_universe.level;
-      lift = make_universe_set(heap, dim, 1);
+      lift = lizard_tt_make_universe_set(heap, dim, 1);
       *changed = 1;
       return universe_set_union(heap, l, lift);
     }
@@ -4899,7 +4746,7 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       long *dim = lizard_heap_alloc(sizeof(long));
       lizard_ast_node_t *lift;
       dim[0] = l->data.tt_universe.level;
-      lift = make_universe_set(heap, dim, 1);
+      lift = lizard_tt_make_universe_set(heap, dim, 1);
       *changed = 1;
       return universe_set_intersect(heap, lift, r);
     }
@@ -4908,7 +4755,7 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       long *dim = lizard_heap_alloc(sizeof(long));
       lizard_ast_node_t *lift;
       dim[0] = r->data.tt_universe.level;
-      lift = make_universe_set(heap, dim, 1);
+      lift = lizard_tt_make_universe_set(heap, dim, 1);
       *changed = 1;
       return universe_set_intersect(heap, l, lift);
     }
@@ -5541,11 +5388,11 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
         k_eq_i1 = make_f_eq(heap, k_interval, make_i1(heap));
         /* system-cons (k = i0) <i>a (system-cons (k = i1) <i>b
          *  (system-cons φ first_value system-nil)) */
-        new_partial = make_system_cons(heap, k_eq_i0,
+        new_partial = lizard_tt_make_system_cons(heap, k_eq_i0,
                                        make_path_abs(heap, i_binder, a),
-          make_system_cons(heap, k_eq_i1,
+          lizard_tt_make_system_cons(heap, k_eq_i1,
                            make_path_abs(heap, i_binder, b),
-            make_system_cons(heap, face, first_value, make_system_nil(heap))));
+            lizard_tt_make_system_cons(heap, face, first_value, lizard_tt_make_system_nil(heap))));
       }
       /* new_base = (u0 @ k) */
       new_base = make_path_app(heap, base, k_interval);
@@ -5596,11 +5443,11 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
       /* unglued_partial = <j> unglue e (u @ j) */
       {
         lizard_ast_node_t *u_j = make_path_app(heap, partial, j_var);
-        lizard_ast_node_t *unglue_uj = make_unglue(heap, e, u_j);
+        lizard_ast_node_t *unglue_uj = lizard_tt_make_unglue(heap, e, u_j);
         unglued_partial = make_path_abs(heap, i_binder, unglue_uj);
       }
       /* unglued_base = unglue e u0 */
-      unglued_base = make_unglue(heap, e, base);
+      unglued_base = lizard_tt_make_unglue(heap, e, base);
       /* Comp in A line */
       A_comp = make_comp(heap, AST_TT_COMP, A_family, face,
                          unglued_partial, unglued_base);
@@ -5608,14 +5455,14 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
        * base is what we get from running u0 through equiv-fun
        * (since u0 is in Glue and on φ we need T). */
       {
-        lizard_ast_node_t *e_fun = make_equiv_fun(heap, e);
+        lizard_ast_node_t *e_fun = lizard_tt_make_equiv_fun(heap, e);
         lizard_ast_node_t *base_as_T = make_app(heap, e_fun, base);
         T_comp = make_comp(heap, AST_TT_COMP, T_family, face,
                            partial, base_as_T);
       }
       /* glue-intro φ T_comp A_comp */
       *changed = 1;
-      return make_glue_intro(heap, glue_face, T_comp, A_comp);
+      return lizard_tt_make_glue_intro(heap, glue_face, T_comp, A_comp);
     }
 
     break;
@@ -5644,7 +5491,7 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
      * also keeps that helper alive for downstream comp rules. */
     if ((partial->type == AST_TT_SYSTEM_NIL || face->type == AST_TT_F0) &&
         lizard_tt_flag_get("reduce-system-nil-comp")) {
-      (void)make_system_nil; /* keep symbol referenced */
+      (void)lizard_tt_make_system_nil; /* keep symbol referenced */
       *changed = 1;
       return base;
     }
@@ -5723,9 +5570,9 @@ static lizard_ast_node_t *try_head_rewrites(lizard_ast_node_t *t,
         lizard_ast_node_t *k_eq_i0 = make_f_eq(heap, k_interval, make_i0(heap));
         lizard_ast_node_t *base_abs = make_path_abs(heap, i_binder, base);
         new_system =
-            make_system_cons(heap, k_eq_i0, base_abs,
-              make_system_cons(heap, face, narrowed_partial,
-                make_system_nil(heap)));
+            lizard_tt_make_system_cons(heap, k_eq_i0, base_abs,
+              lizard_tt_make_system_cons(heap, face, narrowed_partial,
+                lizard_tt_make_system_nil(heap)));
       }
       inner_comp = make_comp(heap, AST_TT_COMP, narrowed_family, face,
                              new_system, base);

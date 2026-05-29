@@ -62,6 +62,29 @@ and type-theory references.
   `tt_glue.c`/`tt_lattice.c`.  Worth collapsing, but each helper needs
   byte-identity verification before repointing — the cubical core is delicate.
 
+
+### Phase 3B progress, continued
+
+- Collapsed 17 byte-identical static `make_*` helpers in `tt_equality.c`
+  (`make_glue`/`make_glue_intro`/`make_unglue`/`make_ua`/`make_equiv_*`/
+  `make_id_equiv`/`make_system_cons`/`make_system_nil`/`make_u_suc`/`make_u_max`/
+  `make_u_min`/`make_universe_set`/`make_couniverse_set`/`make_co_max`/
+  `make_co_min`) onto the compiled `lizard_tt_make_*` publics in
+  `tt_glue.c`/`tt_lattice.c`.  `tt_equality.c` 6972 → 6819, cubical tests green.
+- Removed the entire stale, uncompiled `prims_*.c` family (`prims_tt.c` 2756L,
+  `prims_collections`, `prims_hits`, `prims_modules`, `prims_persistent`,
+  `prims_lists`, `prims_logic`, `prims_trunc`, `prims_theory_ext`,
+  `prims_bytecode`, `prims_gc`, `prims_syntax`, `prims_common.c/.h`) — ~5.46k
+  lines of orphaned duplicate code.  No compiled TU referenced any of them.
+- **Why the real `primitives.c` split is non-trivial (verified by attempt):**
+  `prims_tt.c` was a *complete, byte-identical* copy of the 120 explicit `tt`
+  primitives, but the `tt` surface in `primitives.c` is mostly *macro-generated*
+  — `TT_PREDICATE`, `TT_ACCESSOR`, and `MAKE_COMP_FAMILY` (~190 invocations)
+  interleaved with non-`tt` `logic_*` primitives.  A clean extraction must move
+  the macro layer + ~190 invocations as a unit and disentangle the interleaved
+  `logic_*` code; it cannot be done by reviving a parked copy.  That is the
+  bounded-but-careful next step for #7 (best done in Claude Code).
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,
