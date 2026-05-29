@@ -82,8 +82,32 @@ and type-theory references.
   — `TT_PREDICATE`, `TT_ACCESSOR`, and `MAKE_COMP_FAMILY` (~190 invocations)
   interleaved with non-`tt` `logic_*` primitives.  A clean extraction must move
   the macro layer + ~190 invocations as a unit and disentangle the interleaved
-  `logic_*` code; it cannot be done by reviving a parked copy.  That is the
-  bounded-but-careful next step for #7 (best done in Claude Code).
+  `logic_*` code; it cannot be done by reviving a parked copy.
+
+
+### Phase 3B progress — `primitives.c` tt split COMPLETED
+
+- Performed the real #7 split: extracted the entire type-theory / cubical
+  surface out of `primitives.c` into a new compiled module `src/prims_tt.c`.
+  A pattern-driven, brace/paren-aware extractor moved all of it as a unit —
+  the 120 explicit `lizard_primitive_tt_*` functions, the three generator
+  macros (`TT_PREDICATE`/`TT_ACCESSOR`/`MAKE_COMP_FAMILY`) and their ~190
+  invocations, and the tt-only helpers (`parse_dim_args`,
+  `lizard_make_nullary_tt`, `tt_list_to_lisp_list`) — while leaving the
+  interleaved `logic_*` primitives and all registration (`install_one`) in
+  `primitives.c`.
+- Introduced `src/prims_shared.h`: a small internal header for helpers shared
+  across primitive modules (`no_args`/`single_arg`/`two_args`/`three_args`/
+  `four_args`/`nth_arg`/`lizard_rule_on`), de-static-ed in `primitives.c`.
+  This is the reusable foundation for extracting further clusters
+  (collections, modules, persistent, …) the same clean way.
+- Result: `primitives.c` 8334 → 6109 lines; `prims_tt.c` ≈ 2.2k lines compiled
+  into the lib; `nm` confirms all 313 tt symbols now live in `prims_tt.o` and
+  none in `primitives.o`.  `make ci` fully green (lint, all audits, C 93/93,
+  Lisp 5/5, examples 62/62, smoke).
+- **Next #7 clusters** (now straightforward via `prims_shared.h`): collections
+  (vectors/hash-maps/atoms/transients), modules, persistent data.  Each is a
+  regular-function cluster with no macro layer, so the same extractor applies.
 
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 

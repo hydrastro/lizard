@@ -85,7 +85,7 @@ endif
 # modules present in src/.  This prevents scaffold/test modules from compiling
 # against headers whose .c file was accidentally left out of liblizard.a.
 LIB_CORE_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel tactics
-LIB_OPTIONAL_SRCS := diagnostics object_model gc_metadata report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice
+LIB_OPTIONAL_SRCS := prims_tt diagnostics object_model gc_metadata report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice
 EXISTING_OPTIONAL_LIB_SRCS := $(foreach m,$(LIB_OPTIONAL_SRCS),$(if $(wildcard $(SRC_DIR)/$(m).c),$(m)))
 LIB_SRCS := $(LIB_CORE_SRCS) $(filter-out $(LIB_CORE_SRCS),$(EXISTING_OPTIONAL_LIB_SRCS))
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))

@@ -1,58 +1,23 @@
-/* src/prims_tt.c -- type-theory notation and logic primitives.
- *
- * Split out from primitives.c as part of Recoverable Core Phase 1E.
- */
+/* Track T: Type-theory / cubical primitives.
+ * Split out of primitives.c (#7 monolith split). Registration stays in
+ * primitives.c; these definitions are linked from here. */
+#include "primitives.h"
+#include "env.h"
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
-#include "primitives.h"
-
+#include "parser.h"
+#include "printer.h"
+#include "runtime.h"
+#include "tokenizer.h"
+#include "kernel.h"
+#include "kernel_sexp.h"
+#include "prims_shared.h"
+#include <setjmp.h>
+#include <stdint.h>
 #include <string.h>
 
-/* ---------------------------------------------------------------------
- * Type-theory notation primitives.
- *
- * These primitives let users build, recognize, and inspect type-theory
- * forms (Pi, Sigma, @, Sum, U, Uco, Id, refl, Inductive, Coinductive)
- * as first-class values. NOTHING IS CHECKED — these are opaque
- * carriers for designing the surface of a proposed type theory, not
- * an implementation of one. A `(Pi (x Nat) Bool)` and a
- * `(Pi (x Nat) garbage)` both build and print fine.
- *
- * The naming convention: type-theoretic constructors are capitalized
- * (Pi, Sigma, U, Uco, Id, Sum, Inductive, Coinductive) to mirror the
- * mathematical notation; predicates/accessors use lowercase.
- * ------------------------------------------------------------------- */
 
-static int no_args(lz_list_t *args) {
-  return args->head == args->nil;
-}
-static int single_arg(lz_list_t *args) {
-  return args->head != args->nil && args->head->next == args->nil;
-}
-static int two_args(lz_list_t *args) {
-  return args->head != args->nil && args->head->next != args->nil &&
-         args->head->next->next == args->nil;
-}
-static int three_args(lz_list_t *args) {
-  return args->head != args->nil && args->head->next != args->nil &&
-         args->head->next->next != args->nil &&
-         args->head->next->next->next == args->nil;
-}
-static int four_args(lz_list_t *args) {
-  return args->head != args->nil && args->head->next != args->nil &&
-         args->head->next->next != args->nil &&
-         args->head->next->next->next != args->nil &&
-         args->head->next->next->next->next == args->nil;
-}
-static lizard_ast_node_t *nth_arg(lz_list_t *args, int n) {
-  lz_list_node_t *it = args->head;
-  while (n-- > 0 && it != args->nil) it = it->next;
-  if (it == args->nil) return NULL;
-  return ((lizard_ast_list_node_t *)it)->ast;
-}
-
-/* (Pi binder domain codomain) -- if binder is nil, this is non-dep -> */
 lizard_ast_node_t *lizard_primitive_tt_pi(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -81,9 +46,6 @@ lizard_ast_node_t *lizard_primitive_tt_sigma(lz_list_t *args, lizard_env_t *env,
   n->data.tt_sigma.codomain = nth_arg(args, 2);
   return n;
 }
-
-/* (pi-fresh 'x A B) — Phase L.3 dimension-creating Pi.
- * Same term shape as Pi; differs only in typing. */
 lizard_ast_node_t *lizard_primitive_tt_pi_fresh(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -99,8 +61,6 @@ lizard_ast_node_t *lizard_primitive_tt_pi_fresh(lz_list_t *args,
   n->data.tt_pi_fresh.codomain = nth_arg(args, 2);
   return n;
 }
-
-/* (sigma-fresh 'x A B) — Phase L.3 dimension-creating Sigma. */
 lizard_ast_node_t *lizard_primitive_tt_sigma_fresh(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -116,9 +76,6 @@ lizard_ast_node_t *lizard_primitive_tt_sigma_fresh(lz_list_t *args,
   n->data.tt_sigma_fresh.codomain = nth_arg(args, 2);
   return n;
 }
-
-/* (co-pi-fresh 'x A B) — Phase L.5 dual dimension-creating Pi.
- * Same term shape; typing rule produces a couniverse-set. */
 lizard_ast_node_t *lizard_primitive_tt_co_pi_fresh(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -134,7 +91,6 @@ lizard_ast_node_t *lizard_primitive_tt_co_pi_fresh(lz_list_t *args,
   n->data.tt_co_pi_fresh.codomain = nth_arg(args, 2);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_co_sigma_fresh(lz_list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap) {
@@ -150,8 +106,6 @@ lizard_ast_node_t *lizard_primitive_tt_co_sigma_fresh(lz_list_t *args,
   n->data.tt_co_sigma_fresh.codomain = nth_arg(args, 2);
   return n;
 }
-
-/* (Box A) — Phase M.5.1 necessity modality type constructor. */
 lizard_ast_node_t *lizard_primitive_tt_box(lz_list_t *args,
                                            lizard_env_t *env,
                                            lizard_heap_t *heap) {
@@ -165,8 +119,6 @@ lizard_ast_node_t *lizard_primitive_tt_box(lz_list_t *args,
   n->data.tt_box.argument = nth_arg(args, 0);
   return n;
 }
-
-/* (Diamond A) — Phase M.5.1 possibility modality type constructor. */
 lizard_ast_node_t *lizard_primitive_tt_diamond(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -180,8 +132,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond(lz_list_t *args,
   n->data.tt_diamond.argument = nth_arg(args, 0);
   return n;
 }
-
-/* (box e) — Phase M.5.2 Box introduction. */
 lizard_ast_node_t *lizard_primitive_tt_box_intro(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -195,8 +145,6 @@ lizard_ast_node_t *lizard_primitive_tt_box_intro(lz_list_t *args,
   n->data.tt_box_intro.body = nth_arg(args, 0);
   return n;
 }
-
-/* (unbox x b body) — Phase M.5.2 Box elimination. */
 lizard_ast_node_t *lizard_primitive_tt_box_elim(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -212,8 +160,6 @@ lizard_ast_node_t *lizard_primitive_tt_box_elim(lz_list_t *args,
   n->data.tt_box_elim.body = nth_arg(args, 2);
   return n;
 }
-
-/* (diamond e) — Phase M.5.5 Diamond introduction. */
 lizard_ast_node_t *lizard_primitive_tt_diamond_intro(lz_list_t *args,
                                                      lizard_env_t *env,
                                                      lizard_heap_t *heap) {
@@ -227,8 +173,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_intro(lz_list_t *args,
   n->data.tt_diamond_intro.body = nth_arg(args, 0);
   return n;
 }
-
-/* (let-diamond x b body) — Phase M.5.5 Diamond elimination. */
 lizard_ast_node_t *lizard_primitive_tt_diamond_elim(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -244,8 +188,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_elim(lz_list_t *args,
   n->data.tt_diamond_elim.body = nth_arg(args, 2);
   return n;
 }
-
-/* (box-app f a) — Phase M.5.6 K-axiom application. */
 lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -260,8 +202,6 @@ lizard_ast_node_t *lizard_primitive_tt_box_app(lz_list_t *args,
   n->data.tt_box_app.arg = nth_arg(args, 1);
   return n;
 }
-
-/* (diamond-bind f d) — Phase M.5.8 Diamond Kleisli composition. */
 lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *args,
                                                      lizard_env_t *env,
                                                      lizard_heap_t *heap) {
@@ -276,8 +216,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_bind(lz_list_t *args,
   n->data.tt_diamond_bind.arg = nth_arg(args, 1);
   return n;
 }
-
-/* (dia e) — Phase M.5.9 symmetric Diamond introduction. */
 lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym(lz_list_t *args,
                                                           lizard_env_t *env,
                                                           lizard_heap_t *heap) {
@@ -291,8 +229,6 @@ lizard_ast_node_t *lizard_primitive_tt_diamond_intro_sym(lz_list_t *args,
   n->data.tt_diamond_intro_sym.body = nth_arg(args, 0);
   return n;
 }
-
-/* (poss-coerce e) — Phase M.5.9 shift from true to poss. */
 lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -306,7 +242,6 @@ lizard_ast_node_t *lizard_primitive_tt_poss_coerce(lz_list_t *args,
   n->data.tt_poss_coerce.body = nth_arg(args, 0);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_at(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *n;
@@ -367,10 +302,6 @@ lizard_ast_node_t *lizard_primitive_tt_couniverse(lz_list_t *args,
   n->data.tt_couniverse.level = mpz_get_si(lvl->data.number);
   return n;
 }
-
-/* Helper for the *-set variadic constructors: parse the args as a
- * list of naturals, sort, dedup. Returns a pair (raw, count) by
- * out-parameter. Returns NULL on type error (negative or non-numeric). */
 static long *parse_dim_args(lz_list_t *args, lizard_heap_t *heap,
                             long *count_out) {
   long *raw, *deduped;
@@ -415,8 +346,6 @@ static long *parse_dim_args(lz_list_t *args, lizard_heap_t *heap,
   *count_out = unique;
   return deduped;
 }
-
-/* (U-set d1 d2 ...) — multi-dimensional universe. Phase L.2. */
 lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -433,14 +362,6 @@ lizard_ast_node_t *lizard_primitive_tt_universe_set(lz_list_t *args,
   n->data.tt_universe_set.count = count;
   return n;
 }
-
-/* (Co-set d1 d2 ...) — multi-dimensional COUNIVERSE. Phase L.4.
- *
- * Same shape as U-set but a separate AST type. Lives in its own
- * lattice — no auto-conversion to/from U-set. The dim space is
- * shared with U-set (both index by natural numbers) but the *kind*
- * is distinguished by the AST tag.
- */
 lizard_ast_node_t *lizard_primitive_tt_couniverse_set(lz_list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap) {
@@ -457,9 +378,6 @@ lizard_ast_node_t *lizard_primitive_tt_couniverse_set(lz_list_t *args,
   n->data.tt_couniverse_set.count = count;
   return n;
 }
-
-/* (Co-max c1 c2) — join in the couniverse lattice. Set union, dual
- * to U-max. Phase L.4. */
 lizard_ast_node_t *lizard_primitive_tt_co_max(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -474,8 +392,6 @@ lizard_ast_node_t *lizard_primitive_tt_co_max(lz_list_t *args,
   n->data.tt_co_max.right = nth_arg(args, 1);
   return n;
 }
-
-/* (Co-min c1 c2) — meet in the couniverse lattice. Set intersection. */
 lizard_ast_node_t *lizard_primitive_tt_co_min(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -490,26 +406,6 @@ lizard_ast_node_t *lizard_primitive_tt_co_min(lz_list_t *args,
   n->data.tt_co_min.right = nth_arg(args, 1);
   return n;
 }
-
-/* ===== Phase H.1 — HIT constructors =====
- *
- * (HIT 'name [HIT-constructor or HIT-path records ...])
- *   Build a HIT declaration. The variadic tail can be any mix of
- *   HIT_CONSTRUCTOR and HIT_PATH records; we sort them into two
- *   lists by node type. As a side effect, registers the declaration
- *   in the per-process HIT registry so it can be looked up by name.
- *
- * (HIT-constructor 'name arg-type-1 arg-type-2 ...)
- *   Build a point-constructor record. The first arg is the constructor
- *   name; the remaining args are the types of its arguments.
- *
- * (HIT-path 'name source target)
- *   Build a path-constructor record. Three args.
- *
- * (HIT-ref 'name) — use a registered HIT by name as a type.
- * (HIT-app 'cname arg1 arg2 ...) — apply a constructor.
- * (HIT-lookup 'name) — query the registry; returns the declaration or nil.
- */
 lizard_ast_node_t *lizard_primitive_tt_hit_constructor(lz_list_t *args,
                                                        lizard_env_t *env,
                                                        lizard_heap_t *heap) {
@@ -543,7 +439,6 @@ lizard_ast_node_t *lizard_primitive_tt_hit_constructor(lz_list_t *args,
   n->data.tt_hit_constructor.arg_types = arg_types;
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_hit_path(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -559,7 +454,6 @@ lizard_ast_node_t *lizard_primitive_tt_hit_path(lz_list_t *args,
   n->data.tt_hit_path.target = nth_arg(args, 2);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_hit_decl(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -608,7 +502,6 @@ lizard_ast_node_t *lizard_primitive_tt_hit_decl(lz_list_t *args,
   lizard_tt_hit_register(n);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_hit_ref(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -626,7 +519,6 @@ lizard_ast_node_t *lizard_primitive_tt_hit_ref(lz_list_t *args,
   n->data.tt_hit_ref.name = name_arg;
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_hit_app(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -657,7 +549,6 @@ lizard_ast_node_t *lizard_primitive_tt_hit_app(lz_list_t *args,
   n->data.tt_hit_app.args = app_args;
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_hit_lookup(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -705,9 +596,6 @@ lizard_ast_node_t *lizard_primitive_tt_refl(lz_list_t *args, lizard_env_t *env,
   n->data.tt_refl.value = nth_arg(args, 0);
   return n;
 }
-/* (Inductive 'Name 'ctor1 'ctor2 ...) — first arg is the type name,
- * the rest are constructor specs (left opaque; user can put whatever
- * they want — symbols, lists describing fields, whatever). */
 lizard_ast_node_t *lizard_primitive_tt_inductive(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -767,8 +655,6 @@ lizard_ast_node_t *lizard_primitive_tt_annot(lz_list_t *args, lizard_env_t *env,
   n->data.tt_annot.type = nth_arg(args, 1);
   return n;
 }
-
-/* Predicates. */
 #define TT_PREDICATE(name, tag)                                                \
   lizard_ast_node_t *lizard_primitive_##name(lz_list_t *args,                  \
                                              lizard_env_t *env,                \
@@ -816,7 +702,6 @@ TT_PREDICATE(tt_inductivep,   AST_TT_INDUCTIVE)
 TT_PREDICATE(tt_coinductivep, AST_TT_COINDUCTIVE)
 TT_PREDICATE(tt_annotp,       AST_TT_ANNOT)
 
-/* Accessors — pull fields out of TT nodes. Return error on mismatch. */
 #define TT_ACCESSOR(name, tag, expr)                                           \
   lizard_ast_node_t *lizard_primitive_##name(lz_list_t *args,                  \
                                              lizard_env_t *env,                \
@@ -870,7 +755,6 @@ TT_ACCESSOR(tt_coinductive_name, AST_TT_COINDUCTIVE,
 TT_ACCESSOR(tt_annot_term,   AST_TT_ANNOT, x->data.tt_annot.term)
 TT_ACCESSOR(tt_annot_type,   AST_TT_ANNOT, x->data.tt_annot.type)
 
-/* Universe level — returns the integer. */
 lizard_ast_node_t *lizard_primitive_tt_universe_level(lz_list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap) {
@@ -905,8 +789,6 @@ lizard_ast_node_t *lizard_primitive_tt_couniverse_level(lz_list_t *args,
   mpz_init_set_si(r->data.number, x->data.tt_couniverse.level);
   return r;
 }
-
-/* Constructors / destructors for inductive/coinductive — return a list */
 lizard_ast_node_t *lizard_primitive_tt_inductive_ctors(lz_list_t *args,
                                                        lizard_env_t *env,
                                                        lizard_heap_t *heap) {
@@ -983,25 +865,6 @@ lizard_ast_node_t *lizard_primitive_tt_coinductive_dtors(lz_list_t *args,
   }
   return result;
 }
-
-/* ---------------------------------------------------------------------
- * Context layer — couniverse-stratified.
- *
- * Per the thesis proposal:
- *   Uco -2 : variables / binding sites
- *   Uco -1 : contexts (lists of variables)
- *   Uco  0 : substitutions / context morphisms
- *
- * The `uco-level` primitive returns the couniverse level for any of
- * these. NONE of this checks well-formedness. A context can contain
- * "bindings" that aren't really variables, a substitution can list
- * mappings that don't match its source's domain, a judgment is just a
- * three-tuple that prints like an inference-rule conclusion. The
- * forms are here so you can sketch the surface and pattern-match on
- * the structure, not because anything is verified.
- * ------------------------------------------------------------------- */
-
-/* (variable 'name type) — at Uco -2 */
 lizard_ast_node_t *lizard_primitive_tt_variable(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1016,10 +879,6 @@ lizard_ast_node_t *lizard_primitive_tt_variable(lz_list_t *args,
   n->data.tt_variable.type = nth_arg(args, 1);
   return n;
 }
-
-/* (context binding1 binding2 ...) — at Uco -1.
- * Each binding is whatever you want; the convention is that they're
- * variable values, but we don't enforce that. */
 lizard_ast_node_t *lizard_primitive_tt_context(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -1039,9 +898,6 @@ lizard_ast_node_t *lizard_primitive_tt_context(lz_list_t *args,
   n->data.tt_context.bindings = bindings;
   return n;
 }
-
-/* (context-extend ctx variable) — return a new context with the
- * variable appended at the end. The original is not mutated. */
 lizard_ast_node_t *lizard_primitive_tt_ctx_extend(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -1073,8 +929,6 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_extend(lz_list_t *args,
   n->data.tt_context.bindings = bindings;
   return n;
 }
-
-/* (context-lookup ctx 'name) — return the matching variable, or #f. */
 lizard_ast_node_t *lizard_primitive_tt_ctx_lookup(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -1118,9 +972,6 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_lookup(lz_list_t *args,
   }
   return lizard_make_bool(heap, false);
 }
-
-/* (context-bindings ctx) — return the list of variables in the
- * context, in declaration order. */
 lizard_ast_node_t *lizard_primitive_tt_ctx_bindings(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -1156,8 +1007,6 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_bindings(lz_list_t *args,
   }
   return result;
 }
-
-/* (context-length ctx) */
 lizard_ast_node_t *lizard_primitive_tt_ctx_length(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -1179,10 +1028,6 @@ lizard_ast_node_t *lizard_primitive_tt_ctx_length(lz_list_t *args,
   mpz_init_set_si(r->data.number, count);
   return r;
 }
-
-/* (substitution from-ctx to-ctx mappings-list) — at Uco 0.
- * mappings-list is a list of (name . term) pairs (or anything else;
- * we don't enforce). */
 lizard_ast_node_t *lizard_primitive_tt_substitution(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -1210,8 +1055,6 @@ lizard_ast_node_t *lizard_primitive_tt_substitution(lz_list_t *args,
   n->data.tt_substitution.mappings = mappings;
   return n;
 }
-
-/* (judgment ctx term type) — opaque triple. */
 lizard_ast_node_t *lizard_primitive_tt_judgment(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1227,8 +1070,6 @@ lizard_ast_node_t *lizard_primitive_tt_judgment(lz_list_t *args,
   n->data.tt_judgment.type = nth_arg(args, 2);
   return n;
 }
-
-/* (empty-context) — convenient nullary constructor. */
 lizard_ast_node_t *lizard_primitive_tt_empty_ctx(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -1241,12 +1082,6 @@ lizard_ast_node_t *lizard_primitive_tt_empty_ctx(lz_list_t *args,
       list_create_alloc(lizard_heap_alloc, lizard_heap_free);
   return n;
 }
-
-/* uco-level — the central operation. Returns the couniverse level
- * for any of the binding/context/substitution forms, or #f for other
- * values. This is the *only* place lizard hard-codes the
- * stratification: -2 for variables, -1 for contexts, 0 for
- * substitutions / judgments. */
 lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -1271,8 +1106,6 @@ lizard_ast_node_t *lizard_primitive_tt_uco_level(lz_list_t *args,
   mpz_init_set_si(r->data.number, lvl);
   return r;
 }
-
-/* Predicates and accessors. */
 TT_PREDICATE(tt_variablep,     AST_TT_VARIABLE)
 TT_PREDICATE(tt_contextp,      AST_TT_CONTEXT)
 TT_PREDICATE(tt_substitutionp, AST_TT_SUBSTITUTION)
@@ -1286,26 +1119,6 @@ TT_ACCESSOR(tt_judg_context,  AST_TT_JUDGMENT,     x->data.tt_judgment.context)
 TT_ACCESSOR(tt_judg_term,     AST_TT_JUDGMENT,     x->data.tt_judgment.term)
 TT_ACCESSOR(tt_judg_type,     AST_TT_JUDGMENT,     x->data.tt_judgment.type)
 
-/* ---------------------------------------------------------------------
- * Identity manipulation + equivalence (NOTATION ONLY).
- *
- * These primitives let you sketch the basic HOTT-style identity
- * lemmas — symmetry, transitivity, transport, equivalence — as
- * structured values. Nothing about the validity of the constructed
- * forms is checked. (equivalence A B fwd bwd) does not verify that
- * fwd and bwd are actually inverse; (transport p x) does not verify
- * that p is an Id-proof relating two types; (Id-trans p q) does not
- * verify that p's endpoint matches q's startpoint.
- *
- * Why bother having these? They give a vocabulary for writing the
- * lemmas one would prove in a real proof assistant. With them you
- * can pattern-match on identity manipulations, define functions that
- * walk an identity term and dispatch on its head, and sketch the
- * normalisation rules a future checker might use.
- * ------------------------------------------------------------------- */
-
-/* (equivalence A B fwd bwd) — claims A ≃ B via fwd : A -> B and
- * bwd : B -> A. */
 lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1325,8 +1138,6 @@ lizard_ast_node_t *lizard_primitive_tt_equiv(lz_list_t *args,
   n->data.tt_equiv.bwd   = nth_arg(args, 3);
   return n;
 }
-
-/* (transport path value) — claims to transport `value` along `path`. */
 lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -1341,8 +1152,6 @@ lizard_ast_node_t *lizard_primitive_tt_transport(lz_list_t *args,
   n->data.tt_transport.value = nth_arg(args, 1);
   return n;
 }
-
-/* (Id-sym p) — claimed symmetry of an Id-proof. */
 lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -1356,8 +1165,6 @@ lizard_ast_node_t *lizard_primitive_tt_id_sym(lz_list_t *args,
   n->data.tt_id_sym.path = nth_arg(args, 0);
   return n;
 }
-
-/* (Id-trans p q) — claimed transitivity / composition. */
 lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1372,7 +1179,6 @@ lizard_ast_node_t *lizard_primitive_tt_id_trans(lz_list_t *args,
   n->data.tt_id_trans.q = nth_arg(args, 1);
   return n;
 }
-
 TT_PREDICATE(tt_equivp,     AST_TT_EQUIV)
 TT_PREDICATE(tt_transportp, AST_TT_TRANSPORT)
 TT_PREDICATE(tt_id_symp,    AST_TT_ID_SYM)
@@ -1388,7 +1194,6 @@ TT_ACCESSOR(tt_id_sym_path,   AST_TT_ID_SYM,    x->data.tt_id_sym.path)
 TT_ACCESSOR(tt_id_trans_p,    AST_TT_ID_TRANS,  x->data.tt_id_trans.p)
 TT_ACCESSOR(tt_id_trans_q,    AST_TT_ID_TRANS,  x->data.tt_id_trans.q)
 
-/* TT-level Lambda. */
 lizard_ast_node_t *lizard_primitive_tt_lambda(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -1407,7 +1212,6 @@ TT_PREDICATE(tt_lambdap, AST_TT_LAMBDA)
 TT_ACCESSOR(tt_lambda_binder, AST_TT_LAMBDA, x->data.tt_lambda.binder)
 TT_ACCESSOR(tt_lambda_body,   AST_TT_LAMBDA, x->data.tt_lambda.body)
 
-/* ap — congruence of identity along a function. */
 lizard_ast_node_t *lizard_primitive_tt_ap(lz_list_t *args,
                                           lizard_env_t *env,
                                           lizard_heap_t *heap) {
@@ -1426,7 +1230,6 @@ TT_PREDICATE(tt_app_p_hott, AST_TT_AP)
 TT_ACCESSOR(tt_ap_fn,   AST_TT_AP, x->data.tt_ap.fn)
 TT_ACCESSOR(tt_ap_path, AST_TT_AP, x->data.tt_ap.path)
 
-/* pair / fst / snd */
 lizard_ast_node_t *lizard_primitive_tt_pair(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1477,7 +1280,6 @@ lizard_ast_node_t *lizard_primitive_tt_snd(lz_list_t *args,
 TT_PREDICATE(tt_sndp, AST_TT_SND)
 TT_ACCESSOR(tt_snd_target, AST_TT_SND, x->data.tt_proj.target)
 
-/* inl / inr / case */
 lizard_ast_node_t *lizard_primitive_tt_inl(lz_list_t *args,
                                            lizard_env_t *env,
                                            lizard_heap_t *heap) {
@@ -1530,7 +1332,6 @@ TT_ACCESSOR(tt_case_scrutinee, AST_TT_CASE, x->data.tt_case.scrutinee)
 TT_ACCESSOR(tt_case_left,  AST_TT_CASE, x->data.tt_case.left_branch)
 TT_ACCESSOR(tt_case_right, AST_TT_CASE, x->data.tt_case.right_branch)
 
-/* Unit type and its inhabitant; Bot. These are nullary — no args. */
 lizard_ast_node_t *lizard_primitive_tt_unit(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1564,7 +1365,6 @@ lizard_ast_node_t *lizard_primitive_tt_bot(lz_list_t *args,
 }
 TT_PREDICATE(tt_botp, AST_TT_BOT)
 
-/* J — path induction. (J motive refl-case path). */
 lizard_ast_node_t *lizard_primitive_tt_j(lz_list_t *args,
                                          lizard_env_t *env,
                                          lizard_heap_t *heap) {
@@ -1585,9 +1385,6 @@ TT_ACCESSOR(tt_j_motive,    AST_TT_J, x->data.tt_j.motive)
 TT_ACCESSOR(tt_j_refl_case, AST_TT_J, x->data.tt_j.refl_case)
 TT_ACCESSOR(tt_j_path,      AST_TT_J, x->data.tt_j.path)
 
-/* xport — transport with explicit motive. The motive is a Lambda
- * (Lambda 'x T) whose body T tells the engine which per-type-former
- * rule to apply. (xport (Lambda 'x T) path value). */
 lizard_ast_node_t *lizard_primitive_tt_xport(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1608,7 +1405,6 @@ TT_ACCESSOR(tt_xport_motive, AST_TT_XPORT, x->data.tt_xport.motive)
 TT_ACCESSOR(tt_xport_path,   AST_TT_XPORT, x->data.tt_xport.path)
 TT_ACCESSOR(tt_xport_value,  AST_TT_XPORT, x->data.tt_xport.value)
 
-/* Universe-expression constructors. (U-var 'i), (U-suc u), (U-max u v). */
 lizard_ast_node_t *lizard_primitive_tt_u_var(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1667,8 +1463,6 @@ TT_PREDICATE(tt_u_maxp, AST_TT_U_MAX)
 TT_ACCESSOR(tt_u_max_left,  AST_TT_U_MAX, x->data.tt_u_max.left)
 TT_ACCESSOR(tt_u_max_right, AST_TT_U_MAX, x->data.tt_u_max.right)
 
-/* (U-min u v) — meet (greatest lower bound). Dual of U-max.
- * Phase L.1: with both join and meet, universes form a lattice. */
 lizard_ast_node_t *lizard_primitive_tt_u_min(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1687,9 +1481,6 @@ TT_PREDICATE(tt_u_minp, AST_TT_U_MIN)
 TT_ACCESSOR(tt_u_min_left,  AST_TT_U_MIN, x->data.tt_u_min.left)
 TT_ACCESSOR(tt_u_min_right, AST_TT_U_MIN, x->data.tt_u_min.right)
 
-/* ===== Cubical layer ===== */
-
-/* The interval pre-type itself and its endpoints. Nullary. */
 lizard_ast_node_t *lizard_primitive_tt_interval(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1723,7 +1514,6 @@ lizard_ast_node_t *lizard_primitive_tt_i1(lz_list_t *args,
 }
 TT_PREDICATE(tt_i1p, AST_TT_I1)
 
-/* (I-var 'i) — an interval variable */
 lizard_ast_node_t *lizard_primitive_tt_i_var(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1746,7 +1536,6 @@ lizard_ast_node_t *lizard_primitive_tt_i_var(lz_list_t *args,
 }
 TT_PREDICATE(tt_i_varp, AST_TT_I_VAR)
 
-/* (I-and i j) */
 lizard_ast_node_t *lizard_primitive_tt_i_and(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1763,7 +1552,6 @@ lizard_ast_node_t *lizard_primitive_tt_i_and(lz_list_t *args,
 }
 TT_PREDICATE(tt_i_andp, AST_TT_I_AND)
 
-/* (I-or i j) */
 lizard_ast_node_t *lizard_primitive_tt_i_or(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1780,7 +1568,6 @@ lizard_ast_node_t *lizard_primitive_tt_i_or(lz_list_t *args,
 }
 TT_PREDICATE(tt_i_orp, AST_TT_I_OR)
 
-/* (I-neg i) */
 lizard_ast_node_t *lizard_primitive_tt_i_neg(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -1796,7 +1583,6 @@ lizard_ast_node_t *lizard_primitive_tt_i_neg(lz_list_t *args,
 }
 TT_PREDICATE(tt_i_negp, AST_TT_I_NEG)
 
-/* (Path A a b) — path type */
 lizard_ast_node_t *lizard_primitive_tt_path(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1817,7 +1603,6 @@ TT_ACCESSOR(tt_path_domain, AST_TT_PATH, x->data.tt_path.domain)
 TT_ACCESSOR(tt_path_a,      AST_TT_PATH, x->data.tt_path.a)
 TT_ACCESSOR(tt_path_b,      AST_TT_PATH, x->data.tt_path.b)
 
-/* (path-abs 'i body) — path abstraction, like Lambda but for intervals */
 lizard_ast_node_t *lizard_primitive_tt_path_abs(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1840,7 +1625,6 @@ TT_PREDICATE(tt_path_absp, AST_TT_PATH_ABS)
 TT_ACCESSOR(tt_path_abs_binder, AST_TT_PATH_ABS, x->data.tt_path_abs.binder)
 TT_ACCESSOR(tt_path_abs_body,   AST_TT_PATH_ABS, x->data.tt_path_abs.body)
 
-/* (path-app p i) — path application, written conceptually as (p @ i) */
 lizard_ast_node_t *lizard_primitive_tt_path_app(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -1858,8 +1642,6 @@ lizard_ast_node_t *lizard_primitive_tt_path_app(lz_list_t *args,
 TT_PREDICATE(tt_path_appp, AST_TT_PATH_APP)
 TT_ACCESSOR(tt_path_app_path,  AST_TT_PATH_APP, x->data.tt_path_app.path)
 TT_ACCESSOR(tt_path_app_point, AST_TT_PATH_APP, x->data.tt_path_app.point)
-
-/* ===== Faces and partial elements (Turn 7) ===== */
 
 lizard_ast_node_t *lizard_primitive_tt_f0(lz_list_t *args,
                                           lizard_env_t *env,
@@ -1883,7 +1665,6 @@ lizard_ast_node_t *lizard_primitive_tt_f1(lz_list_t *args,
 }
 TT_PREDICATE(tt_f1p, AST_TT_F1)
 
-/* (F-eq i j) — face: interval term i equals interval term j. */
 lizard_ast_node_t *lizard_primitive_tt_f_eq(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1934,7 +1715,6 @@ lizard_ast_node_t *lizard_primitive_tt_f_or(lz_list_t *args,
 }
 TT_PREDICATE(tt_f_orp, AST_TT_F_OR)
 
-/* (Partial φ A) */
 lizard_ast_node_t *lizard_primitive_tt_partial(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -1953,7 +1733,6 @@ TT_PREDICATE(tt_partialp, AST_TT_PARTIAL)
 TT_ACCESSOR(tt_partial_face, AST_TT_PARTIAL, x->data.tt_partial.face)
 TT_ACCESSOR(tt_partial_type, AST_TT_PARTIAL, x->data.tt_partial.type)
 
-/* (Sub A φ u) */
 lizard_ast_node_t *lizard_primitive_tt_sub(lz_list_t *args,
                                            lizard_env_t *env,
                                            lizard_heap_t *heap) {
@@ -1973,12 +1752,6 @@ TT_PREDICATE(tt_subp, AST_TT_SUB)
 TT_ACCESSOR(tt_sub_type,    AST_TT_SUB, x->data.tt_sub.type)
 TT_ACCESSOR(tt_sub_face,    AST_TT_SUB, x->data.tt_sub.face)
 TT_ACCESSOR(tt_sub_partial, AST_TT_SUB, x->data.tt_sub.partial)
-
-/* ===== Kan composition (Turn 8) =====
- *
- * comp, hcomp, fill all take the same 4 arguments:
- *   (op type_family face partial base)
- * and differ only in semantics. */
 
 #define MAKE_COMP_FAMILY(NAME, AST_KIND)                                       \
   lizard_ast_node_t *lizard_primitive_tt_##NAME(lz_list_t *args,               \
@@ -2008,10 +1781,6 @@ TT_ACCESSOR(tt_comp_face,        AST_TT_COMP, x->data.tt_comp.face)
 TT_ACCESSOR(tt_comp_partial,     AST_TT_COMP, x->data.tt_comp.partial)
 TT_ACCESSOR(tt_comp_base,        AST_TT_COMP, x->data.tt_comp.base)
 
-/* ===== Equivalences, Glue, and ua (Turns 9 & 10) ===== */
-
-/* (Equiv A B) — type former. Note: distinct from `equivalence` which
- * is a notation-level 4-arg packaging. */
 lizard_ast_node_t *lizard_primitive_tt_equiv_type(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2030,7 +1799,6 @@ TT_PREDICATE(tt_equiv_typep, AST_TT_EQUIV_TYPE)
 TT_ACCESSOR(tt_equiv_domain,   AST_TT_EQUIV_TYPE, x->data.tt_equiv_type.domain)
 TT_ACCESSOR(tt_equiv_codomain, AST_TT_EQUIV_TYPE, x->data.tt_equiv_type.codomain)
 
-/* (id-equiv A) — the identity equivalence on A */
 lizard_ast_node_t *lizard_primitive_tt_id_equiv(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -2046,7 +1814,6 @@ lizard_ast_node_t *lizard_primitive_tt_id_equiv(lz_list_t *args,
 }
 TT_PREDICATE(tt_id_equivp, AST_TT_ID_EQUIV)
 
-/* (equiv-fun e), (equiv-inv e) */
 lizard_ast_node_t *lizard_primitive_tt_equiv_fun(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -2077,7 +1844,6 @@ lizard_ast_node_t *lizard_primitive_tt_equiv_inv(lz_list_t *args,
 }
 TT_PREDICATE(tt_equiv_invp, AST_TT_EQUIV_INV)
 
-/* (Glue A φ T e) */
 lizard_ast_node_t *lizard_primitive_tt_glue(lz_list_t *args,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -2100,7 +1866,6 @@ TT_ACCESSOR(tt_glue_face,  AST_TT_GLUE, x->data.tt_glue.face)
 TT_ACCESSOR(tt_glue_t,     AST_TT_GLUE, x->data.tt_glue.t)
 TT_ACCESSOR(tt_glue_equiv, AST_TT_GLUE, x->data.tt_glue.equiv)
 
-/* (glue-intro φ t a) — written conceptually `glue φ t a` */
 lizard_ast_node_t *lizard_primitive_tt_glue_intro(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2118,7 +1883,6 @@ lizard_ast_node_t *lizard_primitive_tt_glue_intro(lz_list_t *args,
 }
 TT_PREDICATE(tt_glue_introp, AST_TT_GLUE_INTRO)
 
-/* (unglue e g) */
 lizard_ast_node_t *lizard_primitive_tt_unglue(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -2135,7 +1899,6 @@ lizard_ast_node_t *lizard_primitive_tt_unglue(lz_list_t *args,
 }
 TT_PREDICATE(tt_unglue_p, AST_TT_UNGLUE)
 
-/* (ua e) */
 lizard_ast_node_t *lizard_primitive_tt_ua(lz_list_t *args,
                                           lizard_env_t *env,
                                           lizard_heap_t *heap) {
@@ -2151,9 +1914,6 @@ lizard_ast_node_t *lizard_primitive_tt_ua(lz_list_t *args,
 }
 TT_PREDICATE(tt_uap, AST_TT_UA)
 
-/* ===== System: multi-clause partial element (Turn 11) ===== */
-
-/* (system-nil) — the empty system, defined nowhere. */
 lizard_ast_node_t *lizard_primitive_tt_system_nil(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2165,7 +1925,6 @@ lizard_ast_node_t *lizard_primitive_tt_system_nil(lz_list_t *args,
 }
 TT_PREDICATE(tt_system_nilp, AST_TT_SYSTEM_NIL)
 
-/* (system-cons face value next-system) */
 lizard_ast_node_t *lizard_primitive_tt_system_cons(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -2186,173 +1945,6 @@ TT_ACCESSOR(tt_system_face,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.face)
 TT_ACCESSOR(tt_system_value, AST_TT_SYSTEM_CONS, x->data.tt_system_cons.value)
 TT_ACCESSOR(tt_system_next,  AST_TT_SYSTEM_CONS, x->data.tt_system_cons.next)
 
-/* ===== Phase M.1 — Lisp primitives for logic-rule configuration ===== */
-
-/* (logic-rule-register 'name)
- * Register a new rule (default disabled) if not present. Returns #t. */
-lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *args,
-                                                        lizard_env_t *env,
-                                                        lizard_heap_t *heap) {
-  lizard_ast_node_t *name_arg;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  name_arg = nth_arg(args, 0);
-  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  lizard_logic_rule_register(name_arg->data.variable, 0);
-  return lizard_make_bool(heap, 1);
-}
-
-/* (logic-rule-enable 'name)
- * Enable a rule, auto-registering if needed. */
-lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *args,
-                                                      lizard_env_t *env,
-                                                      lizard_heap_t *heap) {
-  lizard_ast_node_t *name_arg;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  name_arg = nth_arg(args, 0);
-  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  lizard_logic_rule_enable(name_arg->data.variable);
-  return lizard_make_bool(heap, 1);
-}
-
-/* (logic-rule-disable 'name) */
-lizard_ast_node_t *lizard_primitive_logic_rule_disable(lz_list_t *args,
-                                                       lizard_env_t *env,
-                                                       lizard_heap_t *heap) {
-  lizard_ast_node_t *name_arg;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  name_arg = nth_arg(args, 0);
-  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  lizard_logic_rule_disable(name_arg->data.variable);
-  return lizard_make_bool(heap, 1);
-}
-
-/* (logic-rule-enabled? 'name)
- * Returns #t / #f / 'unknown (a symbol). */
-lizard_ast_node_t *lizard_primitive_logic_rule_enabledp(lz_list_t *args,
-                                                        lizard_env_t *env,
-                                                        lizard_heap_t *heap) {
-  lizard_ast_node_t *name_arg;
-  int r;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  name_arg = nth_arg(args, 0);
-  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  r = lizard_logic_rule_enabled(name_arg->data.variable);
-  if (r == 1) return lizard_make_bool(heap, 1);
-  if (r == 0) return lizard_make_bool(heap, 0);
-  /* Unknown — return the symbol 'unknown. */
-  {
-    char *buf = lizard_heap_alloc(8);
-    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-    strcpy(buf, "unknown");
-    n->type = AST_SYMBOL;
-    n->data.variable = buf;
-    return n;
-  }
-}
-
-/* (logic-config)
- * Returns a list of (name . enabled?) pairs — one cons per registered
- * rule. The order is registration order, reverse of internal prepend. */
-typedef struct {
-  lizard_heap_t *heap;
-  lizard_ast_node_t *head;  /* growing list, prepended */
-} logic_config_collect_t;
-
-static int logic_config_collect_cb(const char *name, int enabled, void *ud) {
-  logic_config_collect_t *c = (logic_config_collect_t *)ud;
-  lizard_ast_node_t *pair, *sym, *val, *cons;
-  char *namedup;
-  size_t namelen;
-  /* Build (name . enabled?) as a pair. */
-  pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  pair->type = AST_PAIR;
-  namelen = strlen(name) + 1;
-  namedup = lizard_heap_alloc(namelen);
-  memcpy(namedup, name, namelen);
-  sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  sym->type = AST_SYMBOL;
-  sym->data.variable = namedup;
-  val = lizard_make_bool(c->heap, enabled);
-  pair->data.pair.car = sym;
-  pair->data.pair.cdr = val;
-  /* Prepend to head. */
-  cons = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  cons->type = AST_PAIR;
-  cons->data.pair.car = pair;
-  cons->data.pair.cdr = c->head;
-  c->head = cons;
-  return 0;
-}
-
-lizard_ast_node_t *lizard_primitive_logic_config(lz_list_t *args,
-                                                 lizard_env_t *env,
-                                                 lizard_heap_t *heap) {
-  logic_config_collect_t c;
-  lizard_ast_node_t *nil;
-  (void)env; (void)args;
-  /* Build the empty list (nil) as the initial tail. */
-  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  nil->type = AST_NIL;
-  c.heap = heap;
-  c.head = nil;
-  lizard_logic_config_walk(logic_config_collect_cb, &c);
-  return c.head;
-}
-
-/* (logic-config-size) — number of registered rules. */
-lizard_ast_node_t *lizard_primitive_logic_config_size(lz_list_t *args,
-                                                     lizard_env_t *env,
-                                                     lizard_heap_t *heap) {
-  lizard_ast_node_t *n;
-  (void)env; (void)args;
-  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_NUMBER;
-  mpz_init(n->data.number);
-  mpz_set_si(n->data.number, lizard_logic_config_size());
-  return n;
-}
-
-/* (logic-config-reset) — clear the registry. */
-lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *args,
-                                                      lizard_env_t *env,
-                                                      lizard_heap_t *heap) {
-  (void)env; (void)args;
-  lizard_logic_config_reset();
-  return lizard_make_bool(heap, 1);
-}
-
-
-/* ===== Optional proof-theory scaffolds =====
- *
- * These constructors are intentionally opt-in. They are useful for designing
- * cubical S¹, truncations, and user-provided theory extensions, but they are
- * not trusted kernel terms yet.
- */
-
-static int lizard_rule_on(const char *name) {
-  return lizard_logic_rule_enabled(name) == 1;
-}
-
 static lizard_ast_node_t *lizard_make_nullary_tt(lizard_heap_t *heap,
                                                   lizard_ast_node_type_t type) {
   lizard_ast_node_t *n;
@@ -2360,7 +1952,6 @@ static lizard_ast_node_t *lizard_make_nullary_tt(lizard_heap_t *heap,
   n->type = type;
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   (void)env;
@@ -2369,7 +1960,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1(lz_list_t *args, lizard_env_t *env,
   }
   return lizard_make_nullary_tt(heap, AST_TT_S1);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1p(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   lizard_ast_node_t *x;
@@ -2378,7 +1968,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1p(lz_list_t *args, lizard_env_t *env,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1_base(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -2388,7 +1977,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1_base(lz_list_t *args,
   }
   return lizard_make_nullary_tt(heap, AST_TT_S1_BASE);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1_basep(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -2398,7 +1986,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1_basep(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1_BASE);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1_loop(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -2408,7 +1995,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1_loop(lz_list_t *args,
   }
   return lizard_make_nullary_tt(heap, AST_TT_S1_LOOP);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_s1_loopp(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -2418,7 +2004,6 @@ lizard_ast_node_t *lizard_primitive_tt_s1_loopp(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_S1_LOOP);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -2433,7 +2018,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc(lz_list_t *args,
   n->data.tt_trunc.type = nth_arg(args, 1);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_truncp(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -2443,7 +2027,6 @@ lizard_ast_node_t *lizard_primitive_tt_truncp(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_level(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -2454,7 +2037,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_level(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc.level;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2465,7 +2047,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_type(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc.type;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -2479,7 +2060,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_intro(lz_list_t *args,
   n->data.tt_trunc_intro.value = nth_arg(args, 0);
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_introp(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
@@ -2489,7 +2069,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_introp(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC_INTRO);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_value(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -2500,7 +2079,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_value(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC_INTRO) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc_intro.value;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elim(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2529,7 +2107,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elim(lz_list_t *args,
   }
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elimp(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
@@ -2539,7 +2116,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elimp(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_TRUNC_ELIM);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elim_motive(lz_list_t *args,
                                                          lizard_env_t *env,
                                                          lizard_heap_t *heap) {
@@ -2550,7 +2126,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elim_motive(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc_elim.motive;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elim_handler(lz_list_t *args,
                                                           lizard_env_t *env,
                                                           lizard_heap_t *heap) {
@@ -2561,7 +2136,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elim_handler(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc_elim.handler;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elim_value(lz_list_t *args,
                                                         lizard_env_t *env,
                                                         lizard_heap_t *heap) {
@@ -2572,7 +2146,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elim_value(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_TRUNC_ELIM) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_trunc_elim.value;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_trunc_elim_prop(lz_list_t *args,
                                                        lizard_env_t *env,
                                                        lizard_heap_t *heap) {
@@ -2584,7 +2157,6 @@ lizard_ast_node_t *lizard_primitive_tt_trunc_elim_prop(lz_list_t *args,
   if (x->data.tt_trunc_elim.prop == NULL) return lizard_make_nil(heap);
   return x->data.tt_trunc_elim.prop;
 }
-
 static lizard_ast_node_t *tt_list_to_lisp_list(lz_list_t *list,
                                                lizard_heap_t *heap) {
   lizard_ast_node_t *head;
@@ -2609,7 +2181,6 @@ static lizard_ast_node_t *tt_list_to_lisp_list(lz_list_t *list,
   }
   return head;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_extension(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -2638,7 +2209,6 @@ lizard_ast_node_t *lizard_primitive_tt_extension(lz_list_t *args,
   n->data.tt_extension.args = rest;
   return n;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_extensionp(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -2648,7 +2218,6 @@ lizard_ast_node_t *lizard_primitive_tt_extensionp(lz_list_t *args,
   x = nth_arg(args, 0);
   return lizard_make_bool(heap, x != NULL && x->type == AST_TT_EXTENSION);
 }
-
 lizard_ast_node_t *lizard_primitive_tt_extension_name(lz_list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap) {
@@ -2659,7 +2228,6 @@ lizard_ast_node_t *lizard_primitive_tt_extension_name(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_EXTENSION) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return x->data.tt_extension.name;
 }
-
 lizard_ast_node_t *lizard_primitive_tt_extension_args(lz_list_t *args,
                                                       lizard_env_t *env,
                                                       lizard_heap_t *heap) {
@@ -2670,87 +2238,3 @@ lizard_ast_node_t *lizard_primitive_tt_extension_args(lz_list_t *args,
   if (x == NULL || x->type != AST_TT_EXTENSION) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   return tt_list_to_lisp_list(x->data.tt_extension.args, heap);
 }
-
-/* ===== Phase M.3 — Lisp primitives for logic bundles ===== */
-
-/* (set-logic 'NAME)
- * Apply a named logic bundle. Returns #t on success, #f if unknown.
- * Unknown name does NOT raise an error — returns #f so user code can
- * test before assuming the logic is loaded. */
-lizard_ast_node_t *lizard_primitive_set_logic(lz_list_t *args,
-                                              lizard_env_t *env,
-                                              lizard_heap_t *heap) {
-  lizard_ast_node_t *name_arg;
-  int ok;
-  (void)env;
-  if (!single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  name_arg = nth_arg(args, 0);
-  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  ok = lizard_logic_set_bundle(name_arg->data.variable);
-  return lizard_make_bool(heap, ok);
-}
-
-/* (current-logic)
- * Returns a symbol naming the current logic, or 'custom. */
-lizard_ast_node_t *lizard_primitive_current_logic(lz_list_t *args,
-                                                  lizard_env_t *env,
-                                                  lizard_heap_t *heap) {
-  const char *name;
-  lizard_ast_node_t *n;
-  char *buf;
-  size_t len;
-  (void)env; (void)args;
-  name = lizard_logic_current_bundle();
-  len = strlen(name) + 1;
-  buf = lizard_heap_alloc(len);
-  memcpy(buf, name, len);
-  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  n->type = AST_SYMBOL;
-  n->data.variable = buf;
-  return n;
-}
-
-/* (list-logics)
- * Returns a list of symbols naming the predefined logic bundles. */
-typedef struct {
-  lizard_heap_t *heap;
-  lizard_ast_node_t *head;
-} list_logics_collect_t;
-
-static int list_logics_collect_cb(const char *name, void *ud) {
-  list_logics_collect_t *c = (list_logics_collect_t *)ud;
-  lizard_ast_node_t *sym, *cons;
-  char *buf;
-  size_t len;
-  len = strlen(name) + 1;
-  buf = lizard_heap_alloc(len);
-  memcpy(buf, name, len);
-  sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  sym->type = AST_SYMBOL;
-  sym->data.variable = buf;
-  cons = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  cons->type = AST_PAIR;
-  cons->data.pair.car = sym;
-  cons->data.pair.cdr = c->head;
-  c->head = cons;
-  return 0;
-}
-
-lizard_ast_node_t *lizard_primitive_list_logics(lz_list_t *args,
-                                                lizard_env_t *env,
-                                                lizard_heap_t *heap) {
-  list_logics_collect_t c;
-  lizard_ast_node_t *nil;
-  (void)env; (void)args;
-  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  nil->type = AST_NIL;
-  c.heap = heap;
-  c.head = nil;
-  lizard_logic_bundles_walk(list_logics_collect_cb, &c);
-  return c.head;
-}
-
