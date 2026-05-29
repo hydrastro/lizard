@@ -812,3 +812,11 @@ the untrusted tower, and let each phase stand on its own.
 - Added `--expand-only-format text|json`; the text format remains the default.
 - Added CLI/API tests for JSON report output and invalid format diagnostics.
 - Evaluation and macro semantics remain unchanged.
+
+### Phase 2S progress
+
+- Added report schema capability discovery APIs.
+- Added `--list-report-schemas` and JSON/text schema-list output.
+- Tooling can now query available report schemas before requesting expansion,
+  trace, or diagnostic reports.
+- Existing evaluator and macro semantics remain unchanged.

@@ -252,3 +252,13 @@ lizard-diagnostic-report v=1
 The emitted text and JSON formats remain stable; the registry only removes
 duplicated constants from individual report writers.
 
+
+## Phase 2S: schema/capability discovery for tooling reports
+
+Report names and versions are already centralized in `report_schema.c`.  Phase
+2S adds capability discovery so editor/debugger integrations can enumerate the
+schemas supported by the current Lizard binary.  This keeps external tools from
+assuming that text/JSON/stable-v1 support exists by convention.
+
+Existing report output remains byte-compatible for the trace, diagnostic, and
+syntax-expansion report formats.

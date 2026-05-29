@@ -63,6 +63,15 @@ typedef struct lizard_expansion_trace_event {
   unsigned long origin_scope_summary;
 } lizard_expansion_trace_event_t;
 
+
+typedef struct lizard_report_schema_info {
+  const char *type;
+  int version;
+  int supports_text;
+  int supports_json;
+  int stable_v1;
+} lizard_report_schema_info_t;
+
 typedef struct lizard_diagnostic_event {
   lizard_status_t status;
   const char *message;
@@ -74,6 +83,16 @@ typedef struct lizard_diagnostic_event {
   int start_offset;
   int end_offset;
 } lizard_diagnostic_event_t;
+
+
+/* Phase 2S: report schema/capability discovery for tooling. */
+unsigned long lizard_report_schema_count(void);
+int lizard_report_schema_get(unsigned long index,
+                             lizard_report_schema_info_t *out_info);
+const char *lizard_report_schema_list_type(void);
+int lizard_report_schema_list_version(void);
+int lizard_report_schema_list_fprint(FILE *fp);
+int lizard_report_schema_list_fprint_json(FILE *fp);
 
 typedef enum {
   LIZARD_VALUE_STRING,

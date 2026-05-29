@@ -7,6 +7,7 @@
 #include "printer.h"
 #include "tokenizer.h"
 #include "syntax_expansion_report.h"
+#include "report_schema.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,7 @@
 static void print_usage(const char *argv0) {
   printf("usage: %s [--help] [--version] [--trace-expansion] "
          "[--print-expansion-trace] [--trace-expansion-file PATH] "
-         "[--expand-only] [--expand-only-format text|json] [--eval EXPR] [file]\n", argv0);
+         "[--expand-only] [--expand-only-format text|json] [--list-report-schemas] [--list-report-schemas-format text|json] [--eval EXPR] [file]\n", argv0);
   printf("Run Lizard interactively, evaluate EXPR, or evaluate a file/stdin in script mode.\n");
   printf("  --trace-expansion        enable traced SurfaceTerm macro expansion\n");
   printf("  --print-expansion-trace  print an owned expansion trace report after each evaluation\n");
@@ -29,7 +30,11 @@ static void print_usage(const char *argv0) {
   printf("                           write line-oriented expansion trace reports to PATH\n");
   printf("  --expand-only             expand input and print a syntax expansion report; do not evaluate\n");
   printf("  --expand-only-format FMT  choose expand-only output: text or json\n");
+  printf("  --list-report-schemas    list supported tooling report schemas and exit\n");
+  printf("  --list-report-schemas-format FMT\n");
+  printf("                           choose schema-list output: text or json\n");
 }
+
 
 static char *history[HISTORY_SIZE] = {0};
 static int history_count = 0;
@@ -429,6 +434,18 @@ static int eval_source(lizard_context_t *context, const char *source,
   return 0;
 }
 
+static int list_report_schemas(int json_output) {
+  int ok;
+
+  ok = json_output ? lizard_report_schema_list_fprint_json(stdout)
+                   : lizard_report_schema_list_fprint(stdout);
+  if (!ok) {
+    fprintf(stderr, "failed to write report schema list\n");
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   char *input;
   int i;
@@ -439,6 +456,8 @@ int main(int argc, char **argv) {
   int print_expansion_trace;
   int expand_only;
   int expand_only_json;
+  int list_schemas;
+  int list_schemas_json;
   const char *trace_expansion_file_path;
   FILE *trace_expansion_file;
   const char *eval_expr;
@@ -453,6 +472,8 @@ int main(int argc, char **argv) {
   print_expansion_trace = 0;
   expand_only = 0;
   expand_only_json = 0;
+  list_schemas = 0;
+  list_schemas_json = 0;
 
   for (argi = 1; argi < argc; argi++) {
     if (strcmp(argv[argi], "--help") == 0 || strcmp(argv[argi], "-h") == 0) {
@@ -503,6 +524,27 @@ int main(int argc, char **argv) {
       }
       continue;
     }
+    if (strcmp(argv[argi], "--list-report-schemas") == 0) {
+      list_schemas = 1;
+      continue;
+    }
+    if (strcmp(argv[argi], "--list-report-schemas-format") == 0) {
+      argi++;
+      if (argi >= argc) {
+        fprintf(stderr, "--list-report-schemas-format expects text or json\n");
+        return 2;
+      }
+      if (strcmp(argv[argi], "text") == 0) {
+        list_schemas_json = 0;
+      } else if (strcmp(argv[argi], "json") == 0) {
+        list_schemas_json = 1;
+      } else {
+        fprintf(stderr, "invalid --list-report-schemas-format: %s\n",
+                argv[argi]);
+        return 2;
+      }
+      continue;
+    }
     if (strcmp(argv[argi], "--eval") == 0 || strcmp(argv[argi], "-e") == 0) {
       argi++;
       if (argi >= argc) {
@@ -518,6 +560,15 @@ int main(int argc, char **argv) {
       print_usage(argv[0]);
       return 2;
     }
+  }
+  if (list_schemas) {
+    if (eval_expr != NULL || file_path != NULL || expand_only ||
+        trace_expansion_file_path != NULL || print_expansion_trace ||
+        trace_expansion) {
+      fprintf(stderr, "--list-report-schemas cannot be combined with evaluation or tracing options\n");
+      return 2;
+    }
+    return list_report_schemas(list_schemas_json);
   }
   if (eval_expr != NULL && file_path != NULL) {
     fprintf(stderr, "--eval and file input are mutually exclusive\n");

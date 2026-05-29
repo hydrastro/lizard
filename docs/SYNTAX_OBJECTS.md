@@ -231,3 +231,20 @@ the shared report schema registry for their type names and version numbers.
 This keeps editor/tooling integrations independent from local writer
 implementation details.
 
+
+## Phase 2S: report schema capability discovery
+
+The report schema registry now exposes the supported report schemas and their
+capabilities.  Tooling can query whether each report supports stable text
+output, JSON output, and the stable v1 contract instead of hardcoding these
+assumptions.
+
+The CLI exposes the same registry:
+
+```sh
+build/lizard --list-report-schemas
+build/lizard --list-report-schemas --list-report-schemas-format json
+```
+
+This command does not evaluate code and cannot be combined with evaluation or
+tracing options.

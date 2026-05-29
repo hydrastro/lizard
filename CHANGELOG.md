@@ -948,3 +948,12 @@ All tests passed.
 
 ### Tactic: assumption
 - `(tactic-assumption)` — search context for hypothesis matching goal.
+
+# Phase 2S — report schema capability negotiation
+
+- Added report schema capability discovery APIs for tooling.
+- Added `--list-report-schemas` and `--list-report-schemas-format text|json`.
+- Centralized text/json/stable-v1 capability metadata in `report_schema.c`.
+- Extended CLI regression coverage for schema listing and invalid format handling.
+- Kept existing trace/syntax/diagnostic report formats stable.
+- No strict/security warning flags were removed and no warning suppressions were added.

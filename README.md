@@ -226,3 +226,16 @@ build/lizard --expand-only --expand-only-format json --eval '(+ 1 2)'
 ```
 
 This is opt-in tooling infrastructure; normal evaluation is unchanged.
+
+### Report schema discovery
+
+External tooling can discover the available report schemas without evaluating
+code:
+
+```sh
+build/lizard --list-report-schemas
+build/lizard --list-report-schemas --list-report-schemas-format json
+```
+
+The schema listing reports each schema type, version, and whether the current
+binary supports stable text output, JSON output, and the stable-v1 contract.

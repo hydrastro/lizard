@@ -72,3 +72,11 @@ Tooling-visible report type names and versions must be centralized in
 `lizard-...` report names in individual report writers unless the schema
 registry test is updated intentionally.
 
+
+## Report/tooling strictness
+
+Tooling report formats are part of the public debugging surface.  Schema names,
+versions, and capabilities must be centralized in the report schema registry;
+do not duplicate string literals or silently change schema versions in writer
+modules.  Any new report schema must declare whether it supports stable text,
+JSON, and the stable-v1 contract.

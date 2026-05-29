@@ -34,6 +34,10 @@ int main(void) {
   const char *expand_out;
   const char *expand_json_out;
   const char *expand_bad_format_out;
+  const char *schema_text_out;
+  const char *schema_json_out;
+  const char *schema_bad_format_out;
+  const char *schema_conflict_out;
 
   plain_out = "build/tests/repl_trace_cli_plain.out";
   trace_out = "build/tests/repl_trace_cli_trace.out";
@@ -42,6 +46,10 @@ int main(void) {
   expand_out = "build/tests/repl_trace_cli_expand.out";
   expand_json_out = "build/tests/repl_trace_cli_expand_json.out";
   expand_bad_format_out = "build/tests/repl_trace_cli_expand_bad_format.out";
+  schema_text_out = "build/tests/repl_trace_cli_schema_text.out";
+  schema_json_out = "build/tests/repl_trace_cli_schema_json.out";
+  schema_bad_format_out = "build/tests/repl_trace_cli_schema_bad_format.out";
+  schema_conflict_out = "build/tests/repl_trace_cli_schema_conflict.out";
 
   status = system("build/lizard --eval '(+ 1 2)' > build/tests/repl_trace_cli_plain.out 2>&1");
   TEST_ASSERT_EQ(status, 0);
@@ -82,6 +90,30 @@ int main(void) {
   TEST_ASSERT(status != 0);
   TEST_ASSERT(file_contains(expand_bad_format_out, "invalid --expand-only-format"));
 
+
+  status = system("build/lizard --list-report-schemas > build/tests/repl_trace_cli_schema_text.out 2>&1");
+  TEST_ASSERT_EQ(status, 0);
+  TEST_ASSERT(file_contains(schema_text_out, "lizard-report-schema-list"));
+  TEST_ASSERT(file_contains(schema_text_out, "supports-json=1"));
+  TEST_ASSERT(file_contains(schema_text_out, "lizard-syntax-expansion"));
+  TEST_ASSERT(!file_contains(schema_text_out, "=> 3"));
+
+  status = system("build/lizard --list-report-schemas --list-report-schemas-format json > build/tests/repl_trace_cli_schema_json.out 2>&1");
+  TEST_ASSERT_EQ(status, 0);
+  TEST_ASSERT(file_contains(schema_json_out, "\"type\":\"lizard-report-schema-list\""));
+  TEST_ASSERT(file_contains(schema_json_out, "\"supports_json\":true"));
+  TEST_ASSERT(file_contains(schema_json_out, "lizard-diagnostic-report"));
+
+  status = system("build/lizard --list-report-schemas --list-report-schemas-format bad > build/tests/repl_trace_cli_schema_bad_format.out 2>&1");
+  TEST_ASSERT(status != 0);
+  TEST_ASSERT(file_contains(schema_bad_format_out,
+                            "invalid --list-report-schemas-format"));
+
+  status = system("build/lizard --list-report-schemas --eval '(+ 1 2)' > build/tests/repl_trace_cli_schema_conflict.out 2>&1");
+  TEST_ASSERT(status != 0);
+  TEST_ASSERT(file_contains(schema_conflict_out,
+                            "--list-report-schemas cannot be combined"));
+
   (void)remove(plain_out);
   (void)remove(trace_out);
   (void)remove(trace_file_out);
@@ -89,5 +121,9 @@ int main(void) {
   (void)remove(expand_out);
   (void)remove(expand_json_out);
   (void)remove(expand_bad_format_out);
+  (void)remove(schema_text_out);
+  (void)remove(schema_json_out);
+  (void)remove(schema_bad_format_out);
+  (void)remove(schema_conflict_out);
   TEST_RETURN();
 }
