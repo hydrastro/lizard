@@ -97,3 +97,10 @@ relying on size inference when the object kind and trace policy are known.
 Tests and embedders may use the context-level expansion trace API directly.
 `include/lizard_api.h` must declare the trace controls and owned snapshot API;
 otherwise strict builds fail with implicit declarations under `-Werror`.
+
+## Filename propagation through surface expansion
+
+Source filenames are part of the diagnostic/syntax boundary.  New tokenizer,
+parser, SurfaceTerm, syntax-expansion, and context-evaluation paths must not
+silently fall back to `<string>` when a caller provided a concrete filename.
+This is especially important for macro-stepper and expansion-trace tooling.

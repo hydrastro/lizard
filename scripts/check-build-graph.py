@@ -13,13 +13,13 @@ SRC = ROOT / "src"
 EXCLUDED = set([
     "repl",
     "prims_kernel", "prims_kernel_defs", "prims_kernel_meta", "prims_kernel_proof",
-    "prims_modules", "prims_bytecode", "kernel_sexp",
+    "prims_modules", "prims_bytecode",
 ])
 REQUIRED_IF_PRESENT = set([
     "surface_term", "expansion_context", "syntax_expander",
     "expansion_trace_report", "report_schema", "diagnostic_report",
     "syntax_expansion_report", "report_writer", "diagnostics",
-    "object_model", "gc_metadata",
+    "object_model", "gc_metadata", "kernel_sexp", "core_term",
 ])
 
 text = MAKEFILE.read_text()

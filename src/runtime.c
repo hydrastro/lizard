@@ -66,6 +66,14 @@ static void lizard_context_set_simple_diagnostic(
                sizeof(context->runtime->last_error), message);
   }
 }
+
+static void context_diagnostic_set_filename_if_missing(
+    lizard_diagnostic_t *diagnostic, const char *filename) {
+  if (diagnostic != NULL && diagnostic->span.filename == NULL &&
+      filename != NULL) {
+    diagnostic->span.filename = filename;
+  }
+}
 void lizard_runtime_set_error(lizard_runtime_t *runtime, const char *message) {
   if (runtime != NULL) {
     copy_error(runtime->last_error, sizeof(runtime->last_error), message);
@@ -220,11 +228,13 @@ static lizard_status_t eval_parsed_forms(lizard_context_t *context,
                          lizard_identity_cont);
     context->last_value = result;
     if (result != NULL && result->type == AST_ERROR) {
-      lizard_context_set_error(context, "evaluation returned a Lizard error");
+      lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_EVAL_ERROR,
+                                           LIZARD_DIAGNOSTIC_CATEGORY_EVAL,
+                                           "evaluation returned a Lizard error");
       if (out_value != NULL) {
         *out_value = result;
       }
-      return LIZARD_STATUS_ERROR;
+      return LIZARD_STATUS_EVAL_ERROR;
     }
   }
   context->last_value = result;
@@ -328,9 +338,9 @@ static lizard_status_t eval_traced_source(lizard_context_t *context,
   return eval_surface_forms(context, surface_list, out_value);
 }
 
-lizard_status_t lizard_context_eval_string(lizard_context_t *context,
-                                           const char *source,
-                                           lizard_value_t **out_value) {
+static lizard_status_t lizard_context_eval_source(
+    lizard_context_t *context, const char *source, const char *filename,
+    lizard_value_t **out_value) {
   lz_list_t *tokens;
   lz_list_t *ast_list;
 
@@ -344,15 +354,21 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
   context->last_surface = NULL;
   context->last_expanded_surface = NULL;
   if (context->trace_expansion) {
-    return eval_traced_source(context, source, "<string>", out_value);
+    return eval_traced_source(context, source, filename, out_value);
   }
-  tokens = lizard_tokenize(source);
+  tokens = lizard_tokenize_source(source, filename, &context->diagnostic);
   if (tokens == NULL) {
     const lizard_diagnostic_t *td;
     td = lizard_tokenizer_last_diagnostic();
     if (td != NULL && td->message[0] != '\0') {
       lizard_context_set_diagnostic(context, td);
-      return td->status;
+      context_diagnostic_set_filename_if_missing(&context->diagnostic,
+                                                 filename);
+      if (context->runtime != NULL) {
+        context_diagnostic_set_filename_if_missing(
+            &context->runtime->diagnostic, filename);
+      }
+      return context->diagnostic.status;
     }
     lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_PARSE_ERROR,
                                          LIZARD_DIAGNOSTIC_CATEGORY_TOKENIZER,
@@ -364,7 +380,10 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
     const lizard_diagnostic_t *pd;
     pd = lizard_parser_last_diagnostic();
     if (pd != NULL && pd->message[0] != '\0') {
-      lizard_context_set_diagnostic(context, pd);
+      lizard_diagnostic_t copied;
+      lizard_diagnostic_copy(&copied, pd);
+      context_diagnostic_set_filename_if_missing(&copied, filename);
+      lizard_context_set_diagnostic(context, &copied);
     } else {
       lizard_context_set_simple_diagnostic(context, LIZARD_STATUS_PARSE_ERROR,
                                            LIZARD_DIAGNOSTIC_CATEGORY_PARSER,
@@ -373,6 +392,13 @@ lizard_status_t lizard_context_eval_string(lizard_context_t *context,
     return context->diagnostic.status;
   }
   return eval_parsed_forms(context, ast_list, out_value);
+}
+
+
+lizard_status_t lizard_context_eval_string(lizard_context_t *context,
+                                           const char *source,
+                                           lizard_value_t **out_value) {
+  return lizard_context_eval_source(context, source, "<string>", out_value);
 }
 
 lizard_status_t lizard_context_eval_file(lizard_context_t *context,
@@ -431,7 +457,7 @@ lizard_status_t lizard_context_eval_file(lizard_context_t *context,
     return LIZARD_STATUS_IO_ERROR;
   }
   source[file_size] = '\0';
-  status = lizard_context_eval_string(context, source, out_value);
+  status = lizard_context_eval_source(context, source, path, out_value);
   free(source);
   return status;
 }

@@ -630,3 +630,9 @@ the untrusted tower, and let each phase stand on its own.
   Phase 3 recovery patches dropped those declarations.
 - Added an audit/recovery helper so syntax-object trace tests cannot regress to
   implicit declarations.
+
+### Phase 3H progress
+
+- Fixed the remaining surface-layer filename propagation gap from the current status recap: source filenames now survive tokenizer/source parsing, parser diagnostics, top-level AST spans, SurfaceTerm wrapping, syntax expansion, and expansion trace events.
+- Reconciled the Phase 3 audit scripts with the current tree: `kernel_sexp` is treated as the live AST→kernel bridge, report snapshot modules are explicitly C-owned, and `surface_term.h` now declares its public API dependency directly.
+- Cleaned the packaged tree of generated build artifacts and obvious wrong-project leftovers.

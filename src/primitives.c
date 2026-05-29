@@ -1527,6 +1527,13 @@ lizard_ast_node_t *lizard_primitive_vm_eval(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  /* Strict bytecode: the VM only executes the runtime fragment.  Type-theory
+   * terms (Pi/Sigma/U/Id/... through extensions) are not runtime values and
+   * must be rejected rather than silently compiled. */
+  if (expr != NULL && expr->type >= AST_TT_PI &&
+      expr->type <= AST_TT_EXTENSION) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
   chunk = lizard_compile(expr, heap);
   if (chunk == NULL) {
     return lizard_make_error(heap, LIZARD_ERROR_USER);
@@ -2514,6 +2521,16 @@ lizard_ast_node_t *lizard_primitive_phash_mapp(lz_list_t *args,
 /* Helper: convert Lisp S-expression to kernel term. */
 static kterm_t *sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
   if (e == NULL) return NULL;
+  if (e->type == AST_PAIR) {
+    /* Quoted compound data arrives as pairs; re-parse into an application so
+     * the constructor branches below (which expect an argument list) fire.
+     * Mirrors lizard_kernel_sexp_to_kterm in kernel_sexp.c. */
+    lizard_ast_node_t *reparsed;
+    reparsed = lizard_reparse_datum(e, heap);
+    if (reparsed != NULL && reparsed != e) {
+      return sexp_to_kterm(heap, reparsed);
+    }
+  }
   if (e->type == AST_NUMBER) {
     /* Build a Nat literal: 0 → kt_zero, n → succ^n(zero) */
     long n = mpz_get_si(e->data.number);

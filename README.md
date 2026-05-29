@@ -253,3 +253,18 @@ make build-graph-audit
 The helper restores the conservative allowlisted build graph and repairs common
 public/report header boundary regressions without changing strict compiler
 flags.
+
+### Current strict audit set
+
+Before pushing a runtime/syntax boundary change, run:
+
+```sh
+make api-audit
+make header-audit
+make include-audit
+make ownership-audit
+make build-graph-audit
+```
+
+The surface filename propagation path is covered by the surface, syntax-expander,
+runtime expansion-trace, and diagnostic-report tests.

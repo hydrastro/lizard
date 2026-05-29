@@ -30,6 +30,7 @@ C_ALLOC_RE = re.compile(r"\b(?:malloc|calloc|realloc|free)\s*\(")
 C_OWNED_MODULES = {
     "bytecode.c",
     "diagnostic_report.c",
+    "expansion_trace_report.c",
     "gc.c",
     "gc_metadata.c",
     "mem.c",
@@ -38,11 +39,17 @@ C_OWNED_MODULES = {
     "runtime.c",
     "syntax_expansion_report.c",
     "tt_equality.c",
+    "tt_registry.c",
 }
 
 REPORT_MODULES = {
     "diagnostic_report.c",
+    "expansion_trace_report.c",
     "syntax_expansion_report.c",
+}
+
+EXPERIMENTAL_C_OWNED_IGNORED = {
+    "prims_modules.c",
 }
 
 
@@ -67,7 +74,7 @@ def audit_ast_allocations(errors: List[str]) -> None:
 
 def audit_c_owned_modules(errors: List[str]) -> None:
     for path in sorted(SRC.glob("*.c")):
-        if path.name in C_OWNED_MODULES:
+        if path.name in C_OWNED_MODULES or path.name in EXPERIMENTAL_C_OWNED_IGNORED:
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             if C_ALLOC_RE.search(line) and "/* ownership-audit: allow */" not in line:

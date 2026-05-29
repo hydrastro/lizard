@@ -93,6 +93,41 @@ static void diagnostic_parse_error(lizard_diagnostic_t *diagnostic,
   }
 }
 
+static void surface_span_set_filename_if_missing(lizard_source_span_t *span,
+                                                 const char *filename) {
+  if (span != NULL && span->filename == NULL && filename != NULL) {
+    span->filename = filename;
+  }
+}
+
+static void diagnostic_set_filename_if_missing(lizard_diagnostic_t *diagnostic,
+                                               const char *filename) {
+  if (diagnostic != NULL) {
+    surface_span_set_filename_if_missing(&diagnostic->span, filename);
+  }
+}
+
+static void surface_ast_set_filename_if_missing(lizard_ast_node_t *ast,
+                                                const char *filename) {
+  if (ast != NULL) {
+    surface_span_set_filename_if_missing(&ast->span, filename);
+  }
+}
+
+static void surface_ast_list_set_filename_if_missing(lz_list_t *ast_list,
+                                                     const char *filename) {
+  lz_list_node_t *iter;
+
+  if (ast_list == NULL || filename == NULL) {
+    return;
+  }
+  for (iter = ast_list->head; iter != ast_list->nil; iter = iter->next) {
+    lizard_ast_list_node_t *node;
+    node = (lizard_ast_list_node_t *)iter;
+    surface_ast_set_filename_if_missing(node->ast, filename);
+  }
+}
+
 static int surface_trace_copy_all(lizard_heap_t *heap,
                                   lizard_surface_term_t *dst,
                                   const lizard_surface_term_t *src);
@@ -737,6 +772,7 @@ lz_list_t *lizard_surface_parse_source(lizard_heap_t *heap,
   if (tokens == NULL) {
     last = lizard_tokenizer_last_diagnostic();
     diagnostic_copy(diagnostic, last);
+    diagnostic_set_filename_if_missing(diagnostic, filename);
     if (diagnostic != NULL && diagnostic->status == LIZARD_STATUS_OK) {
       diagnostic->status = LIZARD_STATUS_PARSE_ERROR;
     }
@@ -747,12 +783,14 @@ lz_list_t *lizard_surface_parse_source(lizard_heap_t *heap,
   if (ast_list == NULL) {
     last = lizard_parser_last_diagnostic();
     diagnostic_copy(diagnostic, last);
+    diagnostic_set_filename_if_missing(diagnostic, filename);
     if (diagnostic != NULL && diagnostic->status == LIZARD_STATUS_OK) {
       diagnostic->status = LIZARD_STATUS_PARSE_ERROR;
     }
     return NULL;
   }
 
+  surface_ast_list_set_filename_if_missing(ast_list, filename);
   diagnostic_clear(diagnostic);
   return lizard_surface_list_from_ast_list(heap, ast_list);
 }

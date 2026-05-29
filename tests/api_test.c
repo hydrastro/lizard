@@ -28,7 +28,7 @@ int main(void) {
 
   value = NULL;
   status = lizard_context_eval_string(context, "missing-symbol", &value);
-  TEST_ASSERT_EQ(status, LIZARD_STATUS_ERROR);
+  TEST_ASSERT_EQ(status, LIZARD_STATUS_EVAL_ERROR);
   TEST_ASSERT(lizard_value_is_error(value));
   TEST_ASSERT(lizard_value_error_code(value) != 0);
   TEST_ASSERT(lizard_context_last_error(context) != NULL);

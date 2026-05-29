@@ -1,26 +1,17 @@
-# Build output
 /build/
 *.o
-*.d
 *.a
 *.so
+*.d
 *.gcno
 *.gcda
 *.gcov
 /coverage/
-
-# Compiled REPL / binaries
-/build/lizard
-
-# Editor / OS cruft
 *.swp
 *~
 .DS_Store
-
-# Profiling
 perf.data
 perf.data.old
-
-# Nix
 result
 result-*
+*.zip

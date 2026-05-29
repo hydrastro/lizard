@@ -878,3 +878,12 @@ All tests passed.
 - Added `scripts/phase3g-recover-trace-context-api.py` for mixed local trees.
 - Extended `scripts/check-public-api.sh` so `make api-audit` catches missing trace context declarations.
 - No strict/security warning flags were removed and no warning suppressions were added.
+
+# Phase 3H — surface filename propagation and audit cleanup
+
+- Propagated caller-provided filenames through tokenizer/source parsing into parser diagnostics, top-level AST spans, SurfaceTerm spans, expansion trace origins, and traced context evaluation.
+- Made `lizard_context_eval_file` route through a filename-aware internal evaluation path so file diagnostics report the real path instead of `<string>`.
+- Restored direct `lizard_api.h` inclusion for `surface_term.h` to satisfy header-boundary audits.
+- Updated ownership/build-graph audits for the current live bridge/report modules.
+- Added `.gitignore` and removed generated build artifacts plus wrong-project leftovers from the packaged tree.
+- Kept strict compiler/security flags unchanged.

@@ -1,6 +1,7 @@
 #ifndef LIZARD_SURFACE_TERM_H
 #define LIZARD_SURFACE_TERM_H
 
+#include "lizard_api.h"
 #include "lizard_internal.h"
 
 /* Surface terms are parsed/expanded syntax objects at the language boundary.

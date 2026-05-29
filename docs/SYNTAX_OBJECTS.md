@@ -257,3 +257,10 @@ External tools can require a schema type, minimum version, and format support
 (`any`, `text`, or `json`) before requesting expansion, trace, or diagnostic
 reports.  This keeps editor/tooling integrations explicit without changing
 evaluator or macro semantics.
+
+## Filename propagation invariant
+
+Surface terms created from `lizard_surface_parse_source` must preserve the
+caller-provided filename in their span when the tokenizer/parser only supplied
+line/column/offset data. Expansion traces must use that surface span as their
+origin, so tools can report `file:line:column` consistently.
