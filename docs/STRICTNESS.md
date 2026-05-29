@@ -65,3 +65,10 @@ Text and JSON escaping for tooling reports must go through `report_writer.c`.
 Do not duplicate escaping logic in individual report modules; duplicated
 escaping tends to drift and creates subtle editor/tooling bugs.
 
+## Report schema constants
+
+Tooling-visible report type names and versions must be centralized in
+`report_schema.c` / `report_schema.h`. Do not reintroduce hardcoded
+`lizard-...` report names in individual report writers unless the schema
+registry test is updated intentionally.
+

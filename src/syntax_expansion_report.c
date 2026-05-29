@@ -7,6 +7,7 @@
 
 #include "syntax_expansion_report.h"
 #include "report_writer.h"
+#include "report_schema.h"
 
 #include "diagnostic_report.h"
 #include "env.h"
@@ -380,8 +381,9 @@ int lizard_syntax_expansion_report_fprint(
     return 0;
   }
   filename = report->span.filename != NULL ? report->span.filename : "-";
-  if (fprintf(fp,
-              "lizard-syntax-expansion\tv=1\tstatus=%d\tforms=%lu\torigin=",
+  if (fprintf(fp, "%s\tv=%d\tstatus=%d\tforms=%lu\torigin=",
+              lizard_report_schema_type(LIZARD_REPORT_SCHEMA_SYNTAX_EXPANSION),
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_SYNTAX_EXPANSION),
               (int)report->status, report->form_count) < 0) {
     return 0;
   }
@@ -433,8 +435,15 @@ int lizard_syntax_expansion_report_fprint_json(
   }
   filename = report->span.filename != NULL ? report->span.filename : "";
   summary = lizard_syntax_expansion_report_expanded_ast_summary(report);
-  if (fprintf(fp,
-              "{\"type\":\"lizard-syntax-expansion\",\"version\":1,\"status\":%d,\"forms\":%lu,\"origin\":{\"filename\":",
+  if (fputs("{\"type\":", fp) < 0) {
+    return 0;
+  }
+  if (!lizard_report_schema_fprint_type_json(
+          fp, LIZARD_REPORT_SCHEMA_SYNTAX_EXPANSION)) {
+    return 0;
+  }
+  if (fprintf(fp, ",\"version\":%d,\"status\":%d,\"forms\":%lu,\"origin\":{\"filename\":",
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_SYNTAX_EXPANSION),
               (int)report->status, report->form_count) < 0) {
     return 0;
   }
@@ -467,9 +476,18 @@ int lizard_syntax_expansion_report_fprint_json(
     if (!lizard_expansion_trace_report_fprint_json(fp, report->trace_report)) {
       return 0;
     }
-  } else if (fputs("{\"type\":\"lizard-expansion-trace\",\"version\":1,\"count\":0,\"events\":[]}\n",
-                   fp) < 0) {
-    return 0;
+  } else {
+    if (fputs("{\"type\":", fp) < 0) {
+      return 0;
+    }
+    if (!lizard_report_schema_fprint_type_json(
+            fp, LIZARD_REPORT_SCHEMA_EXPANSION_TRACE)) {
+      return 0;
+    }
+    if (fprintf(fp, ",\"version\":%d,\"count\":0,\"events\":[]}\n",
+                lizard_report_schema_version(LIZARD_REPORT_SCHEMA_EXPANSION_TRACE)) < 0) {
+      return 0;
+    }
   }
   return fputs("}\n", fp) >= 0;
 }

@@ -238,3 +238,17 @@ Expansion trace reports, syntax expansion reports, and diagnostic reports now
 share `report_writer.c` for text-field and JSON-string escaping. This keeps
 tooling-facing report output stable while the representation boundary evolves.
 
+## Phase 2R: report schema registry
+
+The syntax-object tooling reports now use a centralized schema registry for
+stable type names and version numbers:
+
+```text
+lizard-syntax-expansion  v=1
+lizard-expansion-trace   v=1
+lizard-diagnostic-report v=1
+```
+
+The emitted text and JSON formats remain stable; the registry only removes
+duplicated constants from individual report writers.
+

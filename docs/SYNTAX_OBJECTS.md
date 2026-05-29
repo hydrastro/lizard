@@ -223,3 +223,11 @@ expansion failure, the text and JSON report writers include the diagnostic
 status, message, filename, line/column, and offsets in a tooling-friendly
 format.  This keeps `--expand-only` useful for editors even when expansion
 fails.
+
+## Report schema stability
+
+Syntax expansion reports, expansion trace reports, and diagnostic reports use
+the shared report schema registry for their type names and version numbers.
+This keeps editor/tooling integrations independent from local writer
+implementation details.
+

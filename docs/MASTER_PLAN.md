@@ -261,6 +261,17 @@ and type-theory references.
 - Added direct report-writer tests for tab/newline/carriage-return/backslash,
   JSON quote/backslash/control-byte escaping, and NULL field behavior.
 
+
+### Phase 2R progress
+
+- Added a stable report schema registry in `src/report_schema.c` /
+  `src/report_schema.h`. Report type names and version numbers for syntax
+  expansion, expansion traces, and diagnostics now live in one place.
+- Report writers still emit the same text/JSON formats, but no longer duplicate
+  schema constants across files. This reduces editor/tooling drift risk.
+- Added regression coverage for schema names, versions, validity checks, and JSON
+  type-field printing.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

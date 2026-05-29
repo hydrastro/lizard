@@ -7,6 +7,7 @@
 
 #include "diagnostic_report.h"
 #include "report_writer.h"
+#include "report_schema.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -252,7 +253,9 @@ int lizard_diagnostic_report_fprint(
   if (fp == NULL || report == NULL) {
     return 0;
   }
-  if (fprintf(fp, "lizard-diagnostic-report\tv=1\tcount=%lu\n",
+  if (fprintf(fp, "%s\tv=%d\tcount=%lu\n",
+              lizard_report_schema_type(LIZARD_REPORT_SCHEMA_DIAGNOSTIC),
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_DIAGNOSTIC),
               report->count) < 0) {
     return 0;
   }
@@ -284,8 +287,15 @@ int lizard_diagnostic_report_fprint_json(
   if (fp == NULL || report == NULL) {
     return 0;
   }
-  if (fprintf(fp,
-              "{\"type\":\"lizard-diagnostic-report\",\"version\":1,\"count\":%lu,\"diagnostics\":[",
+  if (fputs("{\"type\":", fp) < 0) {
+    return 0;
+  }
+  if (!lizard_report_schema_fprint_type_json(
+          fp, LIZARD_REPORT_SCHEMA_DIAGNOSTIC)) {
+    return 0;
+  }
+  if (fprintf(fp, ",\"version\":%d,\"count\":%lu,\"diagnostics\":[",
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_DIAGNOSTIC),
               report->count) < 0) {
     return 0;
   }

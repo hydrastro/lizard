@@ -8,6 +8,7 @@
 
 #include "expansion_trace_report.h"
 #include "report_writer.h"
+#include "report_schema.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -247,7 +248,10 @@ int lizard_expansion_trace_report_fprint(
     return 0;
   }
   count = lizard_expansion_trace_report_count(report);
-  if (fprintf(fp, "lizard-expansion-trace\tv=1\tcount=%lu\n", count) < 0) {
+  if (fprintf(fp, "%s\tv=%d\tcount=%lu\n",
+              lizard_report_schema_type(LIZARD_REPORT_SCHEMA_EXPANSION_TRACE),
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_EXPANSION_TRACE),
+              count) < 0) {
     return 0;
   }
   for (i = 0UL; i < count; i++) {
@@ -280,8 +284,15 @@ int lizard_expansion_trace_report_fprint_json(
     return 0;
   }
   count = lizard_expansion_trace_report_count(report);
-  if (fprintf(fp,
-              "{\"type\":\"lizard-expansion-trace\",\"version\":1,\"count\":%lu,\"events\":[",
+  if (fputs("{\"type\":", fp) < 0) {
+    return 0;
+  }
+  if (!lizard_report_schema_fprint_type_json(
+          fp, LIZARD_REPORT_SCHEMA_EXPANSION_TRACE)) {
+    return 0;
+  }
+  if (fprintf(fp, ",\"version\":%d,\"count\":%lu,\"events\":[",
+              lizard_report_schema_version(LIZARD_REPORT_SCHEMA_EXPANSION_TRACE),
               count) < 0) {
     return 0;
   }

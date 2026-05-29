@@ -1,3 +1,10 @@
+# Phase 2R — stable report schema registry
+
+- Added `src/report_schema.c` / `src/report_schema.h` to centralize report type names and version numbers.
+- Refactored expansion trace, diagnostic, and syntax expansion report writers to obtain schema names/versions from the registry instead of hardcoding them.
+- Added `tests/report_schema_test.c` to lock report schema names, versions, validity checks, and JSON type printing.
+- Kept text/JSON report formats stable and kept all strict warning/security flags intact.
+
 # Phase 2Q — shared report writer module
 
 - Added `src/report_writer.c` / `src/report_writer.h` as the single implementation point for stable text-field and JSON-string escaping used by expansion trace, syntax expansion, and diagnostic reports.

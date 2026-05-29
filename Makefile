@@ -81,7 +81,7 @@ else
 endif
 
 # --- sources -------------------------------------------------------------
-LIB_SRCS := runtime surface_term report_writer expansion_trace_report diagnostic_report syntax_expansion_report expansion_context syntax_expander core_term lizard env mem parser primitives prims_kernel_util prims_kernel_core prims_kernel_proof prims_kernel_meta prims_kernel_defs prims_hits prims_trunc prims_theory_ext prims_logic tokenizer printer tt_equality tt_registry tt_lattice tt_faces tt_glue tt_check gc bytecode kernel_sexp kernel tactics
+LIB_SRCS := runtime surface_term report_schema report_writer expansion_trace_report diagnostic_report syntax_expansion_report expansion_context syntax_expander core_term lizard env mem parser primitives prims_kernel_util prims_kernel_core prims_kernel_proof prims_kernel_meta prims_kernel_defs prims_hits prims_trunc prims_theory_ext prims_logic tokenizer printer tt_equality tt_registry tt_lattice tt_faces tt_glue tt_check gc bytecode kernel_sexp kernel tactics
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
 
 # --- artifacts -----------------------------------------------------------
