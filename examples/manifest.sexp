@@ -143,3 +143,4 @@
 (example "130-tactic-proofs.lisp" :expect pass)
 (example "131-eliminator-tactics.lisp" :expect pass)
 (example "132-elaborator-holes.lisp" :expect pass)
+(example "133-elaborator-unification.lisp" :expect pass)

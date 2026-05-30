@@ -1,10 +1,13 @@
-/* src/elaborator.c — bidirectional elaborator with holes (Phase 7).
+/* src/elaborator.c — bidirectional elaborator with holes + unification.
  *
- * Strategy: a hole-free subterm is handed straight to the trusted kernel
- * (kt_infer / kt_check).  Only when a subterm *contains* a hole does the
- * elaborator descend, pushing the expected type down so a hole in checking
- * position records its goal.  This keeps the elaborator small and lets the
- * kernel remain the single source of truth.
+ * Phase 7 (TT1/TT3).  A surface term may contain holes (?0, ?1, ... = KT_META).
+ * The elaborator pushes expected types inward (checking mode) so a hole in a
+ * checking position learns its goal, and it threads a metavariable context so
+ * that the *checking* step can SOLVE a hole by unification when its value is
+ * forced by the surroundings (e.g. (refl ?0) : Id Nat 2 2 forces ?0 := 2).
+ *
+ * It is NOT trusted: after elaboration the term is zonked (solved metas
+ * substituted) and handed to the kernel (kt_check) for the real verdict.
  */
 #include "elaborator.h"
 #include "mem.h"
@@ -17,7 +20,6 @@ static kterm_t *mk(lizard_heap_t *heap, kterm_tag_t tag) {
   return t;
 }
 
-/* Does the term contain a metavariable (hole) anywhere? */
 static int has_hole(kterm_t *t) {
   if (t == NULL) return 0;
   switch (t->tag) {
@@ -57,24 +59,49 @@ static int has_hole(kterm_t *t) {
   }
 }
 
-static void record_hole(elab_state_t *st, int id, kctx_t *ctx, kterm_t *goal) {
-  int i;
-  for (i = 0; i < st->n_holes; i++) {
-    if (st->holes[i].id == id) {
-      /* If we previously saw it without a goal, fill it in now. */
-      if (st->holes[i].goal == NULL && goal != NULL) {
-        st->holes[i].goal = goal;
-        st->holes[i].ctx = ctx;
-      }
-      return;
-    }
+static int scan_max_meta(kterm_t *t, int acc) {
+  if (t == NULL) return acc;
+  if (t->tag == KT_META) return t->data.meta.id > acc ? t->data.meta.id : acc;
+  switch (t->tag) {
+  case KT_PI:  acc = scan_max_meta(t->data.pi.domain, acc); return scan_max_meta(t->data.pi.codomain, acc);
+  case KT_LAM: acc = scan_max_meta(t->data.lam.domain, acc); return scan_max_meta(t->data.lam.body, acc);
+  case KT_APP: acc = scan_max_meta(t->data.app.fun, acc); return scan_max_meta(t->data.app.arg, acc);
+  case KT_SUCC: return scan_max_meta(t->data.succ.pred, acc);
+  case KT_ID: acc = scan_max_meta(t->data.id.type, acc); acc = scan_max_meta(t->data.id.a, acc); return scan_max_meta(t->data.id.b, acc);
+  case KT_REFL: return scan_max_meta(t->data.refl.value, acc);
+  case KT_PAIR: acc = scan_max_meta(t->data.pair.fst, acc); return scan_max_meta(t->data.pair.snd, acc);
+  case KT_PROJ1: case KT_PROJ2: return scan_max_meta(t->data.proj.target, acc);
+  case KT_BOOL_REC: acc = scan_max_meta(t->data.bool_rec.motive, acc); acc = scan_max_meta(t->data.bool_rec.true_case, acc);
+                    acc = scan_max_meta(t->data.bool_rec.false_case, acc); return scan_max_meta(t->data.bool_rec.scrutinee, acc);
+  case KT_NAT_REC: acc = scan_max_meta(t->data.nat_rec.motive, acc); acc = scan_max_meta(t->data.nat_rec.zero_case, acc);
+                   acc = scan_max_meta(t->data.nat_rec.succ_case, acc); return scan_max_meta(t->data.nat_rec.scrutinee, acc);
+  default: return acc;
   }
+}
+
+/* Ensure a user hole ?id has an mctx entry; give it a fresh type-meta so it
+ * can be inferred and unified.  Record it for reporting (once). */
+static meta_entry_t *ensure_user_hole(elab_state_t *st, int id, kctx_t *ctx) {
+  meta_entry_t *e = meta_lookup(st->mctx, id);
+  int i;
+  if (e == NULL) {
+    kterm_t *tymeta = meta_fresh(st->heap, st->mctx, NULL); /* the hole's type */
+    e = (meta_entry_t *)lizard_heap_alloc(sizeof(meta_entry_t));
+    e->id = id;
+    e->type = tymeta;
+    e->solution = NULL;
+    e->next = st->mctx->entries;
+    st->mctx->entries = e;
+  }
+  for (i = 0; i < st->n_holes; i++)
+    if (st->holes[i].id == id) return e;
   if (st->n_holes < ELAB_MAX_HOLES) {
     st->holes[st->n_holes].id = id;
     st->holes[st->n_holes].ctx = ctx;
-    st->holes[st->n_holes].goal = goal;
+    st->holes[st->n_holes].goal = e->type;
     st->n_holes++;
   }
+  return e;
 }
 
 static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t, kterm_t *expected);
@@ -85,14 +112,13 @@ static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t,
   kterm_t *ty, *we;
   if (t == NULL) return 0;
   if (t->tag == KT_META) {
-    record_hole(st, t->data.meta.id, ctx,
-                kt_whnf(st->heap, ctx, expected));
+    meta_entry_t *e = ensure_user_hole(st, t->data.meta.id, ctx);
+    /* learn the hole's goal; leave its value to unification elsewhere */
+    kt_unify(st->heap, ctx, st->mctx, e->type, expected);
     return 1;
   }
-  if (!has_hole(t)) {
-    /* No holes anywhere: the trusted kernel gives the verdict. */
+  if (!has_hole(t))
     return kt_check(st->heap, ctx, t, expected) == KERNEL_OK;
-  }
   we = kt_whnf(st->heap, ctx, expected);
   if (t->tag == KT_LAM && we->tag == KT_PI) {
     kctx_t *ext = kctx_extend(st->heap, ctx, t->data.lam.name,
@@ -101,7 +127,8 @@ static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t,
   }
   ty = elab_infer(st, ctx, t);
   if (ty == NULL) return 0;
-  return kt_equal(st->heap, ctx, ty, expected);
+  /* unify (not just compare): this is where determined holes get solved */
+  return kt_unify(st->heap, ctx, st->mctx, ty, expected);
 }
 
 static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t) {
@@ -109,11 +136,10 @@ static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t) {
   if (!has_hole(t)) return kt_infer(st->heap, ctx, t);
 
   switch (t->tag) {
-  case KT_META:
-    /* A hole with nothing pushing a type onto it: goal unknown. */
-    record_hole(st, t->data.meta.id, ctx, NULL);
-    return NULL;
-
+  case KT_META: {
+    meta_entry_t *e = ensure_user_hole(st, t->data.meta.id, ctx);
+    return e->type;   /* the hole's (as-yet-unknown) type-meta */
+  }
   case KT_APP: {
     kterm_t *fty = elab_infer(st, ctx, t->data.app.fun);
     kterm_t *wf;
@@ -124,61 +150,53 @@ static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t) {
       return NULL;
     return kt_subst(st->heap, wf->data.pi.codomain, 0, t->data.app.arg);
   }
-
   case KT_LAM: {
     kctx_t *ext;
     kterm_t *bty;
-    if (has_hole(t->data.lam.domain)) return NULL; /* need an expected type */
-    ext = kctx_extend(st->heap, ctx, t->data.lam.name,
-                      t->data.lam.domain, NULL);
+    if (has_hole(t->data.lam.domain)) return NULL;
+    ext = kctx_extend(st->heap, ctx, t->data.lam.name, t->data.lam.domain, NULL);
     bty = elab_infer(st, ext, t->data.lam.body);
     if (bty == NULL) return NULL;
     return kt_pi(st->heap, t->data.lam.name, t->data.lam.domain, bty);
   }
-
+  case KT_REFL: {
+    kterm_t *vt = elab_infer(st, ctx, t->data.refl.value);
+    if (vt == NULL) return NULL;
+    return kt_id(st->heap, vt, t->data.refl.value, t->data.refl.value);
+  }
+  case KT_SUCC: {
+    if (!elab_check(st, ctx, t->data.succ.pred, kt_nat(st->heap))) return NULL;
+    return kt_nat(st->heap);
+  }
   case KT_BOOL_REC: {
     kterm_t *motive = t->data.bool_rec.motive;
     kterm_t *res;
-    if (motive == NULL || has_hole(motive)
-        || has_hole(t->data.bool_rec.scrutinee)) return NULL;
+    if (motive == NULL || has_hole(motive) || has_hole(t->data.bool_rec.scrutinee)) return NULL;
     res = kt_app(st->heap, motive, t->data.bool_rec.scrutinee);
-    if (kt_infer(st->heap, ctx, res) == NULL) return NULL; /* motive ok */
+    if (kt_infer(st->heap, ctx, res) == NULL) return NULL;
     if (!elab_check(st, ctx, t->data.bool_rec.true_case,
-                    kt_whnf(st->heap, ctx,
-                            kt_app(st->heap, motive, mk(st->heap, KT_TRUE)))))
-      return NULL;
+                    kt_whnf(st->heap, ctx, kt_app(st->heap, motive, mk(st->heap, KT_TRUE))))) return NULL;
     if (!elab_check(st, ctx, t->data.bool_rec.false_case,
-                    kt_whnf(st->heap, ctx,
-                            kt_app(st->heap, motive, mk(st->heap, KT_FALSE)))))
-      return NULL;
+                    kt_whnf(st->heap, ctx, kt_app(st->heap, motive, mk(st->heap, KT_FALSE))))) return NULL;
     return res;
   }
-
   case KT_NAT_REC: {
     kterm_t *motive = t->data.nat_rec.motive;
     kterm_t *res, *m1, *m2, *step_t;
-    if (motive == NULL || has_hole(motive)
-        || has_hole(t->data.nat_rec.scrutinee)) return NULL;
+    if (motive == NULL || has_hole(motive) || has_hole(t->data.nat_rec.scrutinee)) return NULL;
     res = kt_app(st->heap, motive, t->data.nat_rec.scrutinee);
     if (kt_infer(st->heap, ctx, res) == NULL) return NULL;
-    /* zero_case : motive zero */
     if (!elab_check(st, ctx, t->data.nat_rec.zero_case,
-                    kt_whnf(st->heap, ctx,
-                            kt_app(st->heap, motive, kt_zero(st->heap)))))
-      return NULL;
-    /* succ_case : Pi(k:Nat). Pi(ih: motive k). motive (succ k) */
+                    kt_whnf(st->heap, ctx, kt_app(st->heap, motive, kt_zero(st->heap))))) return NULL;
     m1 = kt_shift(st->heap, motive, 0, 1);
     m2 = kt_shift(st->heap, motive, 0, 2);
     step_t = kt_pi(st->heap, "k", kt_nat(st->heap),
                kt_pi(st->heap, "ih",
                  kt_app(st->heap, m1, kt_var(st->heap, 0)),
-                 kt_app(st->heap, m2,
-                        kt_succ(st->heap, kt_var(st->heap, 1)))));
-    if (!elab_check(st, ctx, t->data.nat_rec.succ_case, step_t))
-      return NULL;
+                 kt_app(st->heap, m2, kt_succ(st->heap, kt_var(st->heap, 1)))));
+    if (!elab_check(st, ctx, t->data.nat_rec.succ_case, step_t)) return NULL;
     return res;
   }
-
   default:
     return NULL;
   }
@@ -186,8 +204,13 @@ static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t) {
 
 int elab_run(lizard_heap_t *heap, kctx_t *ctx, kterm_t *term,
              kterm_t *expected, elab_state_t *out) {
+  int maxid;
   out->heap = heap;
   out->n_holes = 0;
+  out->mctx = meta_ctx_create(heap);
+  maxid = scan_max_meta(term, -1);
+  out->mctx->next_id = maxid + 1;   /* fresh metas never collide with user holes */
   out->ok = elab_check(out, ctx, term, expected);
+  out->elaborated = meta_zonk(heap, out->mctx, term);
   return out->ok;
 }

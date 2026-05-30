@@ -24,7 +24,9 @@ typedef struct {
 
 typedef struct {
   lizard_heap_t *heap;
-  elab_hole_t holes[ELAB_MAX_HOLES];
+  meta_ctx_t *mctx;          /* metavariable context (holes + unification) */
+  kterm_t *elaborated;       /* the term after zonking solved metas */
+  elab_hole_t holes[ELAB_MAX_HOLES];  /* every user hole encountered */
   int n_holes;
   int ok;            /* 1 if the term elaborated (modulo holes), 0 on error */
 } elab_state_t;

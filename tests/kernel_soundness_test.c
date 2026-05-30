@@ -476,6 +476,30 @@ int main(void) {
           w != NULL && w->tag == KT_TRUE);
   }
 
+  /* ---- regression: kt_unify must also descend into eliminator nodes (it
+   * shared the missing-default bug with subst/shift/equal).  A metavariable
+   * unifies with any term; two identical neutral eliminators unify; a meta
+   * inside a neutral eliminator gets solved. ---- */
+  {
+    meta_ctx_t *mc = meta_ctx_create(heap);
+    kterm_t *m = meta_fresh(heap, mc, NULL);
+    kterm_t *br_a, *br_b;
+    check("meta unifies with a concrete term",
+          kt_unify(heap, ctx, mc, m, kt_zero(heap)));
+    br_a = mk(KT_BOOL_REC);
+    br_a->data.bool_rec.motive = kt_lam(heap, "x", mk(KT_BOOL), mk(KT_BOOL));
+    br_a->data.bool_rec.true_case = mk(KT_TRUE);
+    br_a->data.bool_rec.false_case = mk(KT_FALSE);
+    br_a->data.bool_rec.scrutinee = kt_var(heap, 0);
+    br_b = mk(KT_BOOL_REC);
+    br_b->data.bool_rec.motive = kt_lam(heap, "x", mk(KT_BOOL), mk(KT_BOOL));
+    br_b->data.bool_rec.true_case = mk(KT_TRUE);
+    br_b->data.bool_rec.false_case = mk(KT_FALSE);
+    br_b->data.bool_rec.scrutinee = kt_var(heap, 0);
+    check("identical neutral bool_rec unify",
+          kt_unify(heap, ctx, meta_ctx_create(heap), br_a, br_b));
+  }
+
   printf("kernel soundness: %d passed, %d failed\n", pass_count, fail_count);
   /* --- An opaque constant (axiom reference) with no definition context must
    * be rejected, not crash: kt_infer needs ctx->defs to resolve it, and a

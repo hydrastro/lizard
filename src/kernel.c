@@ -1591,6 +1591,43 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
   case KT_PAIR:
     return kt_unify(heap, ctx, mctx, na->data.pair.fst, nb->data.pair.fst) &&
            kt_unify(heap, ctx, mctx, na->data.pair.snd, nb->data.pair.snd);
+  case KT_PROJ1:
+    return kt_unify(heap, ctx, mctx, na->data.proj.target, nb->data.proj.target);
+  case KT_PROJ2:
+    return kt_unify(heap, ctx, mctx, na->data.proj.target, nb->data.proj.target);
+  case KT_NAT_REC:
+    return kt_unify(heap, ctx, mctx, na->data.nat_rec.motive, nb->data.nat_rec.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.nat_rec.zero_case, nb->data.nat_rec.zero_case) &&
+           kt_unify(heap, ctx, mctx, na->data.nat_rec.succ_case, nb->data.nat_rec.succ_case) &&
+           kt_unify(heap, ctx, mctx, na->data.nat_rec.scrutinee, nb->data.nat_rec.scrutinee);
+  case KT_BOOL_REC:
+    return kt_unify(heap, ctx, mctx, na->data.bool_rec.motive, nb->data.bool_rec.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.bool_rec.true_case, nb->data.bool_rec.true_case) &&
+           kt_unify(heap, ctx, mctx, na->data.bool_rec.false_case, nb->data.bool_rec.false_case) &&
+           kt_unify(heap, ctx, mctx, na->data.bool_rec.scrutinee, nb->data.bool_rec.scrutinee);
+  case KT_LIST_REC:
+    return kt_unify(heap, ctx, mctx, na->data.list_rec.motive, nb->data.list_rec.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.list_rec.nil_case, nb->data.list_rec.nil_case) &&
+           kt_unify(heap, ctx, mctx, na->data.list_rec.cons_case, nb->data.list_rec.cons_case) &&
+           kt_unify(heap, ctx, mctx, na->data.list_rec.scrutinee, nb->data.list_rec.scrutinee);
+  case KT_MAYBE_REC:
+    return kt_unify(heap, ctx, mctx, na->data.maybe_rec.motive, nb->data.maybe_rec.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.maybe_rec.nothing_case, nb->data.maybe_rec.nothing_case) &&
+           kt_unify(heap, ctx, mctx, na->data.maybe_rec.just_case, nb->data.maybe_rec.just_case) &&
+           kt_unify(heap, ctx, mctx, na->data.maybe_rec.scrutinee, nb->data.maybe_rec.scrutinee);
+  case KT_SUM_REC:
+    return kt_unify(heap, ctx, mctx, na->data.sum_rec.motive, nb->data.sum_rec.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.sum_rec.left_case, nb->data.sum_rec.left_case) &&
+           kt_unify(heap, ctx, mctx, na->data.sum_rec.right_case, nb->data.sum_rec.right_case) &&
+           kt_unify(heap, ctx, mctx, na->data.sum_rec.scrutinee, nb->data.sum_rec.scrutinee);
+  case KT_J:
+    return kt_unify(heap, ctx, mctx, na->data.j.motive, nb->data.j.motive) &&
+           kt_unify(heap, ctx, mctx, na->data.j.base_case, nb->data.j.base_case) &&
+           kt_unify(heap, ctx, mctx, na->data.j.a, nb->data.j.a) &&
+           kt_unify(heap, ctx, mctx, na->data.j.b, nb->data.j.b) &&
+           kt_unify(heap, ctx, mctx, na->data.j.proof, nb->data.j.proof);
+  case KT_ABSURD:
+    return kt_unify(heap, ctx, mctx, na->data.absurd.target_type, nb->data.absurd.target_type);
   default:
     return 0;
   }

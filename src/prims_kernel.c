@@ -112,7 +112,6 @@ lizard_ast_node_t *lizard_primitive_check_holes(lz_list_t *args,
   kterm_t *term, *type;
   kctx_t *ctx;
   elab_state_t st;
-  int i;
   (void)env;
   if (!two_args(args))
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
@@ -129,30 +128,48 @@ lizard_ast_node_t *lizard_primitive_check_holes(lz_list_t *args,
     printf("Elaboration failed: the term does not fit the goal type.\n");
     return lizard_make_bool(heap, 0);
   }
-  if (st.n_holes == 0) {
-    kernel_result_t r = kt_check(heap, ctx, term, type);
-    if (r == KERNEL_OK) {
-      printf("No holes remaining; kernel-verified.\n");
-      return lizard_make_bool(heap, 1);
+  {
+    int open = 0, i;
+    /* report holes solved by unification first */
+    for (i = 0; i < st.n_holes; i++) {
+      meta_entry_t *e = meta_lookup(st.mctx, st.holes[i].id);
+      if (e != NULL && e->solution != NULL) {
+        printf("  ?%d := ", st.holes[i].id);
+        kt_fprint(stdout, meta_zonk(heap, st.mctx, e->solution));
+        printf("   (inferred)\n");
+      } else {
+        open++;
+      }
     }
-    printf("No holes, but the assembled term failed kernel verification.\n");
+    if (open == 0) {
+      kernel_result_t r = kt_check(heap, ctx, st.elaborated, type);
+      if (r == KERNEL_OK) {
+        printf("No open holes; kernel-verified.\n");
+        return lizard_make_bool(heap, 1);
+      }
+      printf("No open holes, but the term failed kernel verification.\n");
+      return lizard_make_bool(heap, 0);
+    }
+    printf("%d open hole(s):\n", open);
+    for (i = 0; i < st.n_holes; i++) {
+      meta_entry_t *e = meta_lookup(st.mctx, st.holes[i].id);
+      kctx_entry_t *ce;
+      if (e != NULL && e->solution != NULL) continue;
+      printf("  ?%d : ", st.holes[i].id);
+      if (st.holes[i].goal != NULL)
+        kt_fprint(stdout, meta_zonk(heap, st.mctx, st.holes[i].goal));
+      else
+        printf("<unconstrained>");
+      printf("\n");
+      for (ce = st.holes[i].ctx ? st.holes[i].ctx->entries : NULL;
+           ce != NULL; ce = ce->next) {
+        printf("      %s : ", ce->name ? ce->name : "_");
+        kt_fprint(stdout, ce->type);
+        printf("\n");
+      }
+    }
     return lizard_make_bool(heap, 0);
   }
-  printf("%d open hole(s):\n", st.n_holes);
-  for (i = 0; i < st.n_holes; i++) {
-    kctx_entry_t *e;
-    printf("  ?%d : ", st.holes[i].id);
-    if (st.holes[i].goal != NULL) kt_fprint(stdout, st.holes[i].goal);
-    else printf("<unconstrained>");
-    printf("\n");
-    for (e = st.holes[i].ctx ? st.holes[i].ctx->entries : NULL;
-         e != NULL; e = e->next) {
-      printf("      %s : ", e->name ? e->name : "_");
-      kt_fprint(stdout, e->type);
-      printf("\n");
-    }
-  }
-  return lizard_make_bool(heap, 0);
 }
 lizard_ast_node_t *lizard_primitive_begin_proof(lz_list_t *args,
                                                  lizard_env_t *env,

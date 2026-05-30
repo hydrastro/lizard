@@ -470,6 +470,36 @@ term is rejected even with a buggy elaborator).
 - Demonstrated/guarded by `examples/132-elaborator-holes.lisp`.  Suite:
   C 95/95, Lisp 5/5, examples 68/68, all audits.
 
+### Phase 7 progress — unification-driven elaboration (the elaborator now solves holes)
+
+- The elaborator graduated from *reporting* hole goals to *solving* them.  It
+  now threads a metavariable context (`meta_ctx`) and, in its checking step,
+  unifies the inferred type against the expected type with `kt_unify` instead
+  of merely comparing with `kt_equal`.  A hole whose value is *determined* by
+  its surroundings is solved automatically; a hole that is a genuine free
+  choice (a proof obligation) stays open and is reported.  After elaboration
+  the term is zonked (solved metas substituted) and the finished term is handed
+  to the trusted kernel — unification is only a heuristic, the kernel is judge.
+- Each surface hole `?i` is registered in the meta context with a fresh
+  type-meta, so it can be *inferred* (e.g. `refl ?0` infers `Id τ ?0 ?0`) and
+  then *unified* against the goal.  Fresh metas are numbered above the highest
+  user hole so they never collide.  `(check-holes ...)` now prints
+  `?i := <value> (inferred)` for solved holes and only lists genuinely open
+  ones.  Effects: `(refl ?0) : Id Nat 2 2` solves `?0 := 2`;
+  `(refl-all ?0) : Id Nat 2 2` infers the argument `?0 := 2` through the return
+  type; the involution skeleton's two branches stay open; `(refl ?0) : Id Nat
+  1 2` is rejected (no consistent `?0`).
+- **Latent kernel bug surfaced and fixed (the same fall-through trap, a fourth
+  site).**  `kt_unify` lacked structural cases for the eliminators
+  (`nat_rec`/`bool_rec`/...), `J`, the projections, and `absurd`, so it could
+  not compare the neutral `bool_rec` inside the involution goal and failed
+  where `kt_equal` succeeded.  Added all the missing cases (mirroring
+  `kt_equal`).  Two regression checks in `kernel_soundness_test.c` (now 54):
+  a metavariable unifies with a concrete term, and two identical neutral
+  `bool_rec` unify.
+- Demonstrated/guarded by `examples/133-elaborator-unification.lisp`.  Suite:
+  C 95/95, Lisp 5/5, examples 69/69, all audits.
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,
