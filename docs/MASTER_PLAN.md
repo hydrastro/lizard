@@ -587,6 +587,44 @@ term is rejected even with a buggy elaborator).
   `examples/135-inductive-types.lisp`.  Suite: C 95/95, Lisp 5/5, examples
   71/71, all audits.
 
+### Phase 7 progress — TT3: term-mode proving (the "no tactics" done-when)
+
+- `(def name type term)` and `(theorem name type term)` state a definition or
+  theorem in surface type theory and prove it by giving a **term** — no
+  tactics.  Each elaborates the term against the type (inserting implicit
+  arguments, solving holes by unification), reports any open goals with their
+  local context and goal, and on success kernel-checks the elaborated term and
+  stores it as a reusable δ-transparent definition.  The trusted kernel
+  re-checks every result, so the (untrusted) elaborator cannot make an unsound
+  statement go through.
+- This closes Phase 7's own done-when: *a non-trivial theorem stated in surface
+  TT, elaborated, and kernel-checked with no tactics.*  Demonstrated end to end
+  in `examples/136-term-mode-proving.lisp`:
+  - `comp : {A B C} (B->C) -> (A->B) -> A -> C` — a definition using implicit
+    arguments, stored and reusable;
+  - `refl-thm : {A} (x:A) -> Id A x x` proved by `\x. refl x`;
+  - `neg-neg : (b:Bool) -> Id Bool (neg (neg b)) b` proved by the Bool
+    eliminator as a term, then reused as a lemma (`neg-neg true`);
+  - `add2-right-zero : (n:Nat2) -> Id Nat2 (add2 n z2) n` — a genuine
+    **induction**, written as `Nat2-rec` applied to a motive, the base proof,
+    and a successor method that is congruence `cong s2 ih` (congruence proved
+    once via `J`); all implicit arguments to `cong` are inferred, and the
+    successor goal closes because `add2 (s2 k) z2` ι-reduces to `s2 (add2 k z2)`;
+  - an incomplete proof (`\b. ?0`) reports its open goal and local context
+    instead of being accepted.
+- To make real proof terms elaborable, the elaborator's bidirectional rules now
+  cover the rest of the core type language: `Id`, `Pi`, `Sigma`, the
+  projections, and the `List`/`Maybe`/`Sum` formers in inference position, plus
+  pair-against-`Sigma` in checking position.  Type-former and projection
+  subterms are elaborated and then typed by the kernel directly, which keeps the
+  elaborator consistent with the kernel by construction.  (`J` in a bare term is
+  not yet elaborated — proofs that need it wrap it in a raw definition, as
+  `cong` does.)
+- No kernel change was required; soundness stays at 60.  Suite: C 95/95, Lisp
+  5/5, examples 72/72, all audits.  Remaining Phase 7 work is the cubical
+  metatheory track (TT2: Path types, the interval, `transp`/`hcomp`), which is
+  the other half of the phase's done-when.
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,

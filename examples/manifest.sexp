@@ -146,3 +146,4 @@
 (example "133-elaborator-unification.lisp" :expect pass)
 (example "134-implicit-arguments.lisp" :expect pass)
 (example "135-inductive-types.lisp" :expect pass)
+(example "136-term-mode-proving.lisp" :expect pass)

@@ -201,6 +201,10 @@ lizard_ast_node_t *lizard_primitive_tactic_exact(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_tactic_refl(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_def(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_theorem(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_data(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_elaborate(lz_list_t *args,

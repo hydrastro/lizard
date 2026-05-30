@@ -738,6 +738,92 @@ lizard_ast_node_t *lizard_primitive_data(lz_list_t *args, lizard_env_t *env,
   return lizard_make_bool(heap, 1);
 }
 
+/* Shared core for (def …) and (theorem …): elaborate `term` against `type`
+ * (inserting implicits, solving holes by unification), report any open holes
+ * with their local context and goal, and on success kernel-check the
+ * elaborated term and store it as a delta-transparent definition.  This is
+ * term-mode proving: the proof is just a term; tactics are optional. */
+static lizard_ast_node_t *def_or_theorem(lz_list_t *args, lizard_heap_t *heap,
+                                         int thm) {
+  lizard_ast_node_t *name_node, *type_expr, *term_expr;
+  const char *name;
+  kterm_t *type, *term;
+  kctx_t *ctx;
+  elab_state_t st;
+  int open = 0, i;
+  if (!three_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  name_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  type_expr = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  term_expr = ((lizard_ast_list_node_t *)args->head->next->next)->ast;
+  name = (name_node->type == AST_SYMBOL) ? name_node->data.variable
+       : (name_node->type == AST_STRING) ? name_node->data.string : "?";
+  type = lizard_kernel_sexp_to_kterm(heap, type_expr);
+  term = lizard_kernel_sexp_to_kterm(heap, term_expr);
+  if (type == NULL || term == NULL)
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
+  if (!elab_run(heap, ctx, term, type, &st)) {
+    printf("%s %s: the %s does not have the stated type.\n",
+           thm ? "theorem" : "def", name, thm ? "proof" : "term");
+    return lizard_make_bool(heap, 0);
+  }
+  for (i = 0; i < st.n_holes; i++) {
+    meta_entry_t *e = meta_lookup(st.mctx, st.holes[i].id);
+    if (e == NULL || e->solution == NULL) open++;
+  }
+  if (open > 0) {
+    printf("%s %s: %d open goal(s):\n", thm ? "theorem" : "def", name, open);
+    for (i = 0; i < st.n_holes; i++) {
+      meta_entry_t *e = meta_lookup(st.mctx, st.holes[i].id);
+      kctx_entry_t *ce;
+      if (e != NULL && e->solution != NULL) continue;
+      printf("  ?%d : ", st.holes[i].id);
+      if (st.holes[i].goal != NULL)
+        kt_fprint(stdout, meta_zonk(heap, st.mctx, st.holes[i].goal));
+      else
+        printf("<unconstrained>");
+      printf("\n");
+      for (ce = st.holes[i].ctx ? st.holes[i].ctx->entries : NULL;
+           ce != NULL; ce = ce->next) {
+        printf("      %s : ", ce->name ? ce->name : "_");
+        kt_fprint(stdout, ce->type);
+        printf("\n");
+      }
+    }
+    return lizard_make_bool(heap, 0);
+  }
+  if (kt_check(heap, ctx, st.elaborated, type) != KERNEL_OK) {
+    printf("%s %s: elaborated %s failed kernel verification.\n",
+           thm ? "theorem" : "def", name, thm ? "proof" : "term");
+    return lizard_make_bool(heap, 0);
+  }
+  kdef_add(heap, lizard_kernel_defs(heap), name, type, st.elaborated);
+  if (thm) {
+    printf("Theorem %s : ", name);
+    kt_fprint(stdout, type);
+    printf("\n  proved (kernel-checked).\n");
+  } else {
+    printf("Defined %s : ", name);
+    kt_fprint(stdout, type);
+    printf("\n");
+  }
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_def(lz_list_t *args, lizard_env_t *env,
+                                        lizard_heap_t *heap) {
+  (void)env;
+  return def_or_theorem(args, heap, 0);
+}
+
+lizard_ast_node_t *lizard_primitive_theorem(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  (void)env;
+  return def_or_theorem(args, heap, 1);
+}
+
 lizard_ast_node_t *lizard_primitive_kernel_define(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {

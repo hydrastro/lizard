@@ -40,6 +40,9 @@ static int has_hole(kterm_t *t) {
                      || has_hole(t->data.nat_rec.succ_case) || has_hole(t->data.nat_rec.scrutinee);
   case KT_BOOL_REC: return has_hole(t->data.bool_rec.motive) || has_hole(t->data.bool_rec.true_case)
                      || has_hole(t->data.bool_rec.false_case) || has_hole(t->data.bool_rec.scrutinee);
+  case KT_LIST: return has_hole(t->data.list.elem_type);
+  case KT_MAYBE: return has_hole(t->data.maybe.elem_type);
+  case KT_SUM_K: return has_hole(t->data.sum_k.left_type) || has_hole(t->data.sum_k.right_type);
   default: return 0;
   }
 }
@@ -62,6 +65,9 @@ static int has_app(kterm_t *t) {
                      || has_app(t->data.nat_rec.succ_case) || has_app(t->data.nat_rec.scrutinee);
   case KT_BOOL_REC: return has_app(t->data.bool_rec.motive) || has_app(t->data.bool_rec.true_case)
                      || has_app(t->data.bool_rec.false_case) || has_app(t->data.bool_rec.scrutinee);
+  case KT_LIST: return has_app(t->data.list.elem_type);
+  case KT_MAYBE: return has_app(t->data.maybe.elem_type);
+  case KT_SUM_K: return has_app(t->data.sum_k.left_type) || has_app(t->data.sum_k.right_type);
   default: return 0;
   }
 }
@@ -80,6 +86,9 @@ static int scan_max_meta(kterm_t *t, int acc) {
                     acc = scan_max_meta(t->data.bool_rec.false_case, acc); return scan_max_meta(t->data.bool_rec.scrutinee, acc);
   case KT_NAT_REC: acc = scan_max_meta(t->data.nat_rec.motive, acc); acc = scan_max_meta(t->data.nat_rec.zero_case, acc);
                    acc = scan_max_meta(t->data.nat_rec.succ_case, acc); return scan_max_meta(t->data.nat_rec.scrutinee, acc);
+  case KT_SIGMA: acc = scan_max_meta(t->data.sigma.fst_type, acc); return scan_max_meta(t->data.sigma.snd_type, acc);
+  case KT_PAIR: acc = scan_max_meta(t->data.pair.fst, acc); return scan_max_meta(t->data.pair.snd, acc);
+  case KT_PROJ1: case KT_PROJ2: return scan_max_meta(t->data.proj.target, acc);
   default: return acc;
   }
 }
@@ -123,6 +132,16 @@ static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t,
 static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t,
                            kterm_t **out);
 
+/* Elaborate a subterm in inference mode; returns the elaborated term (NULL on
+ * failure).  Used for the subterms of type formers and projections, whose
+ * types the kernel then assigns directly. */
+static kterm_t *elab_sub(elab_state_t *st, kctx_t *ctx, kterm_t *s) {
+  kterm_t *o = NULL;
+  if (s == NULL) return NULL;
+  if (elab_infer(st, ctx, s, &o) == NULL) return NULL;
+  return o;
+}
+
 static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t,
                       kterm_t *expected, kterm_t **out) {
   kterm_t *ty, *we, *elab;
@@ -141,6 +160,18 @@ static int elab_check(elab_state_t *st, kctx_t *ctx, kterm_t *t,
     if (!elab_check(st, ext, t->data.lam.body, we->data.pi.codomain, &body_elab))
       return 0;
     *out = kt_lam(st->heap, t->data.lam.name, we->data.pi.domain, body_elab);
+    return 1;
+  }
+  if (t->tag == KT_PAIR && we->tag == KT_SIGMA) {
+    kterm_t *fst_elab, *snd_elab, *snd_ty, *r;
+    if (!elab_check(st, ctx, t->data.pair.fst, we->data.sigma.fst_type, &fst_elab))
+      return 0;
+    snd_ty = kt_subst(st->heap, we->data.sigma.snd_type, 0, fst_elab);
+    if (!elab_check(st, ctx, t->data.pair.snd, snd_ty, &snd_elab))
+      return 0;
+    r = mk(st->heap, KT_PAIR);
+    r->data.pair.fst = fst_elab; r->data.pair.snd = snd_elab;
+    *out = r;
     return 1;
   }
   ty = elab_infer(st, ctx, t, &elab);
@@ -238,6 +269,76 @@ static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t,
     r->data.nat_rec.scrutinee = t->data.nat_rec.scrutinee;
     *out = r;
     return res;
+  }
+  case KT_ID: {
+    kterm_t *ty = elab_sub(st, ctx, t->data.id.type);
+    kterm_t *a = elab_sub(st, ctx, t->data.id.a);
+    kterm_t *b = elab_sub(st, ctx, t->data.id.b);
+    kterm_t *r;
+    if (ty == NULL || a == NULL || b == NULL) return NULL;
+    r = kt_id(st->heap, ty, a, b);
+    *out = r;
+    return kt_infer(st->heap, ctx, r);
+  }
+  case KT_PI: {
+    kterm_t *dom = elab_sub(st, ctx, t->data.pi.domain);
+    kctx_t *ext;
+    kterm_t *cod, *r;
+    if (dom == NULL) return NULL;
+    ext = kctx_extend(st->heap, ctx, t->data.pi.name, dom, NULL);
+    cod = elab_sub(st, ext, t->data.pi.codomain);
+    if (cod == NULL) return NULL;
+    r = kt_pi(st->heap, t->data.pi.name, dom, cod);
+    r->data.pi.implicit = t->data.pi.implicit;
+    *out = r;
+    return kt_infer(st->heap, ctx, r);
+  }
+  case KT_SIGMA: {
+    kterm_t *fst = elab_sub(st, ctx, t->data.sigma.fst_type);
+    kctx_t *ext;
+    kterm_t *snd, *r;
+    if (fst == NULL) return NULL;
+    ext = kctx_extend(st->heap, ctx, t->data.sigma.name, fst, NULL);
+    snd = elab_sub(st, ext, t->data.sigma.snd_type);
+    if (snd == NULL) return NULL;
+    r = mk(st->heap, KT_SIGMA);
+    r->data.sigma.name = t->data.sigma.name;
+    r->data.sigma.fst_type = fst;
+    r->data.sigma.snd_type = snd;
+    *out = r;
+    return kt_infer(st->heap, ctx, r);
+  }
+  case KT_PROJ1: case KT_PROJ2: {
+    kterm_t *tg = elab_sub(st, ctx, t->data.proj.target);
+    kterm_t *r;
+    if (tg == NULL) return NULL;
+    r = mk(st->heap, t->tag);
+    r->data.proj.target = tg;
+    *out = r;
+    return kt_infer(st->heap, ctx, r);
+  }
+  case KT_LIST: {
+    kterm_t *e = elab_sub(st, ctx, t->data.list.elem_type);
+    kterm_t *r;
+    if (e == NULL) return NULL;
+    r = mk(st->heap, KT_LIST); r->data.list.elem_type = e;
+    *out = r; return kt_infer(st->heap, ctx, r);
+  }
+  case KT_MAYBE: {
+    kterm_t *e = elab_sub(st, ctx, t->data.maybe.elem_type);
+    kterm_t *r;
+    if (e == NULL) return NULL;
+    r = mk(st->heap, KT_MAYBE); r->data.maybe.elem_type = e;
+    *out = r; return kt_infer(st->heap, ctx, r);
+  }
+  case KT_SUM_K: {
+    kterm_t *l = elab_sub(st, ctx, t->data.sum_k.left_type);
+    kterm_t *rt = elab_sub(st, ctx, t->data.sum_k.right_type);
+    kterm_t *r;
+    if (l == NULL || rt == NULL) return NULL;
+    r = mk(st->heap, KT_SUM_K);
+    r->data.sum_k.left_type = l; r->data.sum_k.right_type = rt;
+    *out = r; return kt_infer(st->heap, ctx, r);
   }
   default:
     return NULL;
