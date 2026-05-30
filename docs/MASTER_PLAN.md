@@ -382,6 +382,65 @@ term is rejected even with a buggy elaborator).
   proof-library demo now also exercises delta).  Suite: C 95/95, Lisp 5/5,
   examples 65/65, all audits.
 
+### Phase 7 progress — interactive tactics that actually build (and verify) proofs
+
+- A tactic engine already existed (`tactics.c`: `intro`/`exact`/`refl`/`apply`/
+  `assumption`/`simpl`/`split`/`left`/`right`, with a goal list), but it was
+  hollow: it tracked goal *closure* correctly yet never *assembled the proof
+  term*.  `intro` built `lam(x, A, <hole>)` and `apply` built `app(f, <hole>)`,
+  but nothing ever filled the holes, so `qed` returned skeletons like
+  `(lam (x : P) ?)` — `P → Q → P` came out as just `(lam (x : P) ?)`, missing
+  the inner lambda and body entirely.  No real proof term, nothing checkable.
+- Fixed it with a *slot* mechanism: each goal carries `kterm_t **slot`, a
+  pointer to the hole in its parent term.  A helper `goal_solve` writes a
+  goal's solution through its slot, and tactics that introduce structure point
+  their subgoals' slots at the skeleton's holes (`&lam->data.lam.body`,
+  `&app->data.app.arg`, the pair fields, the inl/inr value).  Because holes are
+  shared pointers, solving a subgoal updates the parent in place, so the term
+  assembles bottom-up automatically.  `P → P` now yields `(lam (x : P) #0)` and
+  `P → Q → P` yields `(lam (x : P) (lam (y : Q) #1))` — correct de Bruijn.
+- **`qed` is now the LCF trust anchor.**  Tactics merely assemble a term; `qed`
+  has the kernel independently re-check it against the original goal
+  (`kt_check`), so a bug in any tactic cannot mint a false theorem.  And
+  `(qed name)` stores the verified theorem as a reusable library lemma — so an
+  interactive proof becomes a delta-transparent constant usable in later proofs
+  (`(app id-P p) : P`), unifying tactics with the proof library.
+- Demonstrated/guarded by `examples/130-tactic-proofs.lisp` (three theorems
+  proved interactively, verified, stored, reused, with soundness checks).
+  Suite: C 95/95, Lisp 5/5, examples 66/66, all audits.
+
+### Phase 7 progress — eliminator tactics (cases / induction) and a latent kernel bug
+
+- Added `tactic-cases` (Bool, via `bool_rec`) and `tactic-induction` (Nat, via
+  `nat_rec`).  Both act on the innermost hypothesis (de Bruijn #0).  The motive
+  is synthesised by abstracting the goal over that variable —
+  `motive = \y. shift(goal, 1, 1)` (cutoff 1 keeps the variable's own
+  occurrences for the new binder while lifting the rest of the context past
+  it).  Subgoal types come from `whnf(app(motive, constructor))` — the kernel
+  does the de Bruijn arithmetic, not the tactic.  `cases` yields one subgoal
+  per constructor; `induction` yields a base subgoal and a step subgoal
+  `Pi k. motive k -> motive (succ k)` carrying the induction hypothesis.  The
+  assembled eliminator is re-checked by the kernel at `qed`, as always.
+- The headline is boolean involution, `not (not b) = b`, proved interactively
+  by `(intro b)(cases)(refl)(refl)`.  It genuinely needs case analysis: with
+  `b` a variable, `not (not b)` is stuck and is not definitionally `b`; only
+  after casing does each branch compute.
+- **Latent kernel bug surfaced and fixed (one class, three sites).**  The
+  eliminator tactics are the first code path to push *variable-scrutinee*
+  eliminators through the kernel's structural operations, which exposed that
+  `kt_subst`, `kt_shift`, and `kt_equal` all lacked cases for the eliminator
+  nodes (`nat_rec`/`bool_rec`/`list_rec`/`maybe_rec`/`sum_rec`/`J` and the
+  small constructors) and fell through to a `default`.  The result: `subst`/
+  `shift` silently left an eliminator's scrutinee untouched (so a definition
+  like `not = \b. boolrec(.., b)` got stuck when unfolded and applied), and
+  `kt_equal` reported a *neutral* eliminator unequal to itself.  All three
+  functions now recurse into every eliminator field.  Three adversarial checks
+  were added to `kernel_soundness_test.c` (now 52 cases): a neutral `bool_rec`
+  equals an identical copy, differs from a branch-swapped one, and reduces
+  correctly when its scrutinee variable is substituted.
+- Demonstrated/guarded by `examples/131-eliminator-tactics.lisp`.  Suite:
+  C 95/95, Lisp 5/5, examples 67/67, all audits.
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,

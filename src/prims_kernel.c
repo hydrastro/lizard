@@ -173,17 +173,40 @@ lizard_ast_node_t *lizard_primitive_tactic_refl(lz_list_t *args,
 lizard_ast_node_t *lizard_primitive_qed(lz_list_t *args,
                                          lizard_env_t *env,
                                          lizard_heap_t *heap) {
-  kterm_t *proof;
-  (void)args; (void)env;
+  kterm_t *proof, *goal;
+  kctx_t *ctx;
+  const char *name = NULL;
+  (void)env;
   if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
   proof = proof_qed(current_proof);
   if (proof == NULL) {
     printf("qed: %d goal(s) remaining.\n", proof_open_goals(current_proof));
     return lizard_make_bool(heap, 0);
   }
+  goal = current_proof->goal_type;
+  /* Trust anchor (LCF-style): tactics merely *assemble* a term; the kernel
+   * independently re-checks it against the original goal.  A bug in any
+   * tactic cannot produce an accepted theorem. */
+  ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
+  if (kt_check(heap, ctx, proof, goal) != KERNEL_OK) {
+    printf("qed: assembled proof term FAILED kernel verification.\n");
+    current_proof = NULL;
+    return lizard_make_bool(heap, 0);
+  }
   printf("Qed! Proof term: ");
   kt_fprint(stdout, proof);
   printf("\n");
+  /* (qed name) stores the verified theorem as a reusable library lemma. */
+  if (args != NULL && args->head != args->nil) {
+    lizard_ast_node_t *nn = ((lizard_ast_list_node_t *)args->head)->ast;
+    name = (nn->type == AST_SYMBOL) ? nn->data.variable
+         : (nn->type == AST_STRING) ? nn->data.string : NULL;
+  }
+  if (name != NULL) {
+    kdef_add(heap, lizard_kernel_defs(heap), name, goal, proof);
+    printf("Theorem %s stored.\n", name);
+  }
   current_proof = NULL;
   return lizard_make_bool(heap, 1);
 }
@@ -257,6 +280,36 @@ lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
   r = tactic_assumption(current_proof);
   if (r < 0) {
     printf("tactic-assumption: no matching hypothesis found.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_tactic_cases(lz_list_t *args,
+                                                  lizard_env_t *env,
+                                                  lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_cases(current_proof);
+  if (r < 0) {
+    printf("tactic-cases: innermost hypothesis is not a Bool.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  proof_state_fprint(stdout, current_proof);
+  return lizard_make_bool(heap, 1);
+}
+
+lizard_ast_node_t *lizard_primitive_tactic_induction(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  int r;
+  (void)args; (void)env;
+  if (current_proof == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
+  r = tactic_induction(current_proof);
+  if (r < 0) {
+    printf("tactic-induction: innermost hypothesis is not a Nat.\n");
     return lizard_make_bool(heap, 0);
   }
   proof_state_fprint(stdout, current_proof);

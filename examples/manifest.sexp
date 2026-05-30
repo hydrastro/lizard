@@ -140,3 +140,5 @@
 (example "127-kernel-induction.lisp" :expect pass)
 (example "128-kernel-library.lisp" :expect pass)
 (example "129-kernel-axioms.lisp" :expect pass)
+(example "130-tactic-proofs.lisp" :expect pass)
+(example "131-eliminator-tactics.lisp" :expect pass)

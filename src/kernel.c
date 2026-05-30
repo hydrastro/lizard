@@ -148,7 +148,7 @@ kctx_entry_t *kctx_lookup(kctx_t *ctx, int index) {
 
 /* ---- substitution ---- */
 
-static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
+kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
   if (t == NULL) return NULL;
   switch (t->tag) {
   case KT_VAR:
@@ -208,6 +208,130 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
     c->data.cons_k.head = kt_shift(heap, t->data.cons_k.head, cutoff, delta);
     c->data.cons_k.tail = kt_shift(heap, t->data.cons_k.tail, cutoff, delta);
     return c;
+  }
+  case KT_NAT_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_NAT_REC;
+    r->data.nat_rec.motive = kt_shift(heap, t->data.nat_rec.motive, cutoff, delta);
+    r->data.nat_rec.zero_case = kt_shift(heap, t->data.nat_rec.zero_case, cutoff, delta);
+    r->data.nat_rec.succ_case = kt_shift(heap, t->data.nat_rec.succ_case, cutoff, delta);
+    r->data.nat_rec.scrutinee = kt_shift(heap, t->data.nat_rec.scrutinee, cutoff, delta);
+    return r;
+  }
+  case KT_BOOL_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_BOOL_REC;
+    r->data.bool_rec.motive = kt_shift(heap, t->data.bool_rec.motive, cutoff, delta);
+    r->data.bool_rec.true_case = kt_shift(heap, t->data.bool_rec.true_case, cutoff, delta);
+    r->data.bool_rec.false_case = kt_shift(heap, t->data.bool_rec.false_case, cutoff, delta);
+    r->data.bool_rec.scrutinee = kt_shift(heap, t->data.bool_rec.scrutinee, cutoff, delta);
+    return r;
+  }
+  case KT_LIST_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LIST_REC;
+    r->data.list_rec.motive = kt_shift(heap, t->data.list_rec.motive, cutoff, delta);
+    r->data.list_rec.nil_case = kt_shift(heap, t->data.list_rec.nil_case, cutoff, delta);
+    r->data.list_rec.cons_case = kt_shift(heap, t->data.list_rec.cons_case, cutoff, delta);
+    r->data.list_rec.scrutinee = kt_shift(heap, t->data.list_rec.scrutinee, cutoff, delta);
+    return r;
+  }
+  case KT_MAYBE_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE_REC;
+    r->data.maybe_rec.motive = kt_shift(heap, t->data.maybe_rec.motive, cutoff, delta);
+    r->data.maybe_rec.nothing_case = kt_shift(heap, t->data.maybe_rec.nothing_case, cutoff, delta);
+    r->data.maybe_rec.just_case = kt_shift(heap, t->data.maybe_rec.just_case, cutoff, delta);
+    r->data.maybe_rec.scrutinee = kt_shift(heap, t->data.maybe_rec.scrutinee, cutoff, delta);
+    return r;
+  }
+  case KT_SUM_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_REC;
+    r->data.sum_rec.motive = kt_shift(heap, t->data.sum_rec.motive, cutoff, delta);
+    r->data.sum_rec.left_case = kt_shift(heap, t->data.sum_rec.left_case, cutoff, delta);
+    r->data.sum_rec.right_case = kt_shift(heap, t->data.sum_rec.right_case, cutoff, delta);
+    r->data.sum_rec.scrutinee = kt_shift(heap, t->data.sum_rec.scrutinee, cutoff, delta);
+    return r;
+  }
+  case KT_J: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_J;
+    r->data.j.motive = kt_shift(heap, t->data.j.motive, cutoff, delta);
+    r->data.j.base_case = kt_shift(heap, t->data.j.base_case, cutoff, delta);
+    r->data.j.type = kt_shift(heap, t->data.j.type, cutoff, delta);
+    r->data.j.a = kt_shift(heap, t->data.j.a, cutoff, delta);
+    r->data.j.b = kt_shift(heap, t->data.j.b, cutoff, delta);
+    r->data.j.proof = kt_shift(heap, t->data.j.proof, cutoff, delta);
+    return r;
+  }
+  case KT_ANNOT: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ANNOT;
+    r->data.annot.term = kt_shift(heap, t->data.annot.term, cutoff, delta);
+    r->data.annot.type = kt_shift(heap, t->data.annot.type, cutoff, delta);
+    return r;
+  }
+  case KT_INL: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INL;
+    r->data.inl.value = kt_shift(heap, t->data.inl.value, cutoff, delta);
+    r->data.inl.right_type = kt_shift(heap, t->data.inl.right_type, cutoff, delta);
+    return r;
+  }
+  case KT_INR: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INR;
+    r->data.inr.value = kt_shift(heap, t->data.inr.value, cutoff, delta);
+    r->data.inr.left_type = kt_shift(heap, t->data.inr.left_type, cutoff, delta);
+    return r;
+  }
+  case KT_JUST: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_JUST;
+    r->data.just.value = kt_shift(heap, t->data.just.value, cutoff, delta);
+    return r;
+  }
+  case KT_MAYBE: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE;
+    r->data.maybe.elem_type = kt_shift(heap, t->data.maybe.elem_type, cutoff, delta);
+    return r;
+  }
+  case KT_SUM_K: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_K;
+    r->data.sum_k.left_type = kt_shift(heap, t->data.sum_k.left_type, cutoff, delta);
+    r->data.sum_k.right_type = kt_shift(heap, t->data.sum_k.right_type, cutoff, delta);
+    return r;
+  }
+  case KT_ABSURD: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ABSURD;
+    r->data.absurd.target_type = kt_shift(heap, t->data.absurd.target_type, cutoff, delta);
+    return r;
+  }
+  case KT_LET: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LET;
+    r->data.let.name  = t->data.let.name;
+    r->data.let.value = kt_shift(heap, t->data.let.value, cutoff, delta);
+    r->data.let.body  = kt_shift(heap, t->data.let.body, cutoff + 1, delta);
+    return r;
   }
   default:
     return t;
@@ -277,6 +401,131 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
     c->data.cons_k.head = kt_subst(heap, t->data.cons_k.head, n, s);
     c->data.cons_k.tail = kt_subst(heap, t->data.cons_k.tail, n, s);
     return c;
+  }
+  case KT_NAT_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_NAT_REC;
+    r->data.nat_rec.motive = kt_subst(heap, t->data.nat_rec.motive, n, s);
+    r->data.nat_rec.zero_case = kt_subst(heap, t->data.nat_rec.zero_case, n, s);
+    r->data.nat_rec.succ_case = kt_subst(heap, t->data.nat_rec.succ_case, n, s);
+    r->data.nat_rec.scrutinee = kt_subst(heap, t->data.nat_rec.scrutinee, n, s);
+    return r;
+  }
+  case KT_BOOL_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_BOOL_REC;
+    r->data.bool_rec.motive = kt_subst(heap, t->data.bool_rec.motive, n, s);
+    r->data.bool_rec.true_case = kt_subst(heap, t->data.bool_rec.true_case, n, s);
+    r->data.bool_rec.false_case = kt_subst(heap, t->data.bool_rec.false_case, n, s);
+    r->data.bool_rec.scrutinee = kt_subst(heap, t->data.bool_rec.scrutinee, n, s);
+    return r;
+  }
+  case KT_LIST_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LIST_REC;
+    r->data.list_rec.motive = kt_subst(heap, t->data.list_rec.motive, n, s);
+    r->data.list_rec.nil_case = kt_subst(heap, t->data.list_rec.nil_case, n, s);
+    r->data.list_rec.cons_case = kt_subst(heap, t->data.list_rec.cons_case, n, s);
+    r->data.list_rec.scrutinee = kt_subst(heap, t->data.list_rec.scrutinee, n, s);
+    return r;
+  }
+  case KT_MAYBE_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE_REC;
+    r->data.maybe_rec.motive = kt_subst(heap, t->data.maybe_rec.motive, n, s);
+    r->data.maybe_rec.nothing_case = kt_subst(heap, t->data.maybe_rec.nothing_case, n, s);
+    r->data.maybe_rec.just_case = kt_subst(heap, t->data.maybe_rec.just_case, n, s);
+    r->data.maybe_rec.scrutinee = kt_subst(heap, t->data.maybe_rec.scrutinee, n, s);
+    return r;
+  }
+  case KT_SUM_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_REC;
+    r->data.sum_rec.motive = kt_subst(heap, t->data.sum_rec.motive, n, s);
+    r->data.sum_rec.left_case = kt_subst(heap, t->data.sum_rec.left_case, n, s);
+    r->data.sum_rec.right_case = kt_subst(heap, t->data.sum_rec.right_case, n, s);
+    r->data.sum_rec.scrutinee = kt_subst(heap, t->data.sum_rec.scrutinee, n, s);
+    return r;
+  }
+  case KT_J: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_J;
+    r->data.j.motive = kt_subst(heap, t->data.j.motive, n, s);
+    r->data.j.base_case = kt_subst(heap, t->data.j.base_case, n, s);
+    r->data.j.type = kt_subst(heap, t->data.j.type, n, s);
+    r->data.j.a = kt_subst(heap, t->data.j.a, n, s);
+    r->data.j.b = kt_subst(heap, t->data.j.b, n, s);
+    r->data.j.proof = kt_subst(heap, t->data.j.proof, n, s);
+    return r;
+  }
+  case KT_ANNOT: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ANNOT;
+    r->data.annot.term = kt_subst(heap, t->data.annot.term, n, s);
+    r->data.annot.type = kt_subst(heap, t->data.annot.type, n, s);
+    return r;
+  }
+  case KT_INL: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INL;
+    r->data.inl.value = kt_subst(heap, t->data.inl.value, n, s);
+    r->data.inl.right_type = kt_subst(heap, t->data.inl.right_type, n, s);
+    return r;
+  }
+  case KT_INR: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INR;
+    r->data.inr.value = kt_subst(heap, t->data.inr.value, n, s);
+    r->data.inr.left_type = kt_subst(heap, t->data.inr.left_type, n, s);
+    return r;
+  }
+  case KT_JUST: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_JUST;
+    r->data.just.value = kt_subst(heap, t->data.just.value, n, s);
+    return r;
+  }
+  case KT_MAYBE: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE;
+    r->data.maybe.elem_type = kt_subst(heap, t->data.maybe.elem_type, n, s);
+    return r;
+  }
+  case KT_SUM_K: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_K;
+    r->data.sum_k.left_type = kt_subst(heap, t->data.sum_k.left_type, n, s);
+    r->data.sum_k.right_type = kt_subst(heap, t->data.sum_k.right_type, n, s);
+    return r;
+  }
+  case KT_ABSURD: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ABSURD;
+    r->data.absurd.target_type = kt_subst(heap, t->data.absurd.target_type, n, s);
+    return r;
+  }
+  case KT_LET: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LET;
+    r->data.let.name  = t->data.let.name;
+    r->data.let.value = kt_subst(heap, t->data.let.value, n, s);
+    r->data.let.body  = kt_subst(heap, t->data.let.body, n + 1,
+                                 kt_shift(heap, s, 0, 1));
+    return r;
   }
   default:
     return t;
@@ -485,6 +734,40 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
            kt_equal(heap, ctx, na->data.id.b, nb->data.id.b);
   case KT_REFL:
     return kt_equal(heap, ctx, na->data.refl.value, nb->data.refl.value);
+  case KT_NAT_REC:
+    return kt_equal(heap, ctx, na->data.nat_rec.motive, nb->data.nat_rec.motive) &&
+           kt_equal(heap, ctx, na->data.nat_rec.zero_case, nb->data.nat_rec.zero_case) &&
+           kt_equal(heap, ctx, na->data.nat_rec.succ_case, nb->data.nat_rec.succ_case) &&
+           kt_equal(heap, ctx, na->data.nat_rec.scrutinee, nb->data.nat_rec.scrutinee);
+  case KT_BOOL_REC:
+    return kt_equal(heap, ctx, na->data.bool_rec.motive, nb->data.bool_rec.motive) &&
+           kt_equal(heap, ctx, na->data.bool_rec.true_case, nb->data.bool_rec.true_case) &&
+           kt_equal(heap, ctx, na->data.bool_rec.false_case, nb->data.bool_rec.false_case) &&
+           kt_equal(heap, ctx, na->data.bool_rec.scrutinee, nb->data.bool_rec.scrutinee);
+  case KT_LIST_REC:
+    return kt_equal(heap, ctx, na->data.list_rec.motive, nb->data.list_rec.motive) &&
+           kt_equal(heap, ctx, na->data.list_rec.nil_case, nb->data.list_rec.nil_case) &&
+           kt_equal(heap, ctx, na->data.list_rec.cons_case, nb->data.list_rec.cons_case) &&
+           kt_equal(heap, ctx, na->data.list_rec.scrutinee, nb->data.list_rec.scrutinee);
+  case KT_MAYBE_REC:
+    return kt_equal(heap, ctx, na->data.maybe_rec.motive, nb->data.maybe_rec.motive) &&
+           kt_equal(heap, ctx, na->data.maybe_rec.nothing_case, nb->data.maybe_rec.nothing_case) &&
+           kt_equal(heap, ctx, na->data.maybe_rec.just_case, nb->data.maybe_rec.just_case) &&
+           kt_equal(heap, ctx, na->data.maybe_rec.scrutinee, nb->data.maybe_rec.scrutinee);
+  case KT_SUM_REC:
+    return kt_equal(heap, ctx, na->data.sum_rec.motive, nb->data.sum_rec.motive) &&
+           kt_equal(heap, ctx, na->data.sum_rec.left_case, nb->data.sum_rec.left_case) &&
+           kt_equal(heap, ctx, na->data.sum_rec.right_case, nb->data.sum_rec.right_case) &&
+           kt_equal(heap, ctx, na->data.sum_rec.scrutinee, nb->data.sum_rec.scrutinee);
+  case KT_J:
+    return kt_equal(heap, ctx, na->data.j.motive, nb->data.j.motive) &&
+           kt_equal(heap, ctx, na->data.j.base_case, nb->data.j.base_case) &&
+           kt_equal(heap, ctx, na->data.j.a, nb->data.j.a) &&
+           kt_equal(heap, ctx, na->data.j.b, nb->data.j.b) &&
+           kt_equal(heap, ctx, na->data.j.proof, nb->data.j.proof);
+  case KT_ABSURD:
+    return kt_equal(heap, ctx, na->data.absurd.target_type,
+                    nb->data.absurd.target_type);
   default:
     return 0;
   }

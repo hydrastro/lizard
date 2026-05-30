@@ -167,6 +167,7 @@ kterm_t *kt_refl(lizard_heap_t *heap, kterm_t *value);
 /* ---- core operations ---- */
 
 /* Substitute term s for variable index n in term t. */
+kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta);
 kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s);
 
 /* Reduce to weak head normal form. */

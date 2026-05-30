@@ -2813,6 +2813,8 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "tactic-refl",      lizard_primitive_tactic_refl);
   install_one(heap, env, "qed",              lizard_primitive_qed);
   install_one(heap, env, "tactic-assumption",lizard_primitive_tactic_assumption);
+  install_one(heap, env, "tactic-cases",     lizard_primitive_tactic_cases);
+  install_one(heap, env, "tactic-induction", lizard_primitive_tactic_induction);
   install_one(heap, env, "tactic-simpl",     lizard_primitive_tactic_simpl);
   install_one(heap, env, "tactic-split",     lizard_primitive_tactic_split);
   install_one(heap, env, "tactic-left",      lizard_primitive_tactic_left);

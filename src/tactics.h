@@ -19,6 +19,7 @@ typedef struct proof_goal {
   kctx_t *ctx;            /* local context (assumptions) */
   kterm_t *type;           /* the type to inhabit */
   kterm_t *solution;       /* NULL until solved */
+  kterm_t **slot;          /* where this goal's solution plugs into the parent term */
   struct proof_goal *next;
 } proof_goal_t;
 
@@ -28,6 +29,7 @@ typedef struct {
   proof_goal_t *goals;     /* linked list of open goals */
   int next_goal_id;
   kterm_t *result;          /* final proof term (NULL until QED) */
+  kterm_t *goal_type;       /* original goal, for final kernel re-check */
   lizard_heap_t *heap;
 } proof_state_t;
 
@@ -61,6 +63,15 @@ int tactic_apply(proof_state_t *ps, kterm_t *f);
 /* Tactic: assumption — search the context for a hypothesis whose
  * type matches the goal. Returns 0 on success, -1 if not found. */
 int tactic_assumption(proof_state_t *ps);
+
+/* Tactic: cases — case-analyse the innermost Bool hypothesis (#0) via
+ * bool_rec; produces a subgoal per constructor (true, false). */
+int tactic_cases(proof_state_t *ps);
+
+/* Tactic: induction — induct on the innermost Nat hypothesis (#0) via
+ * nat_rec; produces a base subgoal (n:=0) and a step subgoal
+ * (Pi k. motive k -> motive (succ k)). */
+int tactic_induction(proof_state_t *ps);
 
 /* Tactic: simpl — reduce the goal type to WHNF. */
 int tactic_simpl(proof_state_t *ps);

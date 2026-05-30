@@ -201,6 +201,10 @@ lizard_ast_node_t *lizard_primitive_tactic_exact(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_tactic_refl(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_cases(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_tactic_induction(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_qed(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 /* Track C.4: atoms. */

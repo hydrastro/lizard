@@ -442,6 +442,40 @@ int main(void) {
     }
   }
 
+  /* ---- regression: kt_subst / kt_equal must descend into eliminator nodes.
+   * A neutral bool_rec (scrutinee = a free variable) once fell through the
+   * default cases: subst left the scrutinee untouched and kt_equal reported a
+   * term unequal to itself.  These checks pin the fixes. ---- */
+  {
+    kterm_t *br, *br2, *br3, *s, *w;
+    br = mk(KT_BOOL_REC);
+    br->data.bool_rec.motive = kt_lam(heap, "x", mk(KT_BOOL), mk(KT_BOOL));
+    br->data.bool_rec.true_case = mk(KT_TRUE);
+    br->data.bool_rec.false_case = mk(KT_FALSE);
+    br->data.bool_rec.scrutinee = kt_var(heap, 0);
+    /* structurally-identical copy with distinct pointers */
+    br2 = mk(KT_BOOL_REC);
+    br2->data.bool_rec.motive = kt_lam(heap, "x", mk(KT_BOOL), mk(KT_BOOL));
+    br2->data.bool_rec.true_case = mk(KT_TRUE);
+    br2->data.bool_rec.false_case = mk(KT_FALSE);
+    br2->data.bool_rec.scrutinee = kt_var(heap, 0);
+    check("neutral bool_rec equals identical copy",
+          kt_equal(heap, ctx, br, br2));
+    /* a structurally-different neutral eliminator must NOT compare equal */
+    br3 = mk(KT_BOOL_REC);
+    br3->data.bool_rec.motive = kt_lam(heap, "x", mk(KT_BOOL), mk(KT_BOOL));
+    br3->data.bool_rec.true_case = mk(KT_FALSE);   /* branches swapped */
+    br3->data.bool_rec.false_case = mk(KT_TRUE);
+    br3->data.bool_rec.scrutinee = kt_var(heap, 0);
+    check("distinct neutral bool_rec NOT equal",
+          !kt_equal(heap, ctx, br, br3));
+    /* substituting the scrutinee variable then reducing must fire the branch */
+    s = kt_subst(heap, br, 0, mk(KT_TRUE));
+    w = kt_whnf(heap, ctx, s);
+    check("subst into bool_rec scrutinee reduces to true branch",
+          w != NULL && w->tag == KT_TRUE);
+  }
+
   printf("kernel soundness: %d passed, %d failed\n", pass_count, fail_count);
   /* --- An opaque constant (axiom reference) with no definition context must
    * be rejected, not crash: kt_infer needs ctx->defs to resolve it, and a
