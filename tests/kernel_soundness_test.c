@@ -500,6 +500,78 @@ int main(void) {
           kt_unify(heap, ctx, meta_ctx_create(heap), br_a, br_b));
   }
 
+  /* ---- regression: a variable's type must be shifted into the occurrence's
+   * context (de Bruijn).  Polymorphic identity \A:Type. \x:A. x : (A:Type) ->
+   * (x:A) -> A only type-checks with the shift; the body type is A=#1, not the
+   * value x=#0.  Without the shift the kernel wrongly rejected it. ---- */
+  {
+    kterm_t *poly = kt_lam(heap, "A", kt_sort(heap, 0),
+                     kt_lam(heap, "x", kt_var(heap, 0), kt_var(heap, 0)));
+    kterm_t *good = kt_pi(heap, "A", kt_sort(heap, 0),
+                     kt_pi(heap, "x", kt_var(heap, 0), kt_var(heap, 1)));
+    kterm_t *bad = kt_pi(heap, "A", kt_sort(heap, 0),
+                     kt_pi(heap, "x", kt_var(heap, 0), kt_sort(heap, 0)));
+    check("polymorphic identity checks against (A:*)->(x:A)->A",
+          kt_check(heap, ctx, poly, good) == KERNEL_OK);
+    check("polymorphic identity rejects wrong codomain",
+          kt_check(heap, ctx, poly, bad) != KERNEL_OK);
+  }
+  /* kt_unify must compare constants by name (it shared the missing-default
+   * bug). */
+  {
+    meta_ctx_t *mc = meta_ctx_create(heap);
+    kterm_t *p1 = mk(KT_CONST), *p2 = mk(KT_CONST), *q = mk(KT_CONST);
+    p1->data.constant.name = "P"; p2->data.constant.name = "P";
+    q->data.constant.name = "Q";
+    check("identical constants unify", kt_unify(heap, ctx, mc, p1, p2));
+    check("distinct constants do not unify",
+          !kt_unify(heap, ctx, meta_ctx_create(heap), p1, q));
+  }
+
+  /* ---- user-defined inductives: strict positivity is soundness-critical.
+   * A recursive occurrence in a strictly-positive position is accepted; a
+   * recursive occurrence in a negative position (a Pi domain) is rejected,
+   * which is exactly what blocks `data Bad = mkBad (Bad -> Empty)` and the
+   * contradiction it would license. ---- */
+  {
+    kdef_ctx_t *d = kdef_ctx_create(heap);
+    kind_decl_t decl;
+    const char *cn[2];
+    int na[2];
+    kterm_t **cat[2];
+    kterm_t *catN[1];
+    kterm_t *constN = mk(KT_CONST);
+    constN->data.constant.name = "Npos";
+    cn[0] = "zc"; cn[1] = "sc"; na[0] = 0; na[1] = 1;
+    catN[0] = constN; cat[0] = NULL; cat[1] = catN;
+    decl.name = "Npos"; decl.rec_name = "Npos-rec"; decl.n_params = 0;
+    decl.param_names = NULL; decl.param_types = NULL; decl.sort_level = 0;
+    decl.n_ctors = 2; decl.ctor_names = cn; decl.ctor_nargs = na;
+    decl.ctor_argtypes = cat; decl.ctor_recflags = NULL;
+    kdef_add(heap, d, "Npos", kind_former_type(heap, &decl), NULL);
+    check("inductive: strictly-positive recursion accepted",
+          kind_declare(heap, d, &decl) == 1);
+  }
+  {
+    kdef_ctx_t *d = kdef_ctx_create(heap);
+    kind_decl_t decl;
+    const char *cn[1];
+    int na[1];
+    kterm_t **cat[1];
+    kterm_t *catB[1];
+    kterm_t *constB = mk(KT_CONST);
+    constB->data.constant.name = "Bad";
+    catB[0] = kt_pi(heap, "x", constB, mk(KT_EMPTY));   /* Bad -> Empty */
+    cn[0] = "mkBad"; na[0] = 1; cat[0] = catB;
+    decl.name = "Bad"; decl.rec_name = "Bad-rec"; decl.n_params = 0;
+    decl.param_names = NULL; decl.param_types = NULL; decl.sort_level = 0;
+    decl.n_ctors = 1; decl.ctor_names = cn; decl.ctor_nargs = na;
+    decl.ctor_argtypes = cat; decl.ctor_recflags = NULL;
+    kdef_add(heap, d, "Bad", kind_former_type(heap, &decl), NULL);
+    check("inductive: negative occurrence REJECTED",
+          kind_declare(heap, d, &decl) == 0);
+  }
+
   printf("kernel soundness: %d passed, %d failed\n", pass_count, fail_count);
   /* --- An opaque constant (axiom reference) with no definition context must
    * be rejected, not crash: kt_infer needs ctx->defs to resolve it, and a

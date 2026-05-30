@@ -33,6 +33,28 @@ static kterm_t *to_kt_under(lizard_heap_t *heap, lizard_ast_node_t *body,
   return r;
 }
 
+/* Convert `e` with `names[0..n-1]` bound, names[0] OUTERMOST and names[n-1]
+ * INNERMOST (de Bruijn 0).  Used to convert inductive parameter and
+ * constructor-argument types in a parameter telescope without manual de Bruijn
+ * bookkeeping. */
+kterm_t *lizard_kernel_sexp_to_kterm_in(lizard_heap_t *heap,
+                                        lizard_ast_node_t *e,
+                                        const char **names, int n) {
+  kname_env_t *frames;
+  kterm_t *r;
+  int i;
+  if (n <= 0) return lizard_kernel_sexp_to_kterm(heap, e);
+  frames = (kname_env_t *)lizard_heap_alloc(sizeof(kname_env_t) * (size_t)n);
+  for (i = 0; i < n; i++) {       /* push names[0] first => deepest */
+    frames[i].name = names[i];
+    frames[i].next = g_kname_env;
+    g_kname_env = &frames[i];
+  }
+  r = lizard_kernel_sexp_to_kterm(heap, e);
+  for (i = 0; i < n; i++) g_kname_env = g_kname_env->next; /* pop all */
+  return r;
+}
+
 /* Convert the n-th argument (0-based, after the head symbol) of an
  * application's argument list to a kernel term.  Returns NULL if the
  * argument is missing or unconvertible. */
@@ -224,7 +246,7 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
         return NULL;
       }
       /* (Pi (name domain) codomain) */
-      if (strcmp(name, "Pi") == 0 && parts != NULL) {
+      if ((strcmp(name, "Pi") == 0 || strcmp(name, "IPi") == 0) && parts != NULL) {
         lz_list_node_t *binder_node = parts->head->next;
         lz_list_node_t *body_node;
         lizard_ast_node_t *binder;
@@ -247,7 +269,11 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
         } else { return NULL; }
         codomain = to_kt_under(heap, ((lizard_ast_list_node_t *)body_node)->ast,
                                pname);
-        if (domain && codomain) return kt_pi(heap, pname, domain, codomain);
+        if (domain && codomain) {
+          kterm_t *r = kt_pi(heap, pname, domain, codomain);
+          if (strcmp(name, "IPi") == 0) r->data.pi.implicit = 1;
+          return r;
+        }
         return NULL;
       }
       /* (Sigma (name type) body) — same binder parsing as Pi. */

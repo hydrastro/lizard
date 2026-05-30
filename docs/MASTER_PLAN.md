@@ -500,6 +500,93 @@ term is rejected even with a buggy elaborator).
 - Demonstrated/guarded by `examples/133-elaborator-unification.lisp`.  Suite:
   C 95/95, Lisp 5/5, examples 69/69, all audits.
 
+### Phase 7 progress — implicit arguments (TT1 complete: holes + unification + implicits)
+
+- A function type may now mark leading binders **implicit** with the surface
+  form `IPi`: `(IPi (A (Sort 0)) (Pi (x A) A))` is `{A : Type} -> A -> A`.
+  When such a function is applied, the elaborator inserts a fresh metavariable
+  for each leading implicit Pi and solves it by unification against the
+  explicit argument and the result type.  `(id (succ zero))` elaborates to
+  `((id Nat) (succ 0))`; `(const2 true (succ zero))` infers both implicits to
+  `((((const2 Bool) Nat) true) (succ 0))`.  All elaborated terms are zonked and
+  kernel-checked.
+- Kernel change is additive and ignored by the trusted checker: `pi` gained an
+  `int implicit` flag, preserved through `kt_subst`/`kt_shift`/`meta_zonk` and
+  ignored by `kt_equal`/`kt_unify`/`kt_whnf`/`kt_infer` (so `{A}->B` and
+  `(A)->B` are the same type for conversion).  `kt_fprint` shows implicit
+  binders with braces.  The elaborator was rewritten to **produce** an
+  elaborated core term (not just check), so it can insert the implicit
+  applications; a new `(elaborate term type)` primitive prints that term.
+- **Two latent kernel bugs surfaced and fixed by this work:**
+  - `kt_infer(VAR)` returned a variable's type **without shifting** it into the
+    occurrence's context.  This is invisible whenever a variable's type is
+    closed (Nat, Bool, a global constant) — which was every prior proof — but
+    wrong under polymorphism, where a variable's type is itself a bound
+    variable.  The polymorphic identity `\A.\x.x : (A:*)->(x:A)->A` was rejected
+    (its body type came out as the value `#0` instead of the type `#1`).  Fixed
+    with `kt_shift(e->type, 0, index+1)`.  Locked by two soundness checks.
+  - `kt_unify` was missing the `KT_CONST` case (it shared the missing-default
+    bug class), so `unify(A, A)` between identical constants returned 0 once an
+    application routed through the elaborator instead of `kt_check`.  Added the
+    name comparison; locked by two soundness checks.
+- **The recurring "missing-default fall-through" bug class was audited to
+  closure.**  Every structural `switch` over `kterm_tag_t` was swept.  The
+  fifth and final instance was `meta_zonk`, which lacked the eliminator/`J`/
+  `Sigma`/pair/projection/sum/`let` cases and so would never substitute a
+  solved metavariable sitting inside an eliminator — exactly the path implicit
+  insertion exercises.  All five structural functions (`kt_subst`, `kt_shift`,
+  `kt_equal`, `kt_unify`, `meta_zonk`) now cover the whole term language;
+  `kt_whnf` (default `return t` = neutral) and `kt_infer` (default `NULL` =
+  safe-reject) are correct by design.
+- Soundness suite now 58 (added polymorphic-identity accept/reject and
+  unify-constant pairs).  Demonstrated/guarded by
+  `examples/134-implicit-arguments.lisp`.  Suite: C 95/95, Lisp 5/5, examples
+  70/70, all audits.
+
+### Phase 7 progress — user-defined inductive types
+
+- `(data '(Name (params) Sort (ctor (argtypes)) ...))` declares a parameterized
+  inductive.  The kernel strict-positivity-checks it and registers the type
+  former, every constructor, and an automatically generated **dependent
+  eliminator** `Name-rec` carrying a real iota-reduction rule.  Worked end to
+  end: recursive types (`Nat2`, with `add2` proving `1+1=2` by `refl`), finite
+  enumerations (`Color`, with case analysis computing), and parameterized types
+  with multiple recursive subterms (`Bush A`, whose eliminator has two
+  induction hypotheses and computes `size (fork leaf 0 leaf) = 3`), plus
+  parameterized lists with length.
+- **Representation: constants + application, no new term tags.**  The type
+  former and each constructor are opaque `KT_CONST`s whose types live in the
+  definition context; `Name p1..pn` and `c a1..ak` are ordinary `KT_APP`
+  spines.  The eliminator is a constant with an iota rule applied in `kt_whnf`:
+  `D-rec p.. M m.. (c_i p.. a..)` reduces to `m_i a.. (D-rec .. a_rec)..`, one
+  recursive call per recursive argument.  Because everything reuses
+  `APP`/`CONST`/`PI`, `kt_subst`/`kt_shift`/`kt_equal`/`kt_unify`/`meta_zonk`
+  are entirely unchanged, and typing falls out of the registered constant types
+  for free.
+- **The soundness surface is exactly two things:** the strict-positivity check
+  (`kind_declare` → `classify_arg`, which accepts an argument that is either
+  free of the inductive or *exactly* `Name <params>`, and rejects every other
+  occurrence — in particular a negative occurrence in a Pi domain, blocking
+  `data Bad = mkBad (Bad -> Empty)`) and the iota rule (`try_iota`).  As a guard
+  against synthesis bugs, each generated type (former, constructors, recursor)
+  is sanity-checked with `kt_infer` at declaration time and rejected if it is
+  not a well-formed type; the eliminator type itself was derived from the
+  worked-out de Bruijn telescope and verified by inspection against `Nat` and
+  the binary-recursive `Bush`.
+- The surface→kernel converter gained `lizard_kernel_sexp_to_kterm_in`, which
+  binds a list of parameter names so constructor/parameter types convert in the
+  parameter telescope without manual de Bruijn bookkeeping.
+- Limitations (honest next steps): parameters only, **no indices** (no `Vec`,
+  `Fin`, or `Id`-as-inductive yet); constructor arguments may reference the
+  parameters but not earlier arguments (a uniform-shift simplification); a
+  recursive argument must be a direct `Name <params>` (no nested or
+  higher-order recursion such as `A -> Name`); and the motive eliminates into
+  `Sort sort_level` (no large elimination into a higher universe).
+- Soundness suite now 60 (added strictly-positive-accepted and
+  negative-occurrence-rejected).  Demonstrated/guarded by
+  `examples/135-inductive-types.lisp`.  Suite: C 95/95, Lisp 5/5, examples
+  71/71, all audits.
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,

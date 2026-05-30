@@ -166,10 +166,13 @@ kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
-  case KT_PI:
-    return kt_pi(heap, t->data.pi.name,
+  case KT_PI: {
+    kterm_t *r = kt_pi(heap, t->data.pi.name,
                  kt_shift(heap, t->data.pi.domain, cutoff, delta),
                  kt_shift(heap, t->data.pi.codomain, cutoff + 1, delta));
+    r->data.pi.implicit = t->data.pi.implicit;
+    return r;
+  }
   case KT_LAM:
     return kt_lam(heap, t->data.lam.name,
                   kt_shift(heap, t->data.lam.domain, cutoff, delta),
@@ -356,11 +359,14 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
-  case KT_PI:
-    return kt_pi(heap, t->data.pi.name,
+  case KT_PI: {
+    kterm_t *r = kt_pi(heap, t->data.pi.name,
                  kt_subst(heap, t->data.pi.domain, n, s),
                  kt_subst(heap, t->data.pi.codomain, n + 1,
                            kt_shift(heap, s, 0, 1)));
+    r->data.pi.implicit = t->data.pi.implicit;
+    return r;
+  }
   case KT_LAM:
     return kt_lam(heap, t->data.lam.name,
                   kt_subst(heap, t->data.lam.domain, n, s),
@@ -534,6 +540,9 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
 
 /* ---- weak head normal form ---- */
 
+/* forward decl: iota-reduction for user inductives (defined below) */
+static kterm_t *try_iota(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t);
+
 kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   if (t == NULL) return NULL;
   switch (t->tag) {
@@ -555,7 +564,10 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     return t;
   }
   case KT_APP: {
-    kterm_t *fn = kt_whnf(heap, ctx, t->data.app.fun);
+    kterm_t *fn;
+    kterm_t *iota = try_iota(heap, ctx, t);
+    if (iota != NULL) return kt_whnf(heap, ctx, iota);
+    fn = kt_whnf(heap, ctx, t->data.app.fun);
     if (fn->tag == KT_LAM) {
       kterm_t *result = kt_subst(heap, fn->data.lam.body, 0, t->data.app.arg);
       return kt_whnf(heap, ctx, result);
@@ -780,7 +792,10 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   switch (t->tag) {
   case KT_VAR: {
     kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
-    return e ? e->type : NULL;
+    if (e == NULL) return NULL;
+    /* The entry's type was recorded at its binding site; lift it past the
+     * binders crossed to reach this occurrence (de Bruijn shift). */
+    return kt_shift(heap, e->type, 0, t->data.var.index + 1);
   }
   case KT_CONST: {
     kdef_t *d;
@@ -1265,9 +1280,13 @@ void kt_fprint(FILE *fp, kterm_t *t) {
     fprintf(fp, "(succ "); kt_fprint(fp, t->data.succ.pred); fprintf(fp, ")");
     break;
   case KT_PI:
-    fprintf(fp, "(Pi (%s : ", t->data.pi.name ? t->data.pi.name : "_");
+    if (t->data.pi.implicit)
+      fprintf(fp, "(Pi {%s : ", t->data.pi.name ? t->data.pi.name : "_");
+    else
+      fprintf(fp, "(Pi (%s : ", t->data.pi.name ? t->data.pi.name : "_");
     kt_fprint(fp, t->data.pi.domain);
-    fprintf(fp, ") "); kt_fprint(fp, t->data.pi.codomain); fprintf(fp, ")");
+    fprintf(fp, t->data.pi.implicit ? "} " : ") ");
+    kt_fprint(fp, t->data.pi.codomain); fprintf(fp, ")");
     break;
   case KT_SIGMA:
     fprintf(fp, "(Sigma (%s : ", t->data.sigma.name ? t->data.sigma.name : "_");
@@ -1426,10 +1445,13 @@ kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t) {
     return t;
   case KT_SUCC:
     return kt_succ(heap, meta_zonk(heap, mctx, t->data.succ.pred));
-  case KT_PI:
-    return kt_pi(heap, t->data.pi.name,
+  case KT_PI: {
+    kterm_t *r = kt_pi(heap, t->data.pi.name,
                  meta_zonk(heap, mctx, t->data.pi.domain),
                  meta_zonk(heap, mctx, t->data.pi.codomain));
+    r->data.pi.implicit = t->data.pi.implicit;
+    return r;
+  }
   case KT_LAM:
     return kt_lam(heap, t->data.lam.name,
                   meta_zonk(heap, mctx, t->data.lam.domain),
@@ -1443,6 +1465,168 @@ kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t) {
                        meta_zonk(heap, mctx, t->data.id.b));
   case KT_REFL:
     return kt_refl(heap, meta_zonk(heap, mctx, t->data.refl.value));
+  case KT_PROJ1:
+    return kt_proj1(heap, meta_zonk(heap, mctx, t->data.proj.target));
+  case KT_PROJ2:
+    return kt_proj2(heap, meta_zonk(heap, mctx, t->data.proj.target));
+  case KT_EMPTY:
+    return t;
+  case KT_NAT_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_NAT_REC;
+    r->data.nat_rec.motive = meta_zonk(heap, mctx, t->data.nat_rec.motive);
+    r->data.nat_rec.zero_case = meta_zonk(heap, mctx, t->data.nat_rec.zero_case);
+    r->data.nat_rec.succ_case = meta_zonk(heap, mctx, t->data.nat_rec.succ_case);
+    r->data.nat_rec.scrutinee = meta_zonk(heap, mctx, t->data.nat_rec.scrutinee);
+    return r;
+  }
+  case KT_BOOL_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_BOOL_REC;
+    r->data.bool_rec.motive = meta_zonk(heap, mctx, t->data.bool_rec.motive);
+    r->data.bool_rec.true_case = meta_zonk(heap, mctx, t->data.bool_rec.true_case);
+    r->data.bool_rec.false_case = meta_zonk(heap, mctx, t->data.bool_rec.false_case);
+    r->data.bool_rec.scrutinee = meta_zonk(heap, mctx, t->data.bool_rec.scrutinee);
+    return r;
+  }
+  case KT_LIST_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LIST_REC;
+    r->data.list_rec.motive = meta_zonk(heap, mctx, t->data.list_rec.motive);
+    r->data.list_rec.nil_case = meta_zonk(heap, mctx, t->data.list_rec.nil_case);
+    r->data.list_rec.cons_case = meta_zonk(heap, mctx, t->data.list_rec.cons_case);
+    r->data.list_rec.scrutinee = meta_zonk(heap, mctx, t->data.list_rec.scrutinee);
+    return r;
+  }
+  case KT_MAYBE_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE_REC;
+    r->data.maybe_rec.motive = meta_zonk(heap, mctx, t->data.maybe_rec.motive);
+    r->data.maybe_rec.nothing_case = meta_zonk(heap, mctx, t->data.maybe_rec.nothing_case);
+    r->data.maybe_rec.just_case = meta_zonk(heap, mctx, t->data.maybe_rec.just_case);
+    r->data.maybe_rec.scrutinee = meta_zonk(heap, mctx, t->data.maybe_rec.scrutinee);
+    return r;
+  }
+  case KT_SUM_REC: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_REC;
+    r->data.sum_rec.motive = meta_zonk(heap, mctx, t->data.sum_rec.motive);
+    r->data.sum_rec.left_case = meta_zonk(heap, mctx, t->data.sum_rec.left_case);
+    r->data.sum_rec.right_case = meta_zonk(heap, mctx, t->data.sum_rec.right_case);
+    r->data.sum_rec.scrutinee = meta_zonk(heap, mctx, t->data.sum_rec.scrutinee);
+    return r;
+  }
+  case KT_J: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_J;
+    r->data.j.motive = meta_zonk(heap, mctx, t->data.j.motive);
+    r->data.j.base_case = meta_zonk(heap, mctx, t->data.j.base_case);
+    r->data.j.type = meta_zonk(heap, mctx, t->data.j.type);
+    r->data.j.a = meta_zonk(heap, mctx, t->data.j.a);
+    r->data.j.b = meta_zonk(heap, mctx, t->data.j.b);
+    r->data.j.proof = meta_zonk(heap, mctx, t->data.j.proof);
+    return r;
+  }
+  case KT_SIGMA: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SIGMA;
+    r->data.sigma.name = t->data.sigma.name;
+    r->data.sigma.fst_type = meta_zonk(heap, mctx, t->data.sigma.fst_type);
+    r->data.sigma.snd_type = meta_zonk(heap, mctx, t->data.sigma.snd_type);
+    return r;
+  }
+  case KT_PAIR: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_PAIR;
+    r->data.pair.fst = meta_zonk(heap, mctx, t->data.pair.fst);
+    r->data.pair.snd = meta_zonk(heap, mctx, t->data.pair.snd);
+    return r;
+  }
+  case KT_ANNOT: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ANNOT;
+    r->data.annot.term = meta_zonk(heap, mctx, t->data.annot.term);
+    r->data.annot.type = meta_zonk(heap, mctx, t->data.annot.type);
+    return r;
+  }
+  case KT_INL: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INL;
+    r->data.inl.value = meta_zonk(heap, mctx, t->data.inl.value);
+    r->data.inl.right_type = meta_zonk(heap, mctx, t->data.inl.right_type);
+    return r;
+  }
+  case KT_INR: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_INR;
+    r->data.inr.value = meta_zonk(heap, mctx, t->data.inr.value);
+    r->data.inr.left_type = meta_zonk(heap, mctx, t->data.inr.left_type);
+    return r;
+  }
+  case KT_JUST: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_JUST;
+    r->data.just.value = meta_zonk(heap, mctx, t->data.just.value);
+    return r;
+  }
+  case KT_MAYBE: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_MAYBE;
+    r->data.maybe.elem_type = meta_zonk(heap, mctx, t->data.maybe.elem_type);
+    return r;
+  }
+  case KT_SUM_K: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_SUM_K;
+    r->data.sum_k.left_type = meta_zonk(heap, mctx, t->data.sum_k.left_type);
+    r->data.sum_k.right_type = meta_zonk(heap, mctx, t->data.sum_k.right_type);
+    return r;
+  }
+  case KT_ABSURD: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_ABSURD;
+    r->data.absurd.target_type = meta_zonk(heap, mctx, t->data.absurd.target_type);
+    return r;
+  }
+  case KT_LIST: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LIST;
+    r->data.list.elem_type = meta_zonk(heap, mctx, t->data.list.elem_type);
+    return r;
+  }
+  case KT_CONS_K: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_CONS_K;
+    r->data.cons_k.head = meta_zonk(heap, mctx, t->data.cons_k.head);
+    r->data.cons_k.tail = meta_zonk(heap, mctx, t->data.cons_k.tail);
+    return r;
+  }
+  case KT_LET: {
+    kterm_t *r = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    memset(r, 0, sizeof(*r));
+    r->tag = KT_LET;
+    r->data.let.name = t->data.let.name;
+    r->data.let.value = meta_zonk(heap, mctx, t->data.let.value);
+    r->data.let.body = meta_zonk(heap, mctx, t->data.let.body);
+    return r;
+  }
   default:
     return t;
   }
@@ -1544,6 +1728,8 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
   switch (na->tag) {
   case KT_VAR:
     return na->data.var.index == nb->data.var.index;
+  case KT_CONST:
+    return strcmp(na->data.constant.name, nb->data.constant.name) == 0;
   case KT_SORT:
     return na->data.sort.level == nb->data.sort.level;
   case KT_NAT: case KT_ZERO:
@@ -1658,4 +1844,313 @@ kdef_t *kdef_lookup(kdef_ctx_t *dctx, const char *name) {
     if (strcmp(d->name, name) == 0) return d;
   }
   return NULL;
+}
+
+/* ===================== user-defined inductive types ===================== */
+/* Representation: the type former and each constructor are opaque constants
+ * (KT_CONST) whose types are registered in the definition context; the
+ * eliminator is a constant carrying an iota-reduction rule applied in kt_whnf.
+ * Because everything reuses APP/CONST/PI, no new term tags are needed and
+ * subst/shift/equal/zonk are unchanged.  The soundness surface is exactly two
+ * things: the strict-positivity check (kind_declare) and the iota rule
+ * (try_iota). */
+
+#define KIND_MAX_SPINE 64
+
+static kterm_t *mk_const(lizard_heap_t *heap, const char *name) {
+  kterm_t *t = kt_alloc(heap, KT_CONST);
+  t->data.constant.name = name;
+  return t;
+}
+
+static const char *gen_name(lizard_heap_t *heap, char p, int n) {
+  char *s = (char *)lizard_heap_alloc(12);
+  sprintf(s, "%c%d", p, n);
+  return s;
+}
+
+/* D p_1 .. p_nP where the param block sits `depth` binders above here
+ * (p_k at de Bruijn index depth + (nP - k)). */
+static kterm_t *ind_applied(lizard_heap_t *heap, const char *dname,
+                            int nP, int depth) {
+  kterm_t *acc = mk_const(heap, dname);
+  int k;
+  for (k = 1; k <= nP; k++)
+    acc = kt_app(heap, acc, kt_var(heap, depth + (nP - k)));
+  return acc;
+}
+
+/* Collect the spine of an application; args[0] is the leftmost argument. */
+static kterm_t *gather_spine(kterm_t *t, kterm_t **args, int *n) {
+  kterm_t *tmp[KIND_MAX_SPINE];
+  int c = 0, i;
+  while (t->tag == KT_APP && c < KIND_MAX_SPINE) {
+    tmp[c++] = t->data.app.arg;
+    t = t->data.app.fun;
+  }
+  for (i = 0; i < c; i++) args[i] = tmp[c - 1 - i];
+  *n = c;
+  return t;
+}
+
+kind_t *kind_find_rec(kind_ctx_t *kc, const char *name) {
+  kind_t *k;
+  if (kc == NULL) return NULL;
+  for (k = kc->inds; k != NULL; k = k->next)
+    if (strcmp(k->rec_name, name) == 0) return k;
+  return NULL;
+}
+
+kind_t *kind_find_ctor(kind_ctx_t *kc, const char *name, int *index_out) {
+  kind_t *k; int i;
+  if (kc == NULL) return NULL;
+  for (k = kc->inds; k != NULL; k = k->next)
+    for (i = 0; i < k->n_ctors; i++)
+      if (strcmp(k->ctors[i].name, name) == 0) {
+        if (index_out) *index_out = i;
+        return k;
+      }
+  return NULL;
+}
+
+/* Iota: D-rec p.. M m.. (c_i p.. a..) -> m_i a.. (D-rec p.. M m.. a_rec) ..
+ * Returns the reduced (un-whnf'd) term, or NULL if `t` is not such a redex. */
+static kterm_t *try_iota(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
+  kind_ctx_t *kc;
+  kterm_t *args[KIND_MAX_SPINE], *head, *scrut, *wscrut;
+  kterm_t *cargs[KIND_MAX_SPINE], *chead, *rec_fn, *method, *result;
+  kind_t *ind, *cind;
+  int n, cn, ci, nP, nC, scrut_index, nargs, j, k;
+  if (t->tag != KT_APP) return NULL;
+  if (ctx == NULL || ctx->defs == NULL) return NULL;
+  kc = (kind_ctx_t *)((kdef_ctx_t *)ctx->defs)->inds;
+  if (kc == NULL) return NULL;
+  head = gather_spine(t, args, &n);
+  if (head->tag != KT_CONST) return NULL;
+  ind = kind_find_rec(kc, head->data.constant.name);
+  if (ind == NULL) return NULL;
+  nP = ind->n_params; nC = ind->n_ctors;
+  scrut_index = nP + 1 + nC;
+  if (n < scrut_index + 1) return NULL;          /* under-applied: neutral */
+  scrut = args[scrut_index];
+  wscrut = kt_whnf(heap, ctx, scrut);
+  chead = gather_spine(wscrut, cargs, &cn);
+  if (chead->tag != KT_CONST) return NULL;       /* neutral scrutinee */
+  cind = kind_find_ctor(kc, chead->data.constant.name, &ci);
+  if (cind != ind) return NULL;                  /* not a ctor of this type */
+  nargs = ind->ctors[ci].n_args;
+  if (cn < nP + nargs) return NULL;              /* ill-formed; bail */
+  method = args[nP + 1 + ci];
+  rec_fn = head;
+  for (k = 0; k < scrut_index; k++) rec_fn = kt_app(heap, rec_fn, args[k]);
+  result = method;
+  for (j = 0; j < nargs; j++)
+    result = kt_app(heap, result, cargs[nP + j]);
+  for (j = 0; j < nargs; j++)
+    if (ind->ctors[ci].recursive[j])
+      result = kt_app(heap, result, kt_app(heap, rec_fn, cargs[nP + j]));
+  for (k = scrut_index + 1; k < n; k++)
+    result = kt_app(heap, result, args[k]);
+  return result;
+}
+
+/* Does the constant `name` occur anywhere in `t`?  Complete over the term
+ * language (a missed occurrence would weaken the positivity check). */
+static int const_occurs(kterm_t *t, const char *name) {
+  if (t == NULL) return 0;
+  switch (t->tag) {
+  case KT_CONST: return strcmp(t->data.constant.name, name) == 0;
+  case KT_PI:  return const_occurs(t->data.pi.domain, name) || const_occurs(t->data.pi.codomain, name);
+  case KT_LAM: return const_occurs(t->data.lam.domain, name) || const_occurs(t->data.lam.body, name);
+  case KT_APP: return const_occurs(t->data.app.fun, name) || const_occurs(t->data.app.arg, name);
+  case KT_SIGMA: return const_occurs(t->data.sigma.fst_type, name) || const_occurs(t->data.sigma.snd_type, name);
+  case KT_PAIR: return const_occurs(t->data.pair.fst, name) || const_occurs(t->data.pair.snd, name);
+  case KT_PROJ1: case KT_PROJ2: return const_occurs(t->data.proj.target, name);
+  case KT_SUCC: return const_occurs(t->data.succ.pred, name);
+  case KT_ID: return const_occurs(t->data.id.type, name) || const_occurs(t->data.id.a, name) || const_occurs(t->data.id.b, name);
+  case KT_REFL: return const_occurs(t->data.refl.value, name);
+  case KT_NAT_REC: return const_occurs(t->data.nat_rec.motive, name) || const_occurs(t->data.nat_rec.zero_case, name)
+                     || const_occurs(t->data.nat_rec.succ_case, name) || const_occurs(t->data.nat_rec.scrutinee, name);
+  case KT_BOOL_REC: return const_occurs(t->data.bool_rec.motive, name) || const_occurs(t->data.bool_rec.true_case, name)
+                     || const_occurs(t->data.bool_rec.false_case, name) || const_occurs(t->data.bool_rec.scrutinee, name);
+  case KT_LIST_REC: return const_occurs(t->data.list_rec.motive, name) || const_occurs(t->data.list_rec.nil_case, name)
+                     || const_occurs(t->data.list_rec.cons_case, name) || const_occurs(t->data.list_rec.scrutinee, name);
+  case KT_MAYBE_REC: return const_occurs(t->data.maybe_rec.motive, name) || const_occurs(t->data.maybe_rec.nothing_case, name)
+                     || const_occurs(t->data.maybe_rec.just_case, name) || const_occurs(t->data.maybe_rec.scrutinee, name);
+  case KT_SUM_REC: return const_occurs(t->data.sum_rec.motive, name) || const_occurs(t->data.sum_rec.left_case, name)
+                     || const_occurs(t->data.sum_rec.right_case, name) || const_occurs(t->data.sum_rec.scrutinee, name);
+  case KT_J: return const_occurs(t->data.j.motive, name) || const_occurs(t->data.j.base_case, name)
+                     || const_occurs(t->data.j.type, name) || const_occurs(t->data.j.a, name)
+                     || const_occurs(t->data.j.b, name) || const_occurs(t->data.j.proof, name);
+  case KT_ANNOT: return const_occurs(t->data.annot.term, name) || const_occurs(t->data.annot.type, name);
+  case KT_LET: return const_occurs(t->data.let.value, name) || const_occurs(t->data.let.body, name);
+  case KT_INL: return const_occurs(t->data.inl.value, name) || const_occurs(t->data.inl.right_type, name);
+  case KT_INR: return const_occurs(t->data.inr.value, name) || const_occurs(t->data.inr.left_type, name);
+  case KT_JUST: return const_occurs(t->data.just.value, name);
+  case KT_MAYBE: return const_occurs(t->data.maybe.elem_type, name);
+  case KT_SUM_K: return const_occurs(t->data.sum_k.left_type, name) || const_occurs(t->data.sum_k.right_type, name);
+  case KT_ABSURD: return const_occurs(t->data.absurd.target_type, name);
+  case KT_LIST: return const_occurs(t->data.list.elem_type, name);
+  case KT_CONS_K: return const_occurs(t->data.cons_k.head, name) || const_occurs(t->data.cons_k.tail, name);
+  default: return 0;
+  }
+}
+
+/* Classify a constructor argument type (in the parameter context [params]):
+ *   0  non-recursive (does not mention the inductive)
+ *   1  a strictly-positive recursive occurrence: exactly `Name p_1 .. p_nP`
+ *  -1  an illegal occurrence (anything else mentioning Name)              */
+static int classify_arg(kterm_t *T, const char *dname, int nP) {
+  kterm_t *args[KIND_MAX_SPINE], *head;
+  int n, k;
+  if (!const_occurs(T, dname)) return 0;
+  head = gather_spine(T, args, &n);
+  if (head->tag != KT_CONST) return -1;
+  if (strcmp(head->data.constant.name, dname) != 0) return -1;
+  if (n != nP) return -1;
+  for (k = 0; k < nP; k++) {
+    if (args[k]->tag != KT_VAR) return -1;
+    if (args[k]->data.var.index != nP - 1 - k) return -1;   /* p_{k+1} */
+    if (const_occurs(args[k], dname)) return -1;
+  }
+  return 1;
+}
+
+/* Type former type: (p_1:P_1) .. (p_nP:P_nP) -> Sort_s */
+kterm_t *kind_former_type(lizard_heap_t *heap, kind_decl_t *decl) {
+  kterm_t *acc = kt_sort(heap, decl->sort_level);
+  int k;
+  for (k = decl->n_params; k >= 1; k--)
+    acc = kt_pi(heap, decl->param_names[k - 1], decl->param_types[k - 1], acc);
+  return acc;
+}
+
+/* Constructor c_i type: (params) -> (a_1:T_1) .. (a_nA:T_nA) -> D params */
+static kterm_t *build_ctor_type(lizard_heap_t *heap, kind_decl_t *decl,
+                                int i) {
+  int nP = decl->n_params, nA = decl->ctor_nargs[i], j, k;
+  kterm_t **T = decl->ctor_argtypes[i];
+  kterm_t *acc = ind_applied(heap, decl->name, nP, nA);
+  for (j = nA; j >= 1; j--) {
+    kterm_t *dom = kt_shift(heap, T[j - 1], 0, j - 1);
+    acc = kt_pi(heap, gen_name(heap, 'a', j), dom, acc);
+  }
+  for (k = nP; k >= 1; k--)
+    acc = kt_pi(heap, decl->param_names[k - 1], decl->param_types[k - 1], acc);
+  return acc;
+}
+
+/* Method type for c_i, in context [params, M, m_1..m_{i-1}] (i is 1-based):
+ *   (a_1:T_1)..(a_nA:T_nA) -> (ih_l : M a_{j_l}).. -> M (c_i params a_1..a_nA)
+ * with one ih per recursive argument, in argument order. */
+static kterm_t *build_method(lizard_heap_t *heap, kind_decl_t *decl,
+                             int idx /*0-based*/, int i /*1-based*/) {
+  int nP = decl->n_params, nA = decl->ctor_nargs[idx], j, l, k, R = 0;
+  int rec_pos[KIND_MAX_SPINE];
+  kterm_t **T = decl->ctor_argtypes[idx];
+  const int *recf = decl->ctor_recflags ? decl->ctor_recflags[idx] : NULL;
+  kterm_t *capp, *acc;
+  for (j = 1; j <= nA; j++) if (recf && recf[j - 1]) rec_pos[R++] = j;
+  /* body: M (c_i p.. a..), context [base, a_1..a_nA, ih_1..ih_R] */
+  capp = mk_const(heap, decl->ctor_names[idx]);
+  for (k = 1; k <= nP; k++)
+    capp = kt_app(heap, capp, kt_var(heap, (i + nA + R) + (nP - k)));
+  for (j = 1; j <= nA; j++)
+    capp = kt_app(heap, capp, kt_var(heap, (nA - j) + R));
+  acc = kt_app(heap, kt_var(heap, (i - 1) + nA + R), capp);
+  /* induction hypotheses ih_R..ih_1 */
+  for (l = R; l >= 1; l--) {
+    int jj = rec_pos[l - 1];
+    kterm_t *ihdom = kt_app(heap, kt_var(heap, (i - 1) + nA + (l - 1)),
+                                  kt_var(heap, (nA - jj) + (l - 1)));
+    acc = kt_pi(heap, "ih", ihdom, acc);
+  }
+  /* arguments a_nA..a_1 */
+  for (j = nA; j >= 1; j--) {
+    kterm_t *dom = kt_shift(heap, T[j - 1], 0, i + j - 1);
+    acc = kt_pi(heap, gen_name(heap, 'a', j), dom, acc);
+  }
+  return acc;
+}
+
+/* Recursor type:
+ *  (params) -> (M : (x:D params)->Sort_L) -> (m_1:Meth_1)..(m_nC:Meth_nC)
+ *           -> (x:D params) -> M x                                        */
+static kterm_t *build_recursor_type(lizard_heap_t *heap,
+                                    kind_decl_t *decl) {
+  int nP = decl->n_params, nC = decl->n_ctors, i, k, L = decl->sort_level;
+  kterm_t *acc, *motive;
+  acc = kt_app(heap, kt_var(heap, nC + 1), kt_var(heap, 0));     /* M x */
+  acc = kt_pi(heap, "x", ind_applied(heap, decl->name, nP, nC + 1), acc);
+  for (i = nC; i >= 1; i--)
+    acc = kt_pi(heap, gen_name(heap, 'm', i),
+                build_method(heap, decl, i - 1, i), acc);
+  motive = kt_pi(heap, "x", ind_applied(heap, decl->name, nP, 0), kt_sort(heap, L));
+  acc = kt_pi(heap, "M", motive, acc);
+  for (k = nP; k >= 1; k--)
+    acc = kt_pi(heap, decl->param_names[k - 1], decl->param_types[k - 1], acc);
+  return acc;
+}
+
+int kind_declare(lizard_heap_t *heap, kdef_ctx_t *dctx,
+                 kind_decl_t *decl) {
+  kctx_t *ctx;
+  kind_t *ind;
+  kterm_t *rec_type;
+  int i, j, nC = decl->n_ctors, nP = decl->n_params;
+  int **recflags;
+  ctx = kctx_create(heap);
+  ctx->defs = dctx;
+  /* (1) strict positivity + recursion flags */
+  recflags = (int **)lizard_heap_alloc(sizeof(int *) * (size_t)(nC ? nC : 1));
+  for (i = 0; i < nC; i++) {
+    int nA = decl->ctor_nargs[i];
+    recflags[i] = (int *)lizard_heap_alloc(sizeof(int) * (size_t)(nA ? nA : 1));
+    for (j = 0; j < nA; j++) {
+      int c = classify_arg(decl->ctor_argtypes[i][j], decl->name, nP);
+      if (c < 0) {
+        fprintf(stderr, "data %s: constructor %s argument %d is not strictly "
+                "positive (the type may only recur as `%s` applied to its "
+                "parameters)\n", decl->name, decl->ctor_names[i], j + 1,
+                decl->name);
+        return 0;
+      }
+      recflags[i][j] = c;
+    }
+  }
+  decl->ctor_recflags = recflags;  /* feed synthesis */
+  /* (2) synthesize + sanity-check + register each constructor */
+  for (i = 0; i < nC; i++) {
+    kterm_t *cty = build_ctor_type(heap, decl, i);
+    if (kt_infer(heap, ctx, cty) == NULL) {
+      fprintf(stderr, "data %s: constructor %s has an ill-formed type\n",
+              decl->name, decl->ctor_names[i]);
+      return 0;
+    }
+    kdef_add(heap, dctx, decl->ctor_names[i], cty, NULL);
+  }
+  /* (3) synthesize + sanity-check + register the eliminator */
+  rec_type = build_recursor_type(heap, decl);
+  if (kt_infer(heap, ctx, rec_type) == NULL) {
+    fprintf(stderr, "data %s: synthesized eliminator type is ill-formed\n",
+            decl->name);
+    return 0;
+  }
+  kdef_add(heap, dctx, decl->rec_name, rec_type, NULL);
+  /* (4) register the signature for iota-reduction */
+  ind = (kind_t *)lizard_heap_alloc(sizeof(kind_t));
+  ind->name = decl->name;
+  ind->rec_name = decl->rec_name;
+  ind->n_params = nP;
+  ind->n_ctors = nC;
+  ind->ctors = (kind_ctor_t *)lizard_heap_alloc(sizeof(kind_ctor_t) * (size_t)(nC ? nC : 1));
+  for (i = 0; i < nC; i++) {
+    ind->ctors[i].name = decl->ctor_names[i];
+    ind->ctors[i].n_args = decl->ctor_nargs[i];
+    ind->ctors[i].recursive = recflags[i];
+  }
+  if (dctx->inds == NULL) dctx->inds = lizard_heap_alloc(sizeof(kind_ctx_t)), ((kind_ctx_t *)dctx->inds)->inds = NULL;
+  ind->next = ((kind_ctx_t *)dctx->inds)->inds;
+  ((kind_ctx_t *)dctx->inds)->inds = ind;
+  return 1;
 }

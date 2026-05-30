@@ -171,6 +171,43 @@ lizard_ast_node_t *lizard_primitive_check_holes(lz_list_t *args,
     return lizard_make_bool(heap, 0);
   }
 }
+
+/* (elaborate term type) — elaborate `term` against `type`, inserting implicit
+ * arguments and solving metavariables, then print the resulting core term and
+ * confirm it with the kernel. */
+lizard_ast_node_t *lizard_primitive_elaborate(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *term_expr, *type_expr;
+  kterm_t *term, *type;
+  kctx_t *ctx;
+  elab_state_t st;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  term_expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  type_expr = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  term = lizard_kernel_sexp_to_kterm(heap, term_expr);
+  type = lizard_kernel_sexp_to_kterm(heap, type_expr);
+  if (term == NULL || type == NULL)
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
+  if (!elab_run(heap, ctx, term, type, &st)) {
+    printf("Elaboration failed: the term does not fit the goal type.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  printf("Elaborated: ");
+  kt_fprint(stdout, st.elaborated);
+  printf("\n");
+  if (kt_check(heap, ctx, st.elaborated, type) == KERNEL_OK) {
+    printf("Kernel-verified.\n");
+    return lizard_make_bool(heap, 1);
+  }
+  printf("Elaborated term failed kernel verification (unsolved implicit?).\n");
+  return lizard_make_bool(heap, 0);
+}
+
 lizard_ast_node_t *lizard_primitive_begin_proof(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -555,6 +592,152 @@ kdef_ctx_t *lizard_kernel_defs(lizard_heap_t *heap) {
     rt->kernel_def_ctx = kdef_ctx_create(heap);
   return (kdef_ctx_t *)rt->kernel_def_ctx;
 }
+/* ----- (data '(Name (params) Sort (ctor (argtypes)) ...)) -----
+ * Declare a parameterized inductive type.  Registers the type former, each
+ * constructor, and an auto-generated dependent eliminator `Name-rec`.  The
+ * kernel strict-positivity-checks the declaration and gives the eliminator a
+ * real iota-reduction rule. */
+#define DATA_MAX_P 8
+#define DATA_MAX_C 16
+#define DATA_MAX_A 8
+
+static int dl_len(lizard_ast_node_t *n) {
+  int c = 0;
+  if (n == NULL) return 0;
+  if (n->type == AST_APPLICATION) {
+    lz_list_t *l = n->data.application_arguments;
+    lz_list_node_t *it;
+    if (l == NULL) return 0;
+    for (it = l->head; it != l->nil; it = it->next) c++;
+    return c;
+  }
+  if (n->type == AST_PAIR) {
+    lizard_ast_node_t *p = n;
+    while (p != NULL && p->type == AST_PAIR) { c++; p = p->data.pair.cdr; }
+    return c;
+  }
+  return 0;
+}
+
+static lizard_ast_node_t *dl_nth(lizard_ast_node_t *n, int i) {
+  if (n == NULL) return NULL;
+  if (n->type == AST_APPLICATION) {
+    lz_list_t *l = n->data.application_arguments;
+    lz_list_node_t *it = l->head;
+    while (i-- > 0 && it != l->nil) it = it->next;
+    return (it == l->nil) ? NULL : ((lizard_ast_list_node_t *)it)->ast;
+  }
+  if (n->type == AST_PAIR) {
+    lizard_ast_node_t *p = n;
+    while (i-- > 0 && p != NULL && p->type == AST_PAIR) p = p->data.pair.cdr;
+    return (p != NULL && p->type == AST_PAIR) ? p->data.pair.car : NULL;
+  }
+  return NULL;
+}
+
+static const char *dl_sym(lizard_ast_node_t *n) {
+  return (n != NULL && n->type == AST_SYMBOL) ? n->data.variable : NULL;
+}
+
+lizard_ast_node_t *lizard_primitive_data(lz_list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *decl_ast, *params_ast, *sort_ast;
+  kind_decl_t decl;
+  const char *pnames[DATA_MAX_P];
+  kterm_t *ptypes[DATA_MAX_P];
+  const char *cnames[DATA_MAX_C];
+  int cnargs[DATA_MAX_C];
+  kterm_t **cargs[DATA_MAX_C];
+  kterm_t *sort_kt, *former;
+  kdef_ctx_t *dctx;
+  kctx_t *cc;
+  int nP, nC, i, j, k, ndecl;
+  char *recname;
+  size_t L;
+  (void)env;
+  if (args == NULL || args->head == args->nil || args->head->next != args->nil)
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  decl_ast = ((lizard_ast_list_node_t *)args->head)->ast;
+  ndecl = dl_len(decl_ast);
+  if (ndecl < 3) {
+    printf("data: expected (Name (params) Sort ctor...)\n");
+    return lizard_make_bool(heap, 0);
+  }
+  decl.name = dl_sym(dl_nth(decl_ast, 0));
+  params_ast = dl_nth(decl_ast, 1);
+  sort_ast = dl_nth(decl_ast, 2);
+  if (decl.name == NULL) {
+    printf("data: missing inductive name\n");
+    return lizard_make_bool(heap, 0);
+  }
+  dctx = lizard_kernel_defs(heap);
+  nP = dl_len(params_ast);
+  if (nP > DATA_MAX_P) { printf("data: too many parameters\n"); return lizard_make_bool(heap, 0); }
+  for (k = 0; k < nP; k++) {
+    lizard_ast_node_t *b = dl_nth(params_ast, k);
+    pnames[k] = dl_sym(dl_nth(b, 0));
+    ptypes[k] = lizard_kernel_sexp_to_kterm_in(heap, dl_nth(b, 1), pnames, k);
+    if (pnames[k] == NULL || ptypes[k] == NULL) {
+      printf("data: malformed parameter %d\n", k + 1);
+      return lizard_make_bool(heap, 0);
+    }
+  }
+  sort_kt = lizard_kernel_sexp_to_kterm(heap, sort_ast);
+  if (sort_kt == NULL || sort_kt->tag != KT_SORT) {
+    printf("data: result kind must be a sort, e.g. (Sort 0)\n");
+    return lizard_make_bool(heap, 0);
+  }
+  decl.n_params = nP;
+  decl.param_names = pnames;
+  decl.param_types = ptypes;
+  decl.sort_level = sort_kt->data.sort.level;
+  decl.ctor_recflags = NULL;
+  former = kind_former_type(heap, &decl);
+  cc = kctx_create(heap); cc->defs = dctx;
+  if (kt_infer(heap, cc, former) == NULL) {
+    printf("data: type former is ill-formed\n");
+    return lizard_make_bool(heap, 0);
+  }
+  kdef_add(heap, dctx, decl.name, former, NULL);
+  nC = ndecl - 3;
+  if (nC < 1 || nC > DATA_MAX_C) {
+    printf("data: need between 1 and %d constructors\n", DATA_MAX_C);
+    return lizard_make_bool(heap, 0);
+  }
+  for (i = 0; i < nC; i++) {
+    lizard_ast_node_t *ct = dl_nth(decl_ast, 3 + i);
+    lizard_ast_node_t *al;
+    cnames[i] = dl_sym(dl_nth(ct, 0));
+    al = dl_nth(ct, 1);
+    cnargs[i] = dl_len(al);
+    if (cnames[i] == NULL || cnargs[i] > DATA_MAX_A) {
+      printf("data: malformed constructor %d\n", i + 1);
+      return lizard_make_bool(heap, 0);
+    }
+    cargs[i] = (kterm_t **)lizard_heap_alloc(sizeof(kterm_t *) * (size_t)(cnargs[i] ? cnargs[i] : 1));
+    for (j = 0; j < cnargs[i]; j++) {
+      cargs[i][j] = lizard_kernel_sexp_to_kterm_in(heap, dl_nth(al, j), pnames, nP);
+      if (cargs[i][j] == NULL) {
+        printf("data: malformed argument %d of constructor %s\n", j + 1, cnames[i]);
+        return lizard_make_bool(heap, 0);
+      }
+    }
+  }
+  decl.n_ctors = nC;
+  decl.ctor_names = cnames;
+  decl.ctor_nargs = cnargs;
+  decl.ctor_argtypes = cargs;
+  L = strlen(decl.name);
+  recname = (char *)lizard_heap_alloc(L + 5);
+  memcpy(recname, decl.name, L);
+  memcpy(recname + L, "-rec", 5);
+  decl.rec_name = recname;
+  if (!kind_declare(heap, dctx, &decl)) return lizard_make_bool(heap, 0);
+  printf("Defined inductive %s with %d constructor(s); eliminator %s.\n",
+         decl.name, nC, recname);
+  return lizard_make_bool(heap, 1);
+}
+
 lizard_ast_node_t *lizard_primitive_kernel_define(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {

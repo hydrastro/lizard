@@ -69,7 +69,7 @@ typedef struct kterm {
   union {
     struct { int index; } var;
     struct { int level; } sort;
-    struct { const char *name; struct kterm *domain; struct kterm *codomain; } pi;
+    struct { const char *name; struct kterm *domain; struct kterm *codomain; int implicit; } pi;
     struct { const char *name; struct kterm *domain; struct kterm *body; } lam;
     struct { struct kterm *fun; struct kterm *arg; } app;
     struct { const char *name; struct kterm *fst_type; struct kterm *snd_type; } sigma;
@@ -224,7 +224,59 @@ typedef struct kdef {
 
 typedef struct {
   kdef_t *defs;
+  void *inds;            /* kind_ctx_t* of user inductive declarations */
 } kdef_ctx_t;
+
+/* ---- user-defined inductive types ---- */
+/* A constructor of an inductive: its constant name, argument count, and which
+ * arguments are recursive (a direct occurrence of the inductive being
+ * defined).  Recursive arguments receive an induction hypothesis. */
+typedef struct {
+  const char *name;
+  int n_args;
+  int *recursive;        /* recursive[j] = 1 if arg j is a recursive occurrence */
+} kind_ctor_t;
+
+/* An inductive declaration: type-former name, its recursor name, number of
+ * parameters, and its constructors.  Used by kt_whnf to perform iota-reduction
+ * of a recursor applied to a constructor. */
+typedef struct kind {
+  const char *name;
+  const char *rec_name;
+  int n_params;
+  int n_ctors;
+  kind_ctor_t *ctors;    /* array of n_ctors */
+  struct kind *next;
+} kind_t;
+
+typedef struct {
+  kind_t *inds;
+} kind_ctx_t;
+
+/* Inputs to a `data` declaration (pieces already converted to kernel terms by
+ * the surface layer; kind_declare does positivity, eliminator synthesis, and
+ * registration). */
+typedef struct {
+  const char *name;
+  const char *rec_name;
+  int n_params;
+  const char **param_names;
+  kterm_t **param_types;        /* param_types[k] in context [p_0..p_{k-1}] */
+  int sort_level;
+  int n_ctors;
+  const char **ctor_names;
+  int *ctor_nargs;
+  kterm_t ***ctor_argtypes;     /* ctor_argtypes[i][j] in context [params] */
+  int **ctor_recflags;          /* filled by kind_declare (positivity) */
+} kind_decl_t;
+
+/* Positivity-check, synthesize (type former, constructors, dependent
+ * eliminator), and register an inductive.  Returns 1 on success, 0 on a
+ * positivity violation or malformed synthesis (with a message to stderr). */
+kterm_t *kind_former_type(lizard_heap_t *heap, kind_decl_t *decl);
+int kind_declare(lizard_heap_t *heap, kdef_ctx_t *dctx, kind_decl_t *decl);
+kind_t *kind_find_rec(kind_ctx_t *kc, const char *name);
+kind_t *kind_find_ctor(kind_ctx_t *kc, const char *name, int *index_out);
 
 kdef_ctx_t *kdef_ctx_create(lizard_heap_t *heap);
 void kdef_add(lizard_heap_t *heap, kdef_ctx_t *dctx,

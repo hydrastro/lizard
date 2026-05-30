@@ -2804,6 +2804,8 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   /* Track K: kernel primitives. */
   install_one(heap, env, "kernel-check",     lizard_primitive_kernel_check);
   install_one(heap, env, "check-holes",      lizard_primitive_check_holes);
+  install_one(heap, env, "elaborate",        lizard_primitive_elaborate);
+  install_one(heap, env, "data",             lizard_primitive_data);
   install_one(heap, env, "kernel-assume",    lizard_primitive_kernel_assume);
   install_one(heap, env, "kernel-infer",     lizard_primitive_kernel_infer);
   /* Track K: tactics. */
