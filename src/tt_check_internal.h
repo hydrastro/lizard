@@ -23,4 +23,13 @@ lizard_ast_node_t *infer2_cubical(lizard_ast_node_t *valid_ctx,
                                   lizard_heap_t *heap,
                                   lizard_judgment_kind_t *out_kind);
 
+lizard_ast_node_t *infer2_fresh(lizard_ast_node_t *valid_ctx,
+                                lizard_ast_node_t *ctx, lizard_ast_node_t *t,
+                                lizard_heap_t *heap,
+                                lizard_judgment_kind_t *out_kind);
+lizard_ast_node_t *infer2_hit(lizard_ast_node_t *valid_ctx,
+                              lizard_ast_node_t *ctx, lizard_ast_node_t *t,
+                              lizard_heap_t *heap,
+                              lizard_judgment_kind_t *out_kind);
+
 #endif
