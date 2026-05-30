@@ -245,6 +245,45 @@ term is rejected even with a buggy elaborator).
   proofs by induction and path induction, the foundation Phase 7 (term-first
   proving) builds on.
 
+### Phase 3B progress — #7 second monster + the checker god-function
+
+- **#7's second named monster, `tt_equality.c`, is split.**  6819 → 5706
+  lines.  The cohesive conversion/normalization engine (substitution,
+  alpha-equality, term constructors, memoization, head rewrites) stays
+  together — fragmenting it would be the wrong move — but the self-contained
+  appended *registries* came out into modules: `tt_logic.c` (844: the HIT
+  registry, logic-rule configuration + named bundles, and universe ordering)
+  and `tt_faces.c` (292: the face-entailment decision procedure, system
+  lookup, and the TT/flag Lisp primitives).  A new internal header
+  `tt_internal.h` shares the three engine helpers the registries genuinely
+  need (`contains_free_var`, `universe_set_subset`, `couniverse_set_subset`)
+  plus the flag type/accessor.  The engine never touched the registries' state
+  directly (only their header-declared accessors), so the cut was clean.  With
+  `primitives.c` (done earlier) this means **#7 is complete on both named
+  monsters.**
+- **`tt_check.c`'s 2150-line god-function is decomposed.**  `infer2_kind_impl`
+  was a single switch over 74 node kinds.  Because the cases share no
+  function-level locals and recurse through the *public* `lizard_tt_infer2`
+  entry, contiguous theme-clusters could be lifted into well-named dispatched
+  helpers without changing behaviour, each a coherent sub-theory:
+  `tt_check_modal.c` (S4 modal: Box/Diamond intro/elim/app/bind),
+  `tt_check_cubical.c` (interval, paths, faces, partial elements,
+  comp/hcomp/fill, equivalences/Glue/ua), `tt_check_fresh.c` (dimension- and
+  couniverse-creating fresh binders, Phase L.3/L.5), and `tt_check_hit.c`
+  (the circle S1, propositional truncation with its coherence rule, and the
+  general HIT forms).  The main switch dispatches those node kinds to the
+  helpers; shared checker helpers (`ctx_lookup`, `ctx_extend`, `type_error`,
+  `is_error`, `make_path_app_local`) live in a new `tt_check_internal.h`.
+  `tt_check.c` 2762 → 1359, and the god-function itself **2150 → 742 lines**.
+  What remains in it is exactly the core dependent-type theory (universes,
+  Pi/Sigma, App, Id/Refl/J, projections, Sum, …) which is genuinely cohesive
+  and stays together.  This is a real quality fix — a 2000-line function is a
+  defect — not just code-moving.
+- Net this phase: **seven** new focused modules across the two splits, the
+  three biggest files all meaningfully reduced, full suite green throughout
+  (C 94/94, Lisp 5/5, examples 62/62, all audits including ownership/
+  build-graph updated for the relocations).
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

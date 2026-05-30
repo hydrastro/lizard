@@ -1,0 +1,80 @@
+; -*- lisp -*-
+; ============================================================
+;  EXAMPLE 111 — Track Q: cubical type theory & HITs
+; ============================================================
+
+(import "cubical.lisp")
+
+(display "=== INTERVAL ALGEBRA (De Morgan) ===") (newline)
+(display "  i0 ∧ i = ") (display (i-reduce (i-meet (i0) (i-var 'i)))) (newline)
+(display "  i1 ∧ i = ") (display (i-reduce (i-meet (i1) (i-var 'i)))) (newline)
+(display "  i0 ∨ i = ") (display (i-reduce (i-join (i0) (i-var 'i)))) (newline)
+(display "  i1 ∨ i = ") (display (i-reduce (i-join (i1) (i-var 'i)))) (newline)
+(display "  ~ i0   = ") (display (i-reduce (i-not (i0)))) (newline)
+(display "  ~ i1   = ") (display (i-reduce (i-not (i1)))) (newline)
+(display "  ~~ i   = ") (display (i-reduce (i-not (i-not (i-var 'i))))) (newline)
+(display "  (involution: ~~i = i)") (newline)
+(newline)
+
+(display "=== PATHS AS FUNCTIONS OF THE INTERVAL ===") (newline)
+; A path <i> a is the constant/refl path at a.
+(define refl-a (path-const 'a))
+(display "  refl path at a:  <i> a") (newline)
+(display "  start (p @ i0): ") (display (path-start refl-a)) (newline)
+(display "  end   (p @ i1): ") (display (path-end refl-a)) (newline)
+(display "  (both endpoints are a — it's a loop at a)") (newline)
+(newline)
+
+(display "=== PATH APPLICATION & BETA ===") (newline)
+(display "  (<i> i) @ i0 = ")
+(display (path-at (path 'i (i-var 'i)) (i0))) (newline)
+(display "  reduced: ")
+(display (reduce (path-at (path 'i (i-var 'i)) (i0)))) (newline)
+(display "  (<i> i) @ i1 reduced = ")
+(display (reduce (path-at (path 'i (i-var 'i)) (i1)))) (newline)
+(newline)
+
+(display "=== PATH INVERSION (p⁻¹ = <i> p @ ~i) ===") (newline)
+(define p (path 'i (i-var 'i)))
+(define p-inv (path-invert p))
+(display "  p⁻¹ start (should be p's end): ")
+(display (reduce (path-at p-inv (i0)))) (newline)
+(display "  p⁻¹ end (should be p's start): ")
+(display (reduce (path-at p-inv (i1)))) (newline)
+(display "  (inversion swaps the endpoints)") (newline)
+(newline)
+
+(display "=== CONNECTIONS (squares from a path) ===") (newline)
+(display "  ∧-connection diagonal at (i1,i1): ")
+(display (reduce (path-at (path-at (connection-and p) (i1)) (i1)))) (newline)
+(display "  ∧-connection corner at (i0,j): ")
+(display (reduce (path-at (path-at (connection-and p) (i0)) (i-var 'j)))) (newline)
+(display "  (i0 ∧ j = i0, so this side is constant)") (newline)
+(newline)
+
+(display "=== HIGHER INDUCTIVE TYPES ===") (newline)
+(display "  The circle S¹:") (newline)
+(display "    base : S¹ = ") (display s1-base) (newline)
+(display "    loop : base = base") (newline)
+(display "    loop @ i0 = ") (display (reduce (path-at (s1-loop) (i0)))) (newline)
+(display "    loop @ i1 = ") (display (reduce (path-at (s1-loop) (i1)))) (newline)
+(newline)
+(display "  The interval 𝕀 (contractible):") (newline)
+(display "    zero = ") (display interval-zero)
+(display ", one = ") (display interval-one) (newline)
+(display "    seg : zero = one") (newline)
+(newline)
+(display "  Suspension Σ (north, south, merid):") (newline)
+(display "    north = ") (display susp-north)
+(display ", south = ") (display susp-south) (newline)
+(display "    merid a : north = south") (newline)
+(newline)
+
+(display "=== S¹ RECURSION PRINCIPLE ===") (newline)
+; To map S¹ → X: give a point and a loop. Here X = Nat, point = 0.
+(define s1-to-nat (s1-rec 0 (path-const 0)))
+(display "  s1-rec 0 (refl 0): ") (display s1-to-nat) (newline)
+(display "  (maps base→0, loop→refl — the constant map)") (newline)
+(newline)
+
+(display "=== Track Q milestone: interval algebra + HITs ✓ ===") (newline)

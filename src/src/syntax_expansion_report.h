@@ -1,0 +1,6 @@
+#ifndef LIZARD_SYNTAX_EXPANSION_REPORT_H
+#define LIZARD_SYNTAX_EXPANSION_REPORT_H
+
+#include "lizard_api.h"
+
+#endif /* LIZARD_SYNTAX_EXPANSION_REPORT_H */

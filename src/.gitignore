@@ -1,0 +1,17 @@
+/build/
+*.o
+*.a
+*.so
+*.d
+*.gcno
+*.gcda
+*.gcov
+/coverage/
+*.swp
+*~
+.DS_Store
+perf.data
+perf.data.old
+result
+result-*
+*.zip
