@@ -284,6 +284,134 @@ term is rejected even with a buggy elaborator).
   (C 94/94, Lisp 5/5, examples 62/62, all audits including ownership/
   build-graph updated for the relocations).
 
+### Phase 7 progress — the surface-to-kernel proving loop is closed
+
+- The kernel became sound *and* complete (it types every eliminator), but
+  that power was unreachable: the surface→KernelTerm converter
+  (`kernel_sexp.c`) had no syntax for most eliminators, so no one could feed an
+  inductive proof to the trusted core.  Closed that gap.  The converter now
+  accepts dependent `boolrec`, `listrec`, `mayberec`, `sumrec`, `absurd`, and
+  `let`, plus an annotated empty list `(nil A)` so list eliminations are
+  typeable, and a reader-safe de Bruijn form `(var N)`.
+- (The bare `#N` notation the converter originally expected is a dead branch:
+  the Lisp reader consumes `#0` as the boolean `#f` before it ever reaches the
+  converter.  `(var N)` is the reader-safe replacement; the demonstration
+  example and the new test use it.)
+- **End to end, verified:** `tests/kernel_surface_test.c` drives the *whole*
+  user-facing pipeline — a theorem in concrete surface syntax is tokenized,
+  parsed, converted to a KernelTerm, and `kt_check`ed via the `kernel-check`
+  primitive.  Positive cases for all six eliminators check (#t); adversarial
+  cases (wrong branch type, false equation) are rejected (#f), so the surface
+  path is demonstrably sound, not just expressive.
+- **The headline theorem:** reflexivity proven *by induction*.  With motive
+  `C n := Id Nat n n`, base `refl 0`, and step `refl (succ k)`, the `nat_rec`
+  term inhabits `C 2`, and the trusted kernel verifies it against
+  `Id Nat 2 2` — while rejecting the same proof offered for the false equation
+  `Id Nat 2 0`.  This is the Phase 7 "done-when": a non-trivial theorem stated
+  in surface TT, elaborated, and kernel-checked.  Shipped as a passing
+  demonstration (`examples/127-kernel-induction.lisp`).  Suite: C 95/95,
+  Lisp 5/5, examples 63/63, all audits.
+
+### Phase 7 progress — a referenceable proof library
+
+- Named binders already resolved (a free-binder environment in the converter
+  maps a bound name to its de Bruijn index, so proofs read with `n`/`k`/`ih`
+  rather than raw indices).  The remaining gap was *reuse*: `kernel-define`
+  type-checked and stored a definition, but the converter had no way to
+  *reference* a stored name in a later term, so every proof started from
+  scratch.
+- Closed it.  The per-runtime kernel definition context is now exposed
+  (`lizard_kernel_defs`, made null-safe for runtime-less heaps), and the
+  converter resolves a free name — after local binders, which shadow it — to
+  its stored, closed definition value, inlining it.  So a library of verified
+  lemmas accumulates: `(kernel-define 'two '(succ (succ zero)) 'Nat)`,
+  `(kernel-define 'refl-all '(lam (n Nat) (refl n)) '(Pi (n Nat) (Id Nat n n)))`,
+  then `(kernel-check '(app refl-all two) '(Id Nat two two))` checks, and a
+  further definition `two-eq` can be built on top and reused downstream.
+- Soundness is preserved across the library: the same lemma is rejected when
+  offered for the false equation `Id Nat two zero`.  Shipped as a
+  self-checking demonstration (`examples/128-kernel-library.lisp`, which
+  `raise`s on a wrong verdict so it doubles as a regression guard).  Suite:
+  C 95/95, Lisp 5/5, examples 64/64, all audits.
+
+### Phase 7 progress — axioms (postulates) via opaque kernel constants
+
+- Definitions are inlined, which can't express a *postulate* (an axiom has no
+  value to inline).  Added a first-class opaque constant to the trusted
+  kernel: a new `KT_CONST` tag carrying just a name.  It is closed (identity
+  under shift/subst), opaque under whnf (never reduces), equal only to a
+  same-named constant, and `kt_infer` types it by looking its declared type up
+  in the definition context.  To reach that context from inside the kernel,
+  `kctx_t` gained a `defs` pointer (a `void *` to avoid a header cycle) that
+  `kctx_extend` now propagates through binders — the one real bug found and
+  fixed along the way (a `Pi` codomain under a binder couldn't see the defs).
+- New primitive `(kernel-assume name type)`: checks the postulated type is a
+  well-formed type, then stores it with a NULL value.  The converter resolves
+  a free name to an inlined value for a definition, or to an opaque `KT_CONST`
+  for an axiom; local binders shadow both.
+- This makes proving *from* postulates work: with `P Q R : Sort 0`,
+  `imp : P → Q`, `qr : Q → R`, and `p : P` assumed, the kernel checks modus
+  ponens `(app imp p) : Q` and the composition
+  `(lam (x P) (app qr (app imp x))) : (Pi (x P) R)` (transitivity of
+  implication), while rejecting `p : Q` and the mis-ordered composition —
+  soundness is intact, the axioms are simply trusted at their stated types (as
+  axioms are, by definition).
+- Guarded by a defensive kernel-soundness case (an unknown `KT_CONST` with no
+  definition context is rejected, not a crash) and a self-checking example
+  (`examples/129-kernel-axioms.lisp`).  Suite: C 95/95 (soundness now 49
+  cases), Lisp 5/5, examples 65/65, all audits.
+
+### Phase 7 progress — delta-transparent definitions
+
+- Definitions had been *inlined* at parse time (a wart): the kernel never saw
+  the name, only its expansion, so error messages and proof terms lost the
+  abstraction.  Unified the constant story instead.  The converter now
+  resolves *every* defined name — definition or axiom — to the same opaque
+  `KT_CONST`; the difference lives entirely in the kernel's `kt_whnf`, which
+  delta-unfolds a constant whose definition has a value (returning the whnf of
+  its body) and leaves an axiom (no value) opaque.  This mirrors how `kt_whnf`
+  already delta-unfolds a local let-bound variable.
+- The effect: a definition is now both *abstract* (it shows as its name, and
+  the kernel reasons about `two` rather than `(succ (succ zero))`) and
+  *definitionally equal to its body*.  So `(refl two)` checks against
+  `(Id Nat two (succ (succ zero)))` — which requires unfolding `two` — while
+  `(Id Nat two (succ zero))` is rejected.  No infinite unfolding is possible:
+  a definition's value is checked before it is added, so it cannot reference
+  itself, and circular definitions cannot both be formed.
+- Demonstrated and guarded in `examples/128-kernel-library.lisp` (the existing
+  proof-library demo now also exercises delta).  Suite: C 95/95, Lisp 5/5,
+  examples 65/65, all audits.
+
+### Phase 7 progress — named variables make the proving surface human-writable
+
+- The proving surface still forced raw de Bruijn indices (`(var 0)`,
+  `(var 1)`), which is expert-only and error-prone.  Added a name-resolution
+  pass to the converter: binders (`lam`, `Pi`, `Sigma`, and the new `klet`)
+  push their binder name onto a small environment around the conversion of
+  their body, and a symbol that matches a binder resolves to its de Bruijn
+  depth (innermost = 0).  Implemented with a stack-allocated frame per binder
+  and an unconditional push/pop, so it needs no rewrite of the ~40 recursive
+  call sites and stays balanced even on error returns.  `(var N)` remains as
+  an explicit escape hatch.
+- Now `(lam (x Nat) x)`, `(lam (x Nat) (lam (y Nat) x))` (cross-binder
+  resolution), and shadowing (`(lam (x Nat) (lam (x Bool) x))` — the inner
+  binder wins) all check; the induction theorem reads as
+  `(natrec (lam (n Nat) (Id Nat n n)) (refl zero) (lam (k Nat) (lam (ih (Id Nat k k)) (refl (succ k)))) 2)`
+  instead of a wall of indices.
+- Added a `klet` form for definitional let — `let` itself was unusable as a
+  kernel keyword because the Lisp reader's `let` special form claims the
+  quoted datum (and its parser even segfaults on the non-standard binding
+  shape, a latent robustness bug worth fixing separately).  Also gave the
+  kernel a `KT_LET` typing rule in `kt_infer` (type the body under the
+  binding, substitute the value back so dependent body-types stay correct),
+  matching the existing reduction rule; guarded by adversarial soundness
+  cases.
+- Verified: `tests/kernel_surface_test.c` checks the named identity, K, and
+  shadowing terms, named `J`, named `klet`, the named induction theorem, and
+  rejects an unbound name; `kernel_soundness_test.c` is up to 49 cases (with
+  the `KT_LET` accept/reject).  Suite green: C 95/95, Lisp 5/5,
+  examples 63/63, all audits.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

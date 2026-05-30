@@ -39,6 +39,7 @@ lizard_ast_node_t *lizard_primitive_kernel_infer(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   type = kt_infer(heap, ctx, term);
   if (type == NULL) {
     return lizard_make_error(heap, LIZARD_ERROR_USER);
@@ -94,6 +95,7 @@ lizard_ast_node_t *lizard_primitive_kernel_check(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   result = kt_check(heap, ctx, term, type);
   return lizard_make_bool(heap, result == KERNEL_OK);
 }
@@ -109,6 +111,7 @@ lizard_ast_node_t *lizard_primitive_begin_proof(lz_list_t *args,
   goal_type = lizard_kernel_sexp_to_kterm(heap, type_expr);
   if (goal_type == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   current_proof = proof_begin(heap, ctx, goal_type);
   printf("Proof started.\n");
   proof_state_fprint(stdout, current_proof);
@@ -219,6 +222,7 @@ lizard_ast_node_t *lizard_primitive_kernel_reduce(lz_list_t *args,
   term = lizard_kernel_sexp_to_kterm(heap, expr);
   if (term == NULL) return lizard_make_error(heap, LIZARD_ERROR_USER);
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   reduced = kt_whnf(heap, ctx, term);
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_STRING;
@@ -241,6 +245,7 @@ lizard_ast_node_t *lizard_primitive_kernel_equalp(lz_list_t *args,
   if (a == NULL || b == NULL)
     return lizard_make_error(heap, LIZARD_ERROR_USER);
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   return lizard_make_bool(heap, kt_equal(heap, ctx, a, b));
 }
 lizard_ast_node_t *lizard_primitive_tactic_assumption(lz_list_t *args,
@@ -407,6 +412,7 @@ lizard_ast_node_t *lizard_primitive_kernel_unify(lz_list_t *args,
   if (a == NULL || b == NULL)
     return lizard_make_error(heap, LIZARD_ERROR_USER);
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   mctx = get_meta_ctx(heap);
   result = kt_unify(heap, ctx, mctx, a, b);
   if (result) {
@@ -417,8 +423,9 @@ lizard_ast_node_t *lizard_primitive_kernel_unify(lz_list_t *args,
   }
   return lizard_make_bool(heap, result);
 }
-static kdef_ctx_t *get_kdef_ctx(lizard_heap_t *heap) {
+kdef_ctx_t *lizard_kernel_defs(lizard_heap_t *heap) {
   lizard_runtime_t *rt = lizard_runtime_current();
+  if (rt == NULL) return NULL;
   if (rt->kernel_def_ctx == NULL)
     rt->kernel_def_ctx = kdef_ctx_create(heap);
   return (kdef_ctx_t *)rt->kernel_def_ctx;
@@ -446,14 +453,51 @@ lizard_ast_node_t *lizard_primitive_kernel_define(lz_list_t *args,
     return lizard_make_error(heap, LIZARD_ERROR_USER);
   /* Type-check the definition. */
   ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
   r = kt_check(heap, ctx, term, type);
   if (r != KERNEL_OK) {
     printf("kernel-define: type error for '%s'\n", name);
     return lizard_make_bool(heap, 0);
   }
-  dctx = get_kdef_ctx(heap);
+  dctx = lizard_kernel_defs(heap);
   kdef_add(heap, dctx, name, type, term);
   printf("Defined %s : ", name);
+  kt_fprint(stdout, type);
+  printf("\n");
+  return lizard_make_bool(heap, 1);
+}
+/* (kernel-assume name type-expr) — postulate an axiom: a named opaque
+ * constant of the given type, with no defining value.  The type must be a
+ * well-formed type.  References to the name elaborate to an opaque KT_CONST
+ * that the kernel types by this postulated type. */
+lizard_ast_node_t *lizard_primitive_kernel_assume(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  lizard_ast_node_t *name_node, *type_expr;
+  const char *name;
+  kterm_t *type, *type_type;
+  kdef_ctx_t *dctx;
+  kctx_t *ctx;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  name_node = ((lizard_ast_list_node_t *)args->head)->ast;
+  type_expr = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  name = (name_node->type == AST_SYMBOL) ? name_node->data.variable
+       : (name_node->type == AST_STRING) ? name_node->data.string : "?";
+  type = lizard_kernel_sexp_to_kterm(heap, type_expr);
+  if (type == NULL)
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
+  type_type = kt_infer(heap, ctx, type);
+  if (type_type == NULL || kt_whnf(heap, ctx, type_type)->tag != KT_SORT) {
+    printf("kernel-assume: '%s' is not a valid type\n", name);
+    return lizard_make_bool(heap, 0);
+  }
+  dctx = lizard_kernel_defs(heap);
+  kdef_add(heap, dctx, name, type, NULL); /* NULL value = axiom */
+  printf("Assumed %s : ", name);
   kt_fprint(stdout, type);
   printf("\n");
   return lizard_make_bool(heap, 1);
@@ -471,7 +515,7 @@ lizard_ast_node_t *lizard_primitive_kernel_lookup(lz_list_t *args,
   name_node = ((lizard_ast_list_node_t *)args->head)->ast;
   name = (name_node->type == AST_SYMBOL) ? name_node->data.variable
        : (name_node->type == AST_STRING) ? name_node->data.string : "?";
-  dctx = get_kdef_ctx(heap);
+  dctx = lizard_kernel_defs(heap);
   def = kdef_lookup(dctx, name);
   if (def == NULL) return lizard_make_bool(heap, 0);
   /* Return the value as a string. */

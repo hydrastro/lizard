@@ -2803,6 +2803,7 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "phash-map?",       lizard_primitive_phash_mapp);
   /* Track K: kernel primitives. */
   install_one(heap, env, "kernel-check",     lizard_primitive_kernel_check);
+  install_one(heap, env, "kernel-assume",    lizard_primitive_kernel_assume);
   install_one(heap, env, "kernel-infer",     lizard_primitive_kernel_infer);
   /* Track K: tactics. */
   install_one(heap, env, "begin-proof",      lizard_primitive_begin_proof);

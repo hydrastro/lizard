@@ -9,6 +9,42 @@
 
 #include <string.h>
 
+/* Binding environment for name -> de Bruijn resolution.  Frames live on the
+ * C stack, linked innermost-first; a binder pushes a frame around the
+ * conversion of its body, so a symbol matching a binder name converts to the
+ * correct de Bruijn index.  Single-threaded conversion makes a file-static
+ * head safe; the push/pop in to_kt_under is unconditional and balanced. */
+typedef struct kname_env {
+  const char *name;
+  struct kname_env *next;
+} kname_env_t;
+static kname_env_t *g_kname_env = NULL;
+
+/* Convert `body` with `pname` bound as the innermost variable. */
+static kterm_t *to_kt_under(lizard_heap_t *heap, lizard_ast_node_t *body,
+                            const char *pname) {
+  kname_env_t frame;
+  kterm_t *r;
+  frame.name = pname;
+  frame.next = g_kname_env;
+  g_kname_env = &frame;
+  r = lizard_kernel_sexp_to_kterm(heap, body);
+  g_kname_env = frame.next; /* pop */
+  return r;
+}
+
+/* Convert the n-th argument (0-based, after the head symbol) of an
+ * application's argument list to a kernel term.  Returns NULL if the
+ * argument is missing or unconvertible. */
+static kterm_t *sexp_nth_kterm(lizard_heap_t *heap, lz_list_t *parts, int n) {
+  lz_list_node_t *it;
+  if (parts == NULL) return NULL;
+  it = parts->head->next; /* skip the head symbol */
+  while (n-- > 0 && it != parts->nil) it = it->next;
+  if (it == parts->nil) return NULL;
+  return lizard_kernel_sexp_to_kterm(heap, ((lizard_ast_list_node_t *)it)->ast);
+}
+
 /* Helper: convert Lisp S-expression to kernel term. */
 kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) {
   if (e == NULL) return NULL;
@@ -75,6 +111,35 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
       m->tag = KT_META;
       m->data.meta.id = s[1] - '0';
       return m;
+    }
+    /* named variable: resolve against the binding environment, innermost
+     * binder = de Bruijn 0. */
+    {
+      kname_env_t *it = g_kname_env;
+      int depth = 0;
+      for (; it != NULL; it = it->next, depth++) {
+        if (it->name != NULL && strcmp(it->name, s) == 0) {
+          return kt_var(heap, depth);
+        }
+      }
+    }
+    /* Free name: resolve against the kernel definition library to an opaque,
+     * abstract constant.  The kernel types it by its declared type, and whnf
+     * delta-unfolds a definition to its body (axioms stay opaque), so the name
+     * is both abstract and definitionally equal to its value.  Local binders
+     * above shadow it. */
+    {
+      kdef_ctx_t *dctx = lizard_kernel_defs(heap);
+      if (dctx != NULL) {
+        kdef_t *d = kdef_lookup(dctx, s);
+        if (d != NULL) {
+          kterm_t *c = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+          memset(c, 0, sizeof(*c));
+          c->tag = KT_CONST;
+          c->data.constant.name = d->name;
+          return c;
+        }
+      }
     }
     return NULL;
   }
@@ -180,7 +245,8 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
             } else { return NULL; }
           } else { return NULL; }
         } else { return NULL; }
-        codomain = lizard_kernel_sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        codomain = to_kt_under(heap, ((lizard_ast_list_node_t *)body_node)->ast,
+                               pname);
         if (domain && codomain) return kt_pi(heap, pname, domain, codomain);
         return NULL;
       }
@@ -207,7 +273,8 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
           }
         }
         if (fst_type == NULL) return NULL;
-        snd_type = lizard_kernel_sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        snd_type = to_kt_under(heap, ((lizard_ast_list_node_t *)body_node)->ast,
+                               pname);
         if (snd_type == NULL) return NULL;
         {
           kterm_t *sig = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
@@ -288,7 +355,8 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
           }
         }
         if (domain == NULL) return NULL;
-        body = lizard_kernel_sexp_to_kterm(heap, ((lizard_ast_list_node_t *)body_node)->ast);
+        body = to_kt_under(heap, ((lizard_ast_list_node_t *)body_node)->ast,
+                           pname);
         if (body == NULL) return NULL;
         return kt_lam(heap, pname, domain, body);
       }
@@ -456,6 +524,148 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
         j->data.j.b = b;
         j->data.j.proof = pf;
         return j;
+      }
+      /* (var N) — de Bruijn variable, reader-safe (the bare #N reader
+       * syntax is consumed as a boolean, so applications use this form). */
+      if (strcmp(name, "var") == 0) {
+        lz_list_node_t *n1 = parts->head->next;
+        lizard_ast_node_t *idx_node;
+        if (n1 == parts->nil) return NULL;
+        idx_node = ((lizard_ast_list_node_t *)n1)->ast;
+        if (idx_node != NULL && idx_node->type == AST_NUMBER) {
+          return kt_var(heap, (int)mpz_get_si(idx_node->data.number));
+        }
+        return NULL;
+      }
+      /* (nil A) — empty list with an element-type annotation, so list
+       * eliminations over it can be kernel-typed. */
+      if (strcmp(name, "nil") == 0) {
+        kterm_t *et = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *nl;
+        if (!et) return NULL;
+        nl = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(nl, 0, sizeof(*nl));
+        nl->tag = KT_NIL_K;
+        nl->data.nil_k.elem_type = et;
+        return nl;
+      }
+      /* (boolrec motive true-case false-case scrutinee) — dependent Bool
+       * eliminator.  Unlike `if`, this carries a motive so the kernel can
+       * type it as a dependent elimination. */
+      if (strcmp(name, "boolrec") == 0) {
+        kterm_t *mot = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *tc = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *fc = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *sc = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *br;
+        if (!mot || !tc || !fc || !sc) return NULL;
+        br = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(br, 0, sizeof(*br));
+        br->tag = KT_BOOL_REC;
+        br->data.bool_rec.motive = mot;
+        br->data.bool_rec.true_case = tc;
+        br->data.bool_rec.false_case = fc;
+        br->data.bool_rec.scrutinee = sc;
+        return br;
+      }
+      /* (listrec motive nil-case cons-case scrutinee) */
+      if (strcmp(name, "listrec") == 0) {
+        kterm_t *mot = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *nc = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *cc = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *sc = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *lr;
+        if (!mot || !nc || !cc || !sc) return NULL;
+        lr = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(lr, 0, sizeof(*lr));
+        lr->tag = KT_LIST_REC;
+        lr->data.list_rec.motive = mot;
+        lr->data.list_rec.nil_case = nc;
+        lr->data.list_rec.cons_case = cc;
+        lr->data.list_rec.scrutinee = sc;
+        return lr;
+      }
+      /* (mayberec motive nothing-case just-case scrutinee) */
+      if (strcmp(name, "mayberec") == 0) {
+        kterm_t *mot = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *nc = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *jc = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *sc = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *mr;
+        if (!mot || !nc || !jc || !sc) return NULL;
+        mr = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(mr, 0, sizeof(*mr));
+        mr->tag = KT_MAYBE_REC;
+        mr->data.maybe_rec.motive = mot;
+        mr->data.maybe_rec.nothing_case = nc;
+        mr->data.maybe_rec.just_case = jc;
+        mr->data.maybe_rec.scrutinee = sc;
+        return mr;
+      }
+      /* (sumrec motive left-case right-case scrutinee) */
+      if (strcmp(name, "sumrec") == 0) {
+        kterm_t *mot = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *lc = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *rc = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *sc = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *sr;
+        if (!mot || !lc || !rc || !sc) return NULL;
+        sr = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(sr, 0, sizeof(*sr));
+        sr->tag = KT_SUM_REC;
+        sr->data.sum_rec.motive = mot;
+        sr->data.sum_rec.left_case = lc;
+        sr->data.sum_rec.right_case = rc;
+        sr->data.sum_rec.scrutinee = sc;
+        return sr;
+      }
+      /* (absurd A) — ex falso: absurd {A} : Empty -> A. */
+      if (strcmp(name, "absurd") == 0) {
+        kterm_t *ty = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *ab;
+        if (!ty) return NULL;
+        ab = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(ab, 0, sizeof(*ab));
+        ab->tag = KT_ABSURD;
+        ab->data.absurd.target_type = ty;
+        return ab;
+      }
+      /* (klet (x value) body) — binds `value` to `x` in `body`; the body may
+       * refer to it by name or as (var 0). */
+      if (strcmp(name, "klet") == 0 && parts != NULL) {
+        lz_list_node_t *binder_node = parts->head->next;
+        lz_list_node_t *body_node;
+        lizard_ast_node_t *binder;
+        const char *pname = "x";
+        kterm_t *val = NULL, *body, *lt;
+        if (binder_node == parts->nil) return NULL;
+        body_node = binder_node->next;
+        if (body_node == parts->nil) return NULL;
+        binder = ((lizard_ast_list_node_t *)binder_node)->ast;
+        if (binder->type == AST_APPLICATION &&
+            binder->data.application_arguments) {
+          lz_list_node_t *bn = binder->data.application_arguments->head;
+          if (bn != binder->data.application_arguments->nil) {
+            lizard_ast_node_t *nm = ((lizard_ast_list_node_t *)bn)->ast;
+            if (nm->type == AST_SYMBOL) pname = nm->data.variable;
+            bn = bn->next;
+            if (bn != binder->data.application_arguments->nil) {
+              val = lizard_kernel_sexp_to_kterm(
+                  heap, ((lizard_ast_list_node_t *)bn)->ast);
+            }
+          }
+        }
+        if (val == NULL) return NULL;
+        body = to_kt_under(heap, ((lizard_ast_list_node_t *)body_node)->ast,
+                           pname);
+        if (body == NULL) return NULL;
+        lt = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+        memset(lt, 0, sizeof(*lt));
+        lt->tag = KT_LET;
+        lt->data.let.name = pname;
+        lt->data.let.value = val;
+        lt->data.let.body = body;
+        return lt;
       }
     }
   }

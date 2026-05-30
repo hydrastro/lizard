@@ -422,9 +422,36 @@ int main(void) {
       m->data.j.proof = kt_refl(heap, kt_zero(heap));
       reject("reject J endpoint not in carrier", ctx, m);
     }
+
+    /* let-bindings (definitional).  value zero : Nat, body uses it as var 0. */
+    {
+      kterm_t *lt;
+      /* well-typed: let x = 0 in (succ x) : Nat. */
+      lt = mk(KT_LET);
+      lt->data.let.name = "x";
+      lt->data.let.value = kt_zero(heap);
+      lt->data.let.body = kt_succ(heap, kt_var(heap, 0));
+      accept("sanity let (x=0 in succ x)", ctx, lt);
+
+      /* ill-typed: let x = true in (succ x) — succ needs a Nat, x : Bool. */
+      lt = mk(KT_LET);
+      lt->data.let.name = "x";
+      lt->data.let.value = mk(KT_TRUE);
+      lt->data.let.body = kt_succ(heap, kt_var(heap, 0));
+      reject("reject let with type-incorrect body", ctx, lt);
+    }
   }
 
   printf("kernel soundness: %d passed, %d failed\n", pass_count, fail_count);
+  /* --- An opaque constant (axiom reference) with no definition context must
+   * be rejected, not crash: kt_infer needs ctx->defs to resolve it, and a
+   * bare context has none. --- */
+  {
+    kterm_t *c = mk(KT_CONST);
+    c->data.constant.name = "nonexistent-axiom";
+    reject("reject KT_CONST with no def context", ctx, c);
+  }
+
   lizard_heap_destroy(heap);
   return fail_count > 0 ? 1 : 0;
 }

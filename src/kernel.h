@@ -58,7 +58,8 @@ typedef enum {
   KT_SUM_K,        /* Sum A B — coproduct/either */
   KT_INL,          /* inl : A → Sum A B */
   KT_INR,          /* inr : B → Sum A B */
-  KT_SUM_REC       /* case/sum eliminator */
+  KT_SUM_REC,      /* case/sum eliminator */
+  KT_CONST         /* opaque named global constant (axiom) */
 } kterm_tag_t;
 
 /* ---- kernel term ---- */
@@ -89,6 +90,7 @@ typedef struct kterm {
     struct { struct kterm *motive; struct kterm *true_case;
              struct kterm *false_case; struct kterm *scrutinee; } bool_rec;
     struct { int id; } meta;  /* metavariable ?id */
+    struct { const char *name; } constant;  /* opaque global (axiom) */
     struct { struct kterm *elem_type; } list;  /* List A */
     struct { struct kterm *elem_type; } nil_k; /* nil {A} */
     struct { struct kterm *head; struct kterm *tail; } cons_k;  /* cons h t */
@@ -134,6 +136,7 @@ typedef struct {
   kctx_entry_t *entries;
   int depth;             /* for de Bruijn indexing */
   lizard_heap_t *heap;   /* allocation target */
+  void *defs;            /* kdef_ctx_t* of global defs (NULL if none) */
 } kctx_t;
 
 /* ---- kernel result ---- */
@@ -226,5 +229,9 @@ kdef_ctx_t *kdef_ctx_create(lizard_heap_t *heap);
 void kdef_add(lizard_heap_t *heap, kdef_ctx_t *dctx,
               const char *name, kterm_t *type, kterm_t *value);
 kdef_t *kdef_lookup(kdef_ctx_t *dctx, const char *name);
+
+/* The current runtime's kernel definition context (created on demand).
+ * Used by the surface converter to resolve free names to definitions. */
+kdef_ctx_t *lizard_kernel_defs(lizard_heap_t *heap);
 
 #endif /* LIZARD_KERNEL_H */

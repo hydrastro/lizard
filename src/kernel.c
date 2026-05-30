@@ -118,6 +118,7 @@ kctx_t *kctx_create(lizard_heap_t *heap) {
   ctx->entries = NULL;
   ctx->depth = 0;
   ctx->heap = heap;
+  ctx->defs = NULL;
   return ctx;
 }
 
@@ -132,6 +133,7 @@ kctx_t *kctx_extend(lizard_heap_t *heap, kctx_t *ctx,
   new_ctx->entries = entry;
   new_ctx->depth = ctx->depth + 1;
   new_ctx->heap = heap;
+  new_ctx->defs = ctx->defs;
   return new_ctx;
 }
 
@@ -160,6 +162,7 @@ static kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta)
   case KT_NIL_K:
   case KT_NOTHING:
   case KT_EMPTY:
+  case KT_CONST:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_shift(heap, t->data.succ.pred, cutoff, delta));
@@ -225,6 +228,7 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
   case KT_NIL_K:
   case KT_NOTHING:
   case KT_EMPTY:
+  case KT_CONST:
     return t;
   case KT_SUCC:
     return kt_succ(heap, kt_subst(heap, t->data.succ.pred, n, s));
@@ -288,6 +292,17 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
     if (e != NULL && e->value != NULL)
       return kt_whnf(heap, ctx, e->value);
+    return t;
+  }
+  case KT_CONST: {
+    /* delta-reduction: a definition (value present) unfolds to its body;
+     * an axiom (no value) is opaque. */
+    if (ctx != NULL && ctx->defs != NULL) {
+      kdef_t *d = kdef_lookup((kdef_ctx_t *)ctx->defs,
+                              t->data.constant.name);
+      if (d != NULL && d->value != NULL)
+        return kt_whnf(heap, ctx, d->value);
+    }
     return t;
   }
   case KT_APP: {
@@ -414,6 +429,9 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   switch (na->tag) {
   case KT_VAR:
     return na->data.var.index == nb->data.var.index;
+  case KT_CONST:
+    return strcmp(na->data.constant.name,
+                  nb->data.constant.name) == 0;
   case KT_SORT:
     return na->data.sort.level == nb->data.sort.level;
   case KT_NAT: case KT_ZERO:
@@ -480,6 +498,13 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   case KT_VAR: {
     kctx_entry_t *e = kctx_lookup(ctx, t->data.var.index);
     return e ? e->type : NULL;
+  }
+  case KT_CONST: {
+    kdef_t *d;
+    if (ctx->defs == NULL) return NULL;
+    d = kdef_lookup((kdef_ctx_t *)ctx->defs,
+                    t->data.constant.name);
+    return d ? d->type : NULL;
   }
   case KT_SORT:
     return kt_sort(heap, t->data.sort.level + 1);
@@ -914,6 +939,21 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
       return NULL;
     return res;
   }
+  case KT_LET: {
+    /* (let x = value in body) is definitional: type the body with x bound to
+     * value's inferred type, then substitute the value back into the body's
+     * type so a dependent body type remains correct in the outer context.
+     * This agrees with the reduction rule (KT_LET in kt_whnf), which
+     * substitutes the value into the body. */
+    kterm_t *vty = kt_infer(heap, ctx, t->data.let.value);
+    kterm_t *bty;
+    kctx_t *ext;
+    if (vty == NULL) return NULL;
+    ext = kctx_extend(heap, ctx, t->data.let.name, vty, NULL);
+    bty = kt_infer(heap, ext, t->data.let.body);
+    if (bty == NULL) return NULL;
+    return kt_subst(heap, bty, 0, t->data.let.value);
+  }
   default:
     return NULL;
   }
@@ -934,6 +974,7 @@ void kt_fprint(FILE *fp, kterm_t *t) {
   if (t == NULL) { fprintf(fp, "?"); return; }
   switch (t->tag) {
   case KT_VAR: fprintf(fp, "#%d", t->data.var.index); break;
+  case KT_CONST: fprintf(fp, "%s", t->data.constant.name); break;
   case KT_SORT: fprintf(fp, "Sort(%d)", t->data.sort.level); break;
   case KT_NAT: fprintf(fp, "Nat"); break;
   case KT_ZERO: fprintf(fp, "0"); break;

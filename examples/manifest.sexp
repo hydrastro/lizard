@@ -137,3 +137,6 @@
 (example "124-capstone-pipeline.lisp" :expect pass)
 (example "125-cas-symbolic.lisp" :expect pass)
 (example "126-cas-proof-to-zfc.lisp" :expect pass)
+(example "127-kernel-induction.lisp" :expect pass)
+(example "128-kernel-library.lisp" :expect pass)
+(example "129-kernel-axioms.lisp" :expect pass)

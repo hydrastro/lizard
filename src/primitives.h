@@ -186,6 +186,8 @@ lizard_ast_node_t *lizard_primitive_phash_mapp(lz_list_t *args,
 /* Track K: kernel type checker. */
 lizard_ast_node_t *lizard_primitive_kernel_check(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_kernel_assume(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_kernel_infer(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 /* Track K: tactics. */
