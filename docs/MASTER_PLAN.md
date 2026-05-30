@@ -441,6 +441,35 @@ term is rejected even with a buggy elaborator).
 - Demonstrated/guarded by `examples/131-eliminator-tactics.lisp`.  Suite:
   C 95/95, Lisp 5/5, examples 67/67, all audits.
 
+### Phase 7 progress — the elaborator: term-first proving with holes
+
+- This puts the Phase 7 "done-when" in reach: a theorem stated as a surface
+  term, elaborated, and kernel-checked **with no tactics**.  Added
+  `src/elaborator.c` — a bidirectional elaborator over the existing
+  metavariable layer (`KT_META`, already accepted by the converter as `?0`,
+  `?1`, ...).  It pushes the expected type *inward* (checking mode) so a hole
+  in a checking position learns its *goal* (the type it must inhabit) and its
+  local *context* (the hypotheses in scope).  A hole-free subterm is handed
+  straight to the trusted kernel; the elaborator only descends where a hole
+  lives, so it stays small and the kernel stays the single source of truth.
+  When every hole is filled, the finished term is confirmed by `kt_check`.
+- New primitive `(check-holes term type)` elaborates `term` against `type` and
+  prints each open hole as `?id : goal` with its hypotheses; it returns #t only
+  when no holes remain *and* the kernel verifies the term, #f when holes remain
+  or the term does not fit.  Bidirectional rules cover lambda (against a Pi),
+  application (the argument is checked against the domain, so an argument hole
+  gets the domain as its goal), and the `bool_rec`/`nat_rec` eliminators (each
+  branch is checked against the motive applied to its constructor — so a branch
+  hole gets exactly the case it must prove, and Nat induction surfaces the base
+  goal plus the step goal with its hypothesis).
+- Headline: boolean involution written as `(lam (b Bool) (boolrec M ?0 ?1 b))`
+  reports `?0 : (Id Bool (not (not true)) true)` and
+  `?1 : (Id Bool (not (not false)) false)`; filling both with `(refl true)` /
+  `(refl false)` yields "No holes remaining; kernel-verified."  A wrong branch
+  is rejected.  The goals come from the term's structure, not from a tactic.
+- Demonstrated/guarded by `examples/132-elaborator-holes.lisp`.  Suite:
+  C 95/95, Lisp 5/5, examples 68/68, all audits.
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,

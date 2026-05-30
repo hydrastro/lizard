@@ -13,6 +13,7 @@
 #include "kernel.h"
 #include "kernel_sexp.h"
 #include "tactics.h"
+#include "elaborator.h"
 #include <setjmp.h>
 #include <stdint.h>
 #include <string.h>
@@ -98,6 +99,60 @@ lizard_ast_node_t *lizard_primitive_kernel_check(lz_list_t *args,
   ctx->defs = lizard_kernel_defs(heap);
   result = kt_check(heap, ctx, term, type);
   return lizard_make_bool(heap, result == KERNEL_OK);
+}
+
+/* (check-holes term type) — elaborate `term` against `type`.  Holes are
+ * written ?0, ?1, ...  For each hole the elaborator reports its goal (the type
+ * it must inhabit) and the local hypotheses in scope.  With no holes left, the
+ * finished term is confirmed by the kernel. */
+lizard_ast_node_t *lizard_primitive_check_holes(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *term_expr, *type_expr;
+  kterm_t *term, *type;
+  kctx_t *ctx;
+  elab_state_t st;
+  int i;
+  (void)env;
+  if (!two_args(args))
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  term_expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  type_expr = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  term = lizard_kernel_sexp_to_kterm(heap, term_expr);
+  type = lizard_kernel_sexp_to_kterm(heap, type_expr);
+  if (term == NULL || type == NULL)
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  ctx = kctx_create(heap);
+  ctx->defs = lizard_kernel_defs(heap);
+
+  if (!elab_run(heap, ctx, term, type, &st)) {
+    printf("Elaboration failed: the term does not fit the goal type.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  if (st.n_holes == 0) {
+    kernel_result_t r = kt_check(heap, ctx, term, type);
+    if (r == KERNEL_OK) {
+      printf("No holes remaining; kernel-verified.\n");
+      return lizard_make_bool(heap, 1);
+    }
+    printf("No holes, but the assembled term failed kernel verification.\n");
+    return lizard_make_bool(heap, 0);
+  }
+  printf("%d open hole(s):\n", st.n_holes);
+  for (i = 0; i < st.n_holes; i++) {
+    kctx_entry_t *e;
+    printf("  ?%d : ", st.holes[i].id);
+    if (st.holes[i].goal != NULL) kt_fprint(stdout, st.holes[i].goal);
+    else printf("<unconstrained>");
+    printf("\n");
+    for (e = st.holes[i].ctx ? st.holes[i].ctx->entries : NULL;
+         e != NULL; e = e->next) {
+      printf("      %s : ", e->name ? e->name : "_");
+      kt_fprint(stdout, e->type);
+      printf("\n");
+    }
+  }
+  return lizard_make_bool(heap, 0);
 }
 lizard_ast_node_t *lizard_primitive_begin_proof(lz_list_t *args,
                                                  lizard_env_t *env,
