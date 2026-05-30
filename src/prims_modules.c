@@ -1,74 +1,18 @@
+/* prims_modules.c — extracted from primitives.c (#7 monolith split).
+ * Registration stays in primitives.c; definitions linked from here. */
 #include "primitives.h"
-#include "prims_common.h"
-#include "mem.h"
-#include "errors.h"
-#include "runtime.h"
-
 #include "env.h"
+#include "errors.h"
+#include "lizard_internal.h"
+#include "mem.h"
 #include "parser.h"
+#include "printer.h"
+#include "runtime.h"
 #include "tokenizer.h"
-
-#include <stdio.h>
-#include <stdlib.h>
+#include "prims_shared.h"
+#include <setjmp.h>
+#include <stdint.h>
 #include <string.h>
-
-/* Split from primitives.c as part of Recoverable Core file hygiene. */
-
-static FILE *resolve_module_file(const char *path, lizard_heap_t *heap,
-                                 char **out_resolved) {
-  FILE *fp;
-  lizard_search_path_t *sp;
-  /* Try the raw path first. */
-  fp = fopen(path, "rb");
-  if (fp != NULL) {
-    size_t len = strlen(path) + 1;
-    *out_resolved = (char *)lizard_heap_alloc(len);
-    strcpy(*out_resolved, path);
-    return fp;
-  }
-  /* Try each search path directory. */
-  if (heap->runtime != NULL) {
-    for (sp = heap->runtime->search_path_head; sp != NULL; sp = sp->next) {
-      size_t dir_len = strlen(sp->directory);
-      size_t path_len = strlen(path);
-      char *full = (char *)lizard_heap_alloc(dir_len + path_len + 1);
-      strcpy(full, sp->directory);
-      strcat(full, path);
-      fp = fopen(full, "rb");
-      if (fp != NULL) {
-        *out_resolved = full;
-        return fp;
-      }
-    }
-  }
-  *out_resolved = NULL;
-  return NULL;
-}
-
-static lizard_module_entry_t *find_cached_module(lizard_heap_t *heap,
-                                                  const char *path) {
-  lizard_module_entry_t *e;
-  if (heap->runtime == NULL) return NULL;
-  for (e = heap->runtime->modules_head; e != NULL; e = e->next) {
-    if (strcmp(e->canonical_path, path) == 0) return e;
-  }
-  return NULL;
-}
-
-static void cache_module(lizard_heap_t *heap, const char *path,
-                         lizard_ast_node_t *result) {
-  lizard_module_entry_t *e;
-  if (heap->runtime == NULL) return;
-  e = (lizard_module_entry_t *)malloc(sizeof(lizard_module_entry_t));
-  if (e == NULL) return;
-  e->canonical_path = (char *)malloc(strlen(path) + 1);
-  if (e->canonical_path != NULL) {
-    strcpy(e->canonical_path, path);
-  }
-  e->result = result;
-  e->next = heap->runtime->modules_head;
-  heap->runtime->modules_head = e;
-}
 
 lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
@@ -113,14 +57,8 @@ lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
   }
   source[file_size] = '\0';
 
-  tokens = lizard_tokenize_source(source, path, NULL);
-  if (!tokens) {
-    return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
-  }
+  tokens = lizard_tokenize(source);
   ast_list = lizard_parse(tokens, heap);
-  if (!ast_list) {
-    return lizard_make_error(heap, LIZARD_ERROR_PARSE);
-  }
   result = lizard_make_nil(heap);
   for (iter = ast_list->head; iter != ast_list->nil; iter = iter->next) {
     lizard_ast_node_t *expanded = lizard_expand_macros(
@@ -132,7 +70,59 @@ lizard_ast_node_t *lizard_primitive_load(lz_list_t *args, lizard_env_t *env,
   }
   return result;
 }
-
+static FILE *resolve_module_file(const char *path, lizard_heap_t *heap,
+                                 char **out_resolved) {
+  FILE *fp;
+  lizard_search_path_t *sp;
+  /* Try the raw path first. */
+  fp = fopen(path, "rb");
+  if (fp != NULL) {
+    size_t len = strlen(path) + 1;
+    *out_resolved = (char *)lizard_heap_alloc(len);
+    strcpy(*out_resolved, path);
+    return fp;
+  }
+  /* Try each search path directory. */
+  if (heap->runtime != NULL) {
+    for (sp = heap->runtime->search_path_head; sp != NULL; sp = sp->next) {
+      size_t dir_len = strlen(sp->directory);
+      size_t path_len = strlen(path);
+      char *full = (char *)lizard_heap_alloc(dir_len + path_len + 1);
+      strcpy(full, sp->directory);
+      strcat(full, path);
+      fp = fopen(full, "rb");
+      if (fp != NULL) {
+        *out_resolved = full;
+        return fp;
+      }
+    }
+  }
+  *out_resolved = NULL;
+  return NULL;
+}
+static lizard_module_entry_t *find_cached_module(lizard_heap_t *heap,
+                                                  const char *path) {
+  lizard_module_entry_t *e;
+  if (heap->runtime == NULL) return NULL;
+  for (e = heap->runtime->modules_head; e != NULL; e = e->next) {
+    if (strcmp(e->canonical_path, path) == 0) return e;
+  }
+  return NULL;
+}
+static void cache_module(lizard_heap_t *heap, const char *path,
+                         lizard_ast_node_t *result) {
+  lizard_module_entry_t *e;
+  if (heap->runtime == NULL) return;
+  e = (lizard_module_entry_t *)malloc(sizeof(lizard_module_entry_t));
+  if (e == NULL) return;
+  e->canonical_path = (char *)malloc(strlen(path) + 1);
+  if (e->canonical_path != NULL) {
+    strcpy(e->canonical_path, path);
+  }
+  e->result = result;
+  e->next = heap->runtime->modules_head;
+  heap->runtime->modules_head = e;
+}
 lizard_ast_node_t *lizard_primitive_import(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   lizard_ast_list_node_t *arg;
@@ -197,14 +187,8 @@ lizard_ast_node_t *lizard_primitive_import(lz_list_t *args, lizard_env_t *env,
   source[file_size] = '\0';
 
   /* Evaluate in the current environment (like load). */
-  tokens = lizard_tokenize_source(source, resolved != NULL ? resolved : path, NULL);
-  if (!tokens) {
-    return lizard_make_error(heap, LIZARD_ERROR_TOKENIZATION);
-  }
+  tokens = lizard_tokenize(source);
   ast_list = lizard_parse(tokens, heap);
-  if (!ast_list) {
-    return lizard_make_error(heap, LIZARD_ERROR_PARSE);
-  }
   result = lizard_make_nil(heap);
   for (iter = ast_list->head; iter != ast_list->nil; iter = iter->next) {
     lizard_ast_node_t *expanded = lizard_expand_macros(
@@ -222,13 +206,12 @@ lizard_ast_node_t *lizard_primitive_import(lz_list_t *args, lizard_env_t *env,
   }
   return result;
 }
-
 lizard_ast_node_t *lizard_primitive_module_loadedp(lz_list_t *args,
                                                     lizard_env_t *env,
                                                     lizard_heap_t *heap) {
   lizard_ast_list_node_t *arg;
   (void)env;
-  if (!lizard_prim_single_arg(args)) {
+  if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   arg = (lizard_ast_list_node_t *)args->head;
@@ -237,7 +220,6 @@ lizard_ast_node_t *lizard_primitive_module_loadedp(lz_list_t *args,
   }
   return lizard_make_bool(heap, find_cached_module(heap, arg->ast->data.string) != NULL);
 }
-
 lizard_ast_node_t *lizard_primitive_module_search_path(lz_list_t *args,
                                                         lizard_env_t *env,
                                                         lizard_heap_t *heap) {
@@ -267,44 +249,4 @@ lizard_ast_node_t *lizard_primitive_module_search_path(lz_list_t *args,
     }
   }
   return result;
-}
-
-lizard_ast_node_t *lizard_primitive_add_module_path(lz_list_t *args,
-                                                     lizard_env_t *env,
-                                                     lizard_heap_t *heap) {
-  lizard_ast_list_node_t *arg;
-  const char *dir;
-  lizard_search_path_t *entry;
-  size_t len;
-  (void)env;
-  if (!lizard_prim_single_arg(args)) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  arg = (lizard_ast_list_node_t *)args->head;
-  if (arg->ast->type != AST_STRING) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  if (heap->runtime == NULL) {
-    return lizard_make_bool(heap, 0);
-  }
-  dir = arg->ast->data.string;
-  len = strlen(dir);
-  entry = (lizard_search_path_t *)malloc(sizeof(lizard_search_path_t));
-  if (entry == NULL) {
-    return lizard_make_bool(heap, 0);
-  }
-  /* Ensure trailing slash. */
-  if (len > 0 && dir[len - 1] == '/') {
-    entry->directory = (char *)malloc(len + 1);
-    if (entry->directory) strcpy(entry->directory, dir);
-  } else {
-    entry->directory = (char *)malloc(len + 2);
-    if (entry->directory) {
-      strcpy(entry->directory, dir);
-      strcat(entry->directory, "/");
-    }
-  }
-  entry->next = heap->runtime->search_path_head;
-  heap->runtime->search_path_head = entry;
-  return lizard_make_bool(heap, 1);
 }

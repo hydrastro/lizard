@@ -562,9 +562,17 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     return kt_subst(heap, tt->data.sigma.snd_type, 0, fst);
   }
   case KT_LAM: {
-    kctx_t *ext = kctx_extend(heap, ctx, t->data.lam.name,
-                               t->data.lam.domain, NULL);
-    kterm_t *body_type = kt_infer(heap, ext, t->data.lam.body);
+    kterm_t *dom_type = kt_infer(heap, ctx, t->data.lam.domain);
+    kctx_t *ext;
+    kterm_t *body_type;
+    /* The domain annotation must itself be a type (its type is a sort),
+     * exactly as required for Pi.  Without this check a lambda whose domain
+     * is a value (e.g. lambda (x : 0). x) would be accepted, yielding a Pi
+     * with a non-type domain — a soundness hole. */
+    if (dom_type == NULL) return NULL;
+    if (dom_type->tag != KT_SORT) return NULL;
+    ext = kctx_extend(heap, ctx, t->data.lam.name, t->data.lam.domain, NULL);
+    body_type = kt_infer(heap, ext, t->data.lam.body);
     if (body_type == NULL) return NULL;
     return kt_pi(heap, t->data.lam.name, t->data.lam.domain, body_type);
   }
@@ -584,6 +592,12 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     if (tt == NULL) return NULL;
     tt = kt_whnf(heap, ctx, tt);
     if (tt->tag != KT_SORT) return NULL;
+    /* both endpoints must inhabit the stated type; without this,
+     * Id Nat true false would be accepted as a type. */
+    if (kt_check(heap, ctx, t->data.id.a, t->data.id.type) != KERNEL_OK)
+      return NULL;
+    if (kt_check(heap, ctx, t->data.id.b, t->data.id.type) != KERNEL_OK)
+      return NULL;
     return kt_sort(heap, tt->data.sort.level);
   }
   case KT_REFL: {
@@ -600,17 +614,32 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     return kt_sort(heap, et->data.sort.level);
   }
   case KT_NIL_K: {
-    /* nil needs a type annotation to infer; without one, use Sort(0). */
-    kterm_t *l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
+    /* nil {A} : List A — the element annotation must be a type. */
+    kterm_t *et;
+    kterm_t *l;
+    if (t->data.nil_k.elem_type == NULL) return NULL;
+    et = kt_infer(heap, ctx, t->data.nil_k.elem_type);
+    if (et == NULL) return NULL;
+    et = kt_whnf(heap, ctx, et);
+    if (et->tag != KT_SORT) return NULL;
+    l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
     memset(l, 0, sizeof(*l));
     l->tag = KT_LIST;
     l->data.list.elem_type = t->data.nil_k.elem_type;
-    return (t->data.nil_k.elem_type != NULL) ? l : NULL;
+    return l;
   }
   case KT_CONS_K: {
     kterm_t *ht = kt_infer(heap, ctx, t->data.cons_k.head);
+    kterm_t *tt;
     kterm_t *l;
     if (ht == NULL) return NULL;
+    /* the tail must be a List whose element type matches the head's type;
+     * without this check (cons 0 true) would type as List Nat. */
+    tt = kt_infer(heap, ctx, t->data.cons_k.tail);
+    if (tt == NULL) return NULL;
+    tt = kt_whnf(heap, ctx, tt);
+    if (tt->tag != KT_LIST) return NULL;
+    if (!kt_equal(heap, ctx, tt->data.list.elem_type, ht)) return NULL;
     l = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
     memset(l, 0, sizeof(*l));
     l->tag = KT_LIST;
@@ -657,8 +686,15 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   }
   case KT_INL: {
     kterm_t *vt = kt_infer(heap, ctx, t->data.inl.value);
+    kterm_t *rt;
     kterm_t *s;
     if (vt == NULL) return NULL;
+    /* the right summand annotation must itself be a type. */
+    if (t->data.inl.right_type == NULL) return NULL;
+    rt = kt_infer(heap, ctx, t->data.inl.right_type);
+    if (rt == NULL) return NULL;
+    rt = kt_whnf(heap, ctx, rt);
+    if (rt->tag != KT_SORT) return NULL;
     s = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
     memset(s, 0, sizeof(*s));
     s->tag = KT_SUM_K;
@@ -668,8 +704,15 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
   }
   case KT_INR: {
     kterm_t *vt = kt_infer(heap, ctx, t->data.inr.value);
+    kterm_t *lt;
     kterm_t *s;
     if (vt == NULL) return NULL;
+    /* the left summand annotation must itself be a type. */
+    if (t->data.inr.left_type == NULL) return NULL;
+    lt = kt_infer(heap, ctx, t->data.inr.left_type);
+    if (lt == NULL) return NULL;
+    lt = kt_whnf(heap, ctx, lt);
+    if (lt->tag != KT_SORT) return NULL;
     s = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
     memset(s, 0, sizeof(*s));
     s->tag = KT_SUM_K;
@@ -681,6 +724,195 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     kernel_result_t r = kt_check(heap, ctx, t->data.annot.term,
                                   t->data.annot.type);
     return (r == KERNEL_OK) ? t->data.annot.type : NULL;
+  }
+  case KT_ABSURD: {
+    /* absurd {A} : Empty -> A.  The target annotation A must be a type;
+     * the result is the function type Empty -> A. */
+    kterm_t *at = kt_infer(heap, ctx, t->data.absurd.target_type);
+    if (at == NULL) return NULL;
+    at = kt_whnf(heap, ctx, at);
+    if (at->tag != KT_SORT) return NULL;
+    return kt_pi(heap, "_", kt_alloc(heap, KT_EMPTY),
+                 kt_shift(heap, t->data.absurd.target_type, 0, 1));
+  }
+  case KT_BOOL_REC: {
+    /* bool_rec C t_case f_case b : C b, with
+     *   C : Bool -> Sort, t_case : C true, f_case : C false, b : Bool. */
+    kterm_t *motive = t->data.bool_rec.motive;
+    kterm_t *st, *res, *rt;
+    if (motive == NULL) return NULL;
+    st = kt_infer(heap, ctx, t->data.bool_rec.scrutinee);
+    if (st == NULL) return NULL;
+    if (kt_whnf(heap, ctx, st)->tag != KT_BOOL) return NULL;
+    res = kt_app(heap, motive, t->data.bool_rec.scrutinee);
+    rt = kt_infer(heap, ctx, res); /* validates motive applies to Bool -> type */
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    if (kt_check(heap, ctx, t->data.bool_rec.true_case,
+                 kt_app(heap, motive, kt_alloc(heap, KT_TRUE))) != KERNEL_OK)
+      return NULL;
+    if (kt_check(heap, ctx, t->data.bool_rec.false_case,
+                 kt_app(heap, motive, kt_alloc(heap, KT_FALSE))) != KERNEL_OK)
+      return NULL;
+    return res;
+  }
+  case KT_NAT_REC: {
+    /* nat_rec C z s n : C n, with
+     *   C : Nat -> Sort, z : C 0,
+     *   s : Pi(k:Nat). Pi(_:C k). C (succ k), n : Nat. */
+    kterm_t *motive = t->data.nat_rec.motive;
+    kterm_t *st, *res, *rt, *exp_succ, *ih_dom, *succ_body;
+    if (motive == NULL) return NULL;
+    st = kt_infer(heap, ctx, t->data.nat_rec.scrutinee);
+    if (st == NULL) return NULL;
+    if (kt_whnf(heap, ctx, st)->tag != KT_NAT) return NULL;
+    res = kt_app(heap, motive, t->data.nat_rec.scrutinee);
+    rt = kt_infer(heap, ctx, res);
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    /* zero_case : C 0 */
+    if (kt_check(heap, ctx, t->data.nat_rec.zero_case,
+                 kt_app(heap, motive, kt_zero(heap))) != KERNEL_OK)
+      return NULL;
+    /* succ_case : Pi(k:Nat). Pi(_ : C k). C (succ k)
+     *   under k (var0): inner Pi domain = (shift C 1) k
+     *   under k, ih (k=var1): body = (shift C 2) (succ k) */
+    ih_dom = kt_app(heap, kt_shift(heap, motive, 0, 1), kt_var(heap, 0));
+    succ_body = kt_app(heap, kt_shift(heap, motive, 0, 2),
+                       kt_succ(heap, kt_var(heap, 1)));
+    exp_succ = kt_pi(heap, "k", kt_nat(heap),
+                     kt_pi(heap, "_", ih_dom, succ_body));
+    if (kt_check(heap, ctx, t->data.nat_rec.succ_case, exp_succ) != KERNEL_OK)
+      return NULL;
+    return res;
+  }
+  case KT_MAYBE_REC: {
+    /* maybe_rec C n_case j_case m : C m, with
+     *   C : Maybe A -> Sort, n_case : C nothing,
+     *   j_case : Pi(a:A). C (just a), m : Maybe A. */
+    kterm_t *motive = t->data.maybe_rec.motive;
+    kterm_t *st, *A, *res, *rt, *just_app, *exp_just;
+    if (motive == NULL) return NULL;
+    st = kt_infer(heap, ctx, t->data.maybe_rec.scrutinee);
+    if (st == NULL) return NULL;
+    st = kt_whnf(heap, ctx, st);
+    if (st->tag != KT_MAYBE) return NULL;
+    A = st->data.maybe.elem_type;
+    res = kt_app(heap, motive, t->data.maybe_rec.scrutinee);
+    rt = kt_infer(heap, ctx, res);
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    if (kt_check(heap, ctx, t->data.maybe_rec.nothing_case,
+                 kt_app(heap, motive, kt_alloc(heap, KT_NOTHING))) != KERNEL_OK)
+      return NULL;
+    just_app = kt_alloc(heap, KT_JUST);
+    just_app->data.just.value = kt_var(heap, 0);
+    exp_just = kt_pi(heap, "a", A,
+                     kt_app(heap, kt_shift(heap, motive, 0, 1), just_app));
+    if (kt_check(heap, ctx, t->data.maybe_rec.just_case, exp_just) != KERNEL_OK)
+      return NULL;
+    return res;
+  }
+  case KT_SUM_REC: {
+    /* sum_rec C l_case r_case s : C s, with
+     *   C : Sum A B -> Sort,
+     *   l_case : Pi(a:A). C (inl a), r_case : Pi(b:B). C (inr b). */
+    kterm_t *motive = t->data.sum_rec.motive;
+    kterm_t *st, *A, *B, *res, *rt, *inl_app, *inr_app, *exp_left, *exp_right;
+    if (motive == NULL) return NULL;
+    st = kt_infer(heap, ctx, t->data.sum_rec.scrutinee);
+    if (st == NULL) return NULL;
+    st = kt_whnf(heap, ctx, st);
+    if (st->tag != KT_SUM_K) return NULL;
+    A = st->data.sum_k.left_type;
+    B = st->data.sum_k.right_type;
+    res = kt_app(heap, motive, t->data.sum_rec.scrutinee);
+    rt = kt_infer(heap, ctx, res);
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    inl_app = kt_alloc(heap, KT_INL);
+    inl_app->data.inl.value = kt_var(heap, 0);
+    inl_app->data.inl.right_type = kt_shift(heap, B, 0, 1);
+    exp_left = kt_pi(heap, "a", A,
+                     kt_app(heap, kt_shift(heap, motive, 0, 1), inl_app));
+    if (kt_check(heap, ctx, t->data.sum_rec.left_case, exp_left) != KERNEL_OK)
+      return NULL;
+    inr_app = kt_alloc(heap, KT_INR);
+    inr_app->data.inr.value = kt_var(heap, 0);
+    inr_app->data.inr.left_type = kt_shift(heap, A, 0, 1);
+    exp_right = kt_pi(heap, "b", B,
+                      kt_app(heap, kt_shift(heap, motive, 0, 1), inr_app));
+    if (kt_check(heap, ctx, t->data.sum_rec.right_case, exp_right) != KERNEL_OK)
+      return NULL;
+    return res;
+  }
+  case KT_LIST_REC: {
+    /* list_rec C n_case c_case xs : C xs, with
+     *   C : List A -> Sort, n_case : C nil,
+     *   c_case : Pi(h:A). Pi(t:List A). Pi(_:C t). C (cons h t). */
+    kterm_t *motive = t->data.list_rec.motive;
+    kterm_t *st, *A, *res, *rt, *nil_t, *list_A1, *ih_dom, *cons_app,
+        *cons_body, *exp_cons;
+    if (motive == NULL) return NULL;
+    st = kt_infer(heap, ctx, t->data.list_rec.scrutinee);
+    if (st == NULL) return NULL;
+    st = kt_whnf(heap, ctx, st);
+    if (st->tag != KT_LIST) return NULL;
+    A = st->data.list.elem_type;
+    res = kt_app(heap, motive, t->data.list_rec.scrutinee);
+    rt = kt_infer(heap, ctx, res);
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    nil_t = kt_alloc(heap, KT_NIL_K);
+    nil_t->data.nil_k.elem_type = A;
+    if (kt_check(heap, ctx, t->data.list_rec.nil_case,
+                 kt_app(heap, motive, nil_t)) != KERNEL_OK)
+      return NULL;
+    /* binders: h (var2), t (var1), ih (var0) in the innermost body. */
+    list_A1 = kt_alloc(heap, KT_LIST);
+    list_A1->data.list.elem_type = kt_shift(heap, A, 0, 1); /* List A under h */
+    /* ih domain is under h,t: there t is the most recent binder (var0). */
+    ih_dom = kt_app(heap, kt_shift(heap, motive, 0, 2), kt_var(heap, 0));
+    cons_app = kt_alloc(heap, KT_CONS_K);
+    cons_app->data.cons_k.head = kt_var(heap, 2);
+    cons_app->data.cons_k.tail = kt_var(heap, 1);
+    cons_body = kt_app(heap, kt_shift(heap, motive, 0, 3), cons_app);
+    exp_cons = kt_pi(heap, "h", A,
+                     kt_pi(heap, "t", list_A1,
+                           kt_pi(heap, "_", ih_dom, cons_body)));
+    if (kt_check(heap, ctx, t->data.list_rec.cons_case, exp_cons) != KERNEL_OK)
+      return NULL;
+    return res;
+  }
+  case KT_J: {
+    /* J C d A a b proof : C a b proof, with
+     *   C : Pi(x:A). Pi(y:A). Pi(_:Id A x y). Sort
+     *   d : Pi(x:A). C x x (refl x)
+     *   a,b : A ; proof : Id A a b.
+     * Reduction: J C d A a a (refl a) -> d a, so d is a function of one
+     * argument and the motive ranges over both endpoints and the path. */
+    kterm_t *motive = t->data.j.motive;
+    kterm_t *A = t->data.j.type;
+    kterm_t *a = t->data.j.a;
+    kterm_t *b = t->data.j.b;
+    kterm_t *proof = t->data.j.proof;
+    kterm_t *At, *res, *rt, *cxx, *exp_d, *sC;
+    if (motive == NULL || A == NULL) return NULL;
+    At = kt_infer(heap, ctx, A);
+    if (At == NULL || kt_whnf(heap, ctx, At)->tag != KT_SORT) return NULL;
+    if (kt_check(heap, ctx, a, A) != KERNEL_OK) return NULL;
+    if (kt_check(heap, ctx, b, A) != KERNEL_OK) return NULL;
+    if (kt_check(heap, ctx, proof, kt_id(heap, A, a, b)) != KERNEL_OK)
+      return NULL;
+    /* result type = C a b proof; require it to be a type. */
+    res = kt_app(heap, kt_app(heap, kt_app(heap, motive, a), b), proof);
+    rt = kt_infer(heap, ctx, res);
+    if (rt == NULL || kt_whnf(heap, ctx, rt)->tag != KT_SORT) return NULL;
+    /* base_case : Pi(x:A). C x x (refl x) — under x (var0). */
+    sC = kt_shift(heap, motive, 0, 1);
+    cxx = kt_app(heap,
+                 kt_app(heap, kt_app(heap, sC, kt_var(heap, 0)),
+                        kt_var(heap, 0)),
+                 kt_refl(heap, kt_var(heap, 0)));
+    exp_d = kt_pi(heap, "x", A, cxx);
+    if (kt_check(heap, ctx, t->data.j.base_case, exp_d) != KERNEL_OK)
+      return NULL;
+    return res;
   }
   default:
     return NULL;

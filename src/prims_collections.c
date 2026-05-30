@@ -1,32 +1,21 @@
-/* src/prims_collections.c -- vector and hash primitives.
- *
- * Split out from primitives.c as part of Recoverable Core Phase 1E.
- */
+/* prims_collections.c — extracted from primitives.c (#7 monolith split).
+ * Registration stays in primitives.c; definitions linked from here. */
+#include "primitives.h"
+#include "env.h"
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
-#include "primitives.h"
-
+#include "parser.h"
+#include "printer.h"
+#include "runtime.h"
+#include "tokenizer.h"
+#include "prims_shared.h"
+#include <setjmp.h>
 #include <stdint.h>
+#include <string.h>
 
-/* ---------------------------------------------------------------------
- * Vectors — fixed-size, mutable, O(1) indexed access.
- * ------------------------------------------------------------------- */
+#define LIZARD_HASH_INIT_CAP 8
 
-static lizard_ast_node_t *make_vector(lizard_heap_t *heap, size_t n,
-                                      lizard_ast_node_t *fill) {
-  lizard_ast_node_t *v;
-  size_t i;
-  v = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  v->type = AST_VECTOR;
-  v->data.vector.size = n;
-  v->data.vector.elements =
-      lizard_heap_alloc(n * sizeof(lizard_ast_node_t *));
-  for (i = 0; i < n; i++) v->data.vector.elements[i] = fill;
-  return v;
-}
-
-/* (make-vector n [fill]) */
 lizard_ast_node_t *lizard_primitive_make_vector(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -47,8 +36,6 @@ lizard_ast_node_t *lizard_primitive_make_vector(lz_list_t *args,
              : lizard_make_nil(heap);
   return make_vector(heap, (size_t)n, fill);
 }
-
-/* (vector v1 v2 v3 ...) — list-literal style. */
 lizard_ast_node_t *lizard_primitive_vector(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   size_t n;
@@ -65,8 +52,6 @@ lizard_ast_node_t *lizard_primitive_vector(lz_list_t *args, lizard_env_t *env,
   }
   return v;
 }
-
-/* (vector? x) */
 lizard_ast_node_t *lizard_primitive_vectorp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap) {
   lizard_ast_node_t *x;
@@ -77,8 +62,6 @@ lizard_ast_node_t *lizard_primitive_vectorp(lz_list_t *args, lizard_env_t *env,
   x = ((lizard_ast_list_node_t *)args->head)->ast;
   return lizard_make_bool(heap, x && x->type == AST_VECTOR);
 }
-
-/* (vector-length v) */
 lizard_ast_node_t *lizard_primitive_vec_length(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -96,8 +79,6 @@ lizard_ast_node_t *lizard_primitive_vec_length(lz_list_t *args,
   mpz_init_set_ui(r->data.number, (unsigned long)v->data.vector.size);
   return r;
 }
-
-/* (vector-ref v i) */
 lizard_ast_node_t *lizard_primitive_vec_ref(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap) {
   lizard_ast_node_t *v, *idx;
@@ -118,8 +99,6 @@ lizard_ast_node_t *lizard_primitive_vec_ref(lz_list_t *args, lizard_env_t *env,
   }
   return v->data.vector.elements[i];
 }
-
-/* (vector-set! v i x) — mutates and returns nil. */
 lizard_ast_node_t *lizard_primitive_vec_set(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap) {
   lizard_ast_node_t *v, *idx, *val;
@@ -143,8 +122,6 @@ lizard_ast_node_t *lizard_primitive_vec_set(lz_list_t *args, lizard_env_t *env,
   v->data.vector.elements[i] = val;
   return lizard_make_nil(heap);
 }
-
-/* (vector->list v) */
 lizard_ast_node_t *lizard_primitive_vec_to_list(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -168,44 +145,6 @@ lizard_ast_node_t *lizard_primitive_vec_to_list(lz_list_t *args,
   }
   return result;
 }
-
-/* (list->vector xs) */
-lizard_ast_node_t *lizard_primitive_list_to_vec(lz_list_t *args,
-                                                lizard_env_t *env,
-                                                lizard_heap_t *heap) {
-  lizard_ast_node_t *xs, *cur, *v;
-  size_t n, i;
-  (void)env;
-  if (args->head == args->nil || args->head->next != args->nil) {
-    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
-  }
-  xs = ((lizard_ast_list_node_t *)args->head)->ast;
-  /* count length */
-  n = 0;
-  cur = xs;
-  while (cur && cur->type == AST_PAIR) {
-    n++;
-    cur = cur->data.pair.cdr;
-  }
-  if (cur && cur->type != AST_NIL) {
-    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
-  }
-  v = make_vector(heap, n, lizard_make_nil(heap));
-  cur = xs;
-  for (i = 0; i < n; i++) {
-    v->data.vector.elements[i] = cur->data.pair.car;
-    cur = cur->data.pair.cdr;
-  }
-  return v;
-}
-
-/* ---------------------------------------------------------------------
- * Hash tables — open-addressed with linear probing.
- * Equality + hashing supported for numbers, strings, symbols, booleans.
- * ------------------------------------------------------------------- */
-
-#define LIZARD_HASH_INIT_CAP 8
-
 static unsigned long lizard_hash_value(lizard_ast_node_t *k) {
   unsigned long h;
   const char *s;
@@ -237,7 +176,6 @@ static unsigned long lizard_hash_value(lizard_ast_node_t *k) {
     return (unsigned long)(uintptr_t)k;
   }
 }
-
 static int lizard_keys_eq(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   if (!a || !b || a->type != b->type) return 0;
   switch (a->type) {
@@ -249,7 +187,6 @@ static int lizard_keys_eq(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   default:         return a == b;
   }
 }
-
 static void hash_grow(lizard_heap_t *heap, lizard_ast_node_t *h) {
   size_t old_cap = h->data.hash.cap;
   lizard_ast_node_t **old_k = h->data.hash.keys;
@@ -274,8 +211,6 @@ static void hash_grow(lizard_heap_t *heap, lizard_ast_node_t *h) {
     }
   }
 }
-
-/* (make-hash-table) */
 lizard_ast_node_t *lizard_primitive_make_hash(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -297,8 +232,6 @@ lizard_ast_node_t *lizard_primitive_make_hash(lz_list_t *args,
   }
   return h;
 }
-
-/* (hash? x) */
 lizard_ast_node_t *lizard_primitive_hashp(lz_list_t *args, lizard_env_t *env,
                                           lizard_heap_t *heap) {
   lizard_ast_node_t *x;
@@ -309,7 +242,6 @@ lizard_ast_node_t *lizard_primitive_hashp(lz_list_t *args, lizard_env_t *env,
   x = ((lizard_ast_list_node_t *)args->head)->ast;
   return lizard_make_bool(heap, x && x->type == AST_HASH);
 }
-
 static size_t hash_find_slot(lizard_ast_node_t *h, lizard_ast_node_t *k,
                              int *found) {
   size_t idx = lizard_hash_value(k) & (h->data.hash.cap - 1);
@@ -323,8 +255,6 @@ static size_t hash_find_slot(lizard_ast_node_t *h, lizard_ast_node_t *k,
   *found = 0;
   return idx;
 }
-
-/* (hash-set! h k v) */
 lizard_ast_node_t *lizard_primitive_hash_set(lz_list_t *args, lizard_env_t *env,
                                              lizard_heap_t *heap) {
   lizard_ast_node_t *h, *k, *v;
@@ -354,8 +284,6 @@ lizard_ast_node_t *lizard_primitive_hash_set(lz_list_t *args, lizard_env_t *env,
   h->data.hash.values[idx] = v;
   return lizard_make_nil(heap);
 }
-
-/* (hash-ref h k [default]) */
 lizard_ast_node_t *lizard_primitive_hash_ref(lz_list_t *args, lizard_env_t *env,
                                              lizard_heap_t *heap) {
   lizard_ast_node_t *h, *k, *deflt;
@@ -377,8 +305,6 @@ lizard_ast_node_t *lizard_primitive_hash_ref(lz_list_t *args, lizard_env_t *env,
   if (found) return h->data.hash.values[idx];
   return deflt;
 }
-
-/* (hash-has-key? h k) */
 lizard_ast_node_t *lizard_primitive_hash_has(lz_list_t *args, lizard_env_t *env,
                                              lizard_heap_t *heap) {
   lizard_ast_node_t *h, *k;
@@ -396,8 +322,6 @@ lizard_ast_node_t *lizard_primitive_hash_has(lz_list_t *args, lizard_env_t *env,
   hash_find_slot(h, k, &found);
   return lizard_make_bool(heap, found ? true : false);
 }
-
-/* (hash-size h) */
 lizard_ast_node_t *lizard_primitive_hash_size(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -415,8 +339,6 @@ lizard_ast_node_t *lizard_primitive_hash_size(lz_list_t *args,
   mpz_init_set_ui(r->data.number, (unsigned long)h->data.hash.size);
   return r;
 }
-
-/* (hash-keys h) -> list */
 lizard_ast_node_t *lizard_primitive_hash_keys(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -442,8 +364,6 @@ lizard_ast_node_t *lizard_primitive_hash_keys(lz_list_t *args,
   }
   return result;
 }
-
-/* (hash-remove! h k) */
 lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -492,4 +412,3 @@ lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
   }
   return lizard_make_bool(heap, true);
 }
-

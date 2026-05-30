@@ -1,16 +1,25 @@
+/* prims_syntax.c — extracted from primitives.c (#7 monolith split).
+ * Registration stays in primitives.c; definitions linked from here. */
 #include "primitives.h"
-#include "prims_common.h"
-#include "mem.h"
+#include "env.h"
 #include "errors.h"
-
-/* Split from primitives.c as part of Recoverable Core file hygiene. */
+#include "lizard_internal.h"
+#include "mem.h"
+#include "parser.h"
+#include "printer.h"
+#include "runtime.h"
+#include "tokenizer.h"
+#include "prims_shared.h"
+#include <setjmp.h>
+#include <stdint.h>
+#include <string.h>
 
 lizard_ast_node_t *lizard_primitive_datum_to_syntax(lz_list_t *args,
                                                      lizard_env_t *env,
                                                      lizard_heap_t *heap) {
   lizard_ast_node_t *ctx_node, *datum, *stx;
   lizard_env_t *ctx;
-  if (!lizard_prim_two_args(args)) {
+  if (!two_args(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   ctx_node = ((lizard_ast_list_node_t *)args->head)->ast;
@@ -27,13 +36,12 @@ lizard_ast_node_t *lizard_primitive_datum_to_syntax(lz_list_t *args,
   stx->data.syntax.scope_count = 0;
   return stx;
 }
-
 lizard_ast_node_t *lizard_primitive_syntax_to_datum(lz_list_t *args,
                                                      lizard_env_t *env,
                                                      lizard_heap_t *heap) {
   lizard_ast_node_t *stx;
   (void)env;
-  if (!lizard_prim_single_arg(args)) {
+  if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   stx = ((lizard_ast_list_node_t *)args->head)->ast;
@@ -42,13 +50,12 @@ lizard_ast_node_t *lizard_primitive_syntax_to_datum(lz_list_t *args,
   }
   return stx->data.syntax.datum;
 }
-
 lizard_ast_node_t *lizard_primitive_syntax_source(lz_list_t *args,
                                                    lizard_env_t *env,
                                                    lizard_heap_t *heap) {
   lizard_ast_node_t *stx, *result;
   (void)env;
-  if (!lizard_prim_single_arg(args)) {
+  if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   stx = ((lizard_ast_list_node_t *)args->head)->ast;
@@ -56,16 +63,15 @@ lizard_ast_node_t *lizard_primitive_syntax_source(lz_list_t *args,
     return lizard_make_nil(heap);
   }
   result = lizard_make_nil(heap);
-  result = lizard_prim_cons(heap, lizard_prim_make_stat(heap, "column", (unsigned long)stx->data.syntax.source.start_column), result);
-  result = lizard_prim_cons(heap, lizard_prim_make_stat(heap, "line",   (unsigned long)stx->data.syntax.source.start_line),   result);
+  result = gc_cons(heap, gc_make_stat(heap, "column", (unsigned long)stx->data.syntax.source.start_column), result);
+  result = gc_cons(heap, gc_make_stat(heap, "line",   (unsigned long)stx->data.syntax.source.start_line),   result);
   return result;
 }
-
 lizard_ast_node_t *lizard_primitive_syntaxp(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
   (void)env;
-  if (!lizard_prim_single_arg(args)) {
+  if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   return lizard_make_bool(heap,

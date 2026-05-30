@@ -13,4 +13,9 @@ int four_args(lz_list_t *args);
 lizard_ast_node_t *nth_arg(lz_list_t *args, int n);
 int lizard_rule_on(const char *name);
 
+lizard_ast_node_t *make_vector(lizard_heap_t *heap, size_t n, lizard_ast_node_t *fill);
+lizard_ast_node_t *make_string(lizard_heap_t *heap, const char *src, size_t len);
+lizard_ast_node_t *make_symbol(lizard_heap_t *heap, const char *name);
+lizard_ast_node_t *gc_make_stat(lizard_heap_t *heap, const char *key, unsigned long val);
+lizard_ast_node_t *gc_cons(lizard_heap_t *heap, lizard_ast_node_t *car, lizard_ast_node_t *cdr);
 #endif

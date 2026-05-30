@@ -1,34 +1,160 @@
-/* src/prims_logic.c -- named logic-bundle Lisp primitives.
- *
- * Split out of primitives.c as part of Recoverable Core Phase 1K.
- */
+/* prims_logic.c — extracted from primitives.c (#7 monolith split).
+ * Registration stays in primitives.c; definitions linked from here. */
+#include "primitives.h"
+#include "env.h"
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
-#include "primitives.h"
-
+#include "parser.h"
+#include "printer.h"
+#include "runtime.h"
+#include "tokenizer.h"
+#include "prims_shared.h"
+#include <setjmp.h>
+#include <stdint.h>
 #include <string.h>
 
-static int single_arg(lz_list_t *args) {
-  return args->head != args->nil && args->head->next == args->nil;
-}
+typedef struct {
+  lizard_heap_t *heap;
+  lizard_ast_node_t *head;  /* growing list, prepended */
+} logic_config_collect_t;
+typedef struct {
+  lizard_heap_t *heap;
+  lizard_ast_node_t *head;
+} list_logics_collect_t;
 
-static lizard_ast_node_t *nth_arg(lz_list_t *args, int n) {
-  lz_list_node_t *cur;
-  int i;
-  cur = args->head;
-  for (i = 0; cur != args->nil && i < n; i++) {
-    cur = cur->next;
+/* forward decls (defs below) */
+static int logic_config_collect_cb(const char *name, int enabled, void *ud);
+static int list_logics_collect_cb(const char *name, void *ud);
+
+lizard_ast_node_t *lizard_primitive_logic_rule_register(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  return cur == args->nil ? NULL : ((lizard_ast_list_node_t *)cur)->ast;
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_register(name_arg->data.variable, 0);
+  return lizard_make_bool(heap, 1);
 }
-
-/* ===== Phase M.3 — Lisp primitives for logic bundles ===== */
-
-/* (set-logic 'NAME)
- * Apply a named logic bundle. Returns #t on success, #f if unknown.
- * Unknown name does NOT raise an error — returns #f so user code can
- * test before assuming the logic is loaded. */
+lizard_ast_node_t *lizard_primitive_logic_rule_enable(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_enable(name_arg->data.variable);
+  return lizard_make_bool(heap, 1);
+}
+lizard_ast_node_t *lizard_primitive_logic_rule_disable(lz_list_t *args,
+                                                       lizard_env_t *env,
+                                                       lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  lizard_logic_rule_disable(name_arg->data.variable);
+  return lizard_make_bool(heap, 1);
+}
+lizard_ast_node_t *lizard_primitive_logic_rule_enabledp(lz_list_t *args,
+                                                        lizard_env_t *env,
+                                                        lizard_heap_t *heap) {
+  lizard_ast_node_t *name_arg;
+  int r;
+  (void)env;
+  if (!single_arg(args)) {
+    return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  }
+  name_arg = nth_arg(args, 0);
+  if (name_arg == NULL || name_arg->type != AST_SYMBOL) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
+  r = lizard_logic_rule_enabled(name_arg->data.variable);
+  if (r == 1) return lizard_make_bool(heap, 1);
+  if (r == 0) return lizard_make_bool(heap, 0);
+  /* Unknown — return the symbol 'unknown. */
+  {
+    char *buf = lizard_heap_alloc(8);
+    lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    strcpy(buf, "unknown");
+    n->type = AST_SYMBOL;
+    n->data.variable = buf;
+    return n;
+  }
+}
+static int logic_config_collect_cb(const char *name, int enabled, void *ud) {
+  logic_config_collect_t *c = (logic_config_collect_t *)ud;
+  lizard_ast_node_t *pair, *sym, *val, *cons;
+  char *namedup;
+  size_t namelen;
+  /* Build (name . enabled?) as a pair. */
+  pair = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  pair->type = AST_PAIR;
+  namelen = strlen(name) + 1;
+  namedup = lizard_heap_alloc(namelen);
+  memcpy(namedup, name, namelen);
+  sym = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  sym->type = AST_SYMBOL;
+  sym->data.variable = namedup;
+  val = lizard_make_bool(c->heap, enabled);
+  pair->data.pair.car = sym;
+  pair->data.pair.cdr = val;
+  /* Prepend to head. */
+  cons = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  cons->type = AST_PAIR;
+  cons->data.pair.car = pair;
+  cons->data.pair.cdr = c->head;
+  c->head = cons;
+  return 0;
+}
+lizard_ast_node_t *lizard_primitive_logic_config(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  logic_config_collect_t c;
+  lizard_ast_node_t *nil;
+  (void)env; (void)args;
+  /* Build the empty list (nil) as the initial tail. */
+  nil = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  nil->type = AST_NIL;
+  c.heap = heap;
+  c.head = nil;
+  lizard_logic_config_walk(logic_config_collect_cb, &c);
+  return c.head;
+}
+lizard_ast_node_t *lizard_primitive_logic_config_size(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *n;
+  (void)env; (void)args;
+  n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_NUMBER;
+  mpz_init(n->data.number);
+  mpz_set_si(n->data.number, lizard_logic_config_size());
+  return n;
+}
+lizard_ast_node_t *lizard_primitive_logic_config_reset(lz_list_t *args,
+                                                      lizard_env_t *env,
+                                                      lizard_heap_t *heap) {
+  (void)env; (void)args;
+  lizard_logic_config_reset();
+  return lizard_make_bool(heap, 1);
+}
 lizard_ast_node_t *lizard_primitive_set_logic(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
@@ -45,9 +171,6 @@ lizard_ast_node_t *lizard_primitive_set_logic(lz_list_t *args,
   ok = lizard_logic_set_bundle(name_arg->data.variable);
   return lizard_make_bool(heap, ok);
 }
-
-/* (current-logic)
- * Returns a symbol naming the current logic, or 'custom. */
 lizard_ast_node_t *lizard_primitive_current_logic(lz_list_t *args,
                                                   lizard_env_t *env,
                                                   lizard_heap_t *heap) {
@@ -65,14 +188,6 @@ lizard_ast_node_t *lizard_primitive_current_logic(lz_list_t *args,
   n->data.variable = buf;
   return n;
 }
-
-/* (list-logics)
- * Returns a list of symbols naming the predefined logic bundles. */
-typedef struct {
-  lizard_heap_t *heap;
-  lizard_ast_node_t *head;
-} list_logics_collect_t;
-
 static int list_logics_collect_cb(const char *name, void *ud) {
   list_logics_collect_t *c = (list_logics_collect_t *)ud;
   lizard_ast_node_t *sym, *cons;
@@ -91,7 +206,6 @@ static int list_logics_collect_cb(const char *name, void *ud) {
   c->head = cons;
   return 0;
 }
-
 lizard_ast_node_t *lizard_primitive_list_logics(lz_list_t *args,
                                                 lizard_env_t *env,
                                                 lizard_heap_t *heap) {
@@ -105,4 +219,3 @@ lizard_ast_node_t *lizard_primitive_list_logics(lz_list_t *args,
   lizard_logic_bundles_walk(list_logics_collect_cb, &c);
   return c.head;
 }
-

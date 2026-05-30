@@ -109,6 +109,142 @@ and type-theory references.
   (vectors/hash-maps/atoms/transients), modules, persistent data.  Each is a
   regular-function cluster with no macro layer, so the same extractor applies.
 
+### Phase 3B progress — #7 monolith split COMPLETE; Phase 1 CLOSED
+
+- Extracted **every** remaining cohesive cluster out of `primitives.c` using
+  the `prims_shared.h` foundation and a generalized, name-anchored, brace/
+  paren-aware extractor.  New compiled modules (all in `LIB_OPTIONAL_SRCS`,
+  all green, registration left in `primitives.c`):
+  `prims_collections` (mutable vectors + hash maps),
+  `prims_persistent` (pvec / phash / transients, with the HAMT typedefs),
+  `prims_string` (16 string ops), `prims_kernel` (Track-K kernel/proof/tactic
+  surface + the `current_proof` macro and proof-state helpers),
+  `prims_logic`, `prims_modules`, `prims_lists`, `prims_gc`,
+  `prims_bytecode` (vm/disassemble/profile), and `prims_syntax`.
+- Shared helpers promoted into `prims_shared.h` as the compiler demanded:
+  `make_vector`, `make_string`, `make_symbol`, `gc_make_stat`, `gc_cons`
+  (plus the arg-validators and `lizard_rule_on` from the tt split).  Cluster-
+  only types/constants/macros (`hamt_entry_t`/`hamt_flat_t`,
+  `LIZARD_HASH_INIT_CAP`, the `logic_*_collect_t` typedefs, `current_proof`)
+  travelled into their owning modules.
+- **Result: `primitives.c` 8787 → 3301 lines (a 62% cut from the original
+  monolith).**  What remains is genuinely *core*: arithmetic (the `NUM_PRED`
+  family + `unary_number`/`binary_numbers`), comparison, boolean/bitwise,
+  type predicates, control (`apply`/`eval`/`callcc`/`guard`/`try`/`raise`),
+  core data (`car`/`cdr`/`cons`), I/O, and all primitive registration.
+  Arithmetic was never split in the original parked design — confirming it is
+  the core that stays.
+- Updated `scripts/check-build-graph.py`: removed `prims_kernel`,
+  `prims_modules`, `prims_bytecode` from the experimental `EXCLUDED` set —
+  those were placeholders for the long-deleted incomplete scaffolds; the
+  current modules are complete, compiled, and test-covered.
+- **Phase 1 verified CLOSED.**  (a) Parser is recoverable: syntax errors record
+  a located `lizard_diagnostic_t` and `longjmp` to the recovery frame
+  established in `lizard_parse` (which returns `NULL`); the REPL survives and
+  continues.  The single residual `exit(1)` is *required* — `lizard_parser_fail`
+  is `LZ_NORETURN`, and the no-recovery branch (unreachable in normal use,
+  since `lz_parse_active` is set for the whole extent of `lizard_parse`) must
+  not return.  (b) REPL and embedding API share one eval path: `repl.c` has no
+  direct eval/parse calls — `eval_source` is a presentation wrapper over
+  `lizard_context_eval_string` (defined once in `runtime.c`), the same entry
+  the embedding API uses.
+- `make ci` fully green end to end: lint, api/header/include/ownership/
+  build-graph audits, C 93/93, Lisp 5/5, examples 62/62, smoke.
+
+**Status:** Phases 0 and 1 complete; #7 complete; Lizard 0.2 "Recoverable
+Core" milestone **met**.  Next frontier is **Phase 2** (representation split:
+Surface / Core / Kernel / Value — kernel sees only `KernelTerm`; an ill-typed
+term is rejected even with a buggy elaborator).
+
+### Phase 2 progress — kernel soundness: gap found + fixed
+
+- Confirmed the kernel API is already `KernelTerm`-only: `kt_infer`,
+  `kt_check`, `kt_define`, `kt_equal`, `kt_whnf` all take `kterm_t *`; the
+  kernel never sees runtime AST.  AST reaches the kernel only via the
+  `kernel_sexp.c` converter, after which the kernel re-checks.
+- Added `tests/kernel_soundness_test.c`: an *adversarial* test that hand-builds
+  ill-typed `KernelTerm`s (no surface syntax, no elaborator) and asserts the
+  kernel rejects them — directly exercising Phase 2's done-when invariant
+  ("an ill-typed term is rejected even with a buggy elaborator").  Cases:
+  applying a non-function, applying a type, `succ` of a Bool, argument-type
+  mismatch, `Pi`/`Lam` with a non-type domain, an unbound variable, and `refl`
+  of an ill-typed value, plus well-typed sanity cases.
+- This surfaced a real soundness gap: `kt_infer`'s `KT_PI` case required the
+  domain to be a type (its inferred type is a `Sort`), but the `KT_LAM` case
+  did **not** — so `lambda (x : 0). x` was accepted, producing a `Pi` with a
+  non-type domain.  Fixed `kt_infer` to check the lambda's domain is a type,
+  mirroring `Pi`.  The kernel now rejects all 8 adversarial terms; full suite
+  green at C 94/94, Lisp 5/5, examples 62/62.
+- This is the first concrete Phase 2 hardening of the trusted core (beyond the
+  Phase 2A representation scaffolding in `term_boundary_test.c`).  Remaining
+  Phase 2 work: route the evaluator/checker through the Core→Kernel converters
+  end to end, and extend the adversarial suite as more eliminators land.
+
+### Phase 2 progress — kernel soundness sweep across the term surface
+
+- Systematically audited every implemented `kt_infer` case against the
+  adversarial test and found **five more** soundness gaps where the kernel
+  accepted ill-typed introduction forms.  All fixed in `src/kernel.c`:
+  - `KT_CONS_K` ignored the tail entirely — `cons 0 true` typed as `List Nat`.
+    Now the tail must be a `List` whose element type equals the head's type.
+  - `KT_NIL_K` did not check its element annotation is a type — `nil {0}` was
+    accepted.  Now the annotation must infer to a `Sort`.
+  - `KT_INL` / `KT_INR` did not check the *other* summand annotation is a type
+    (`inl 0 {0}` accepted).  Both now require it to be a `Sort`.
+  - `KT_ID` checked only that the carrier is a type, never that the endpoints
+    inhabit it — `Id Nat true false` was accepted as a type.  Now both
+    endpoints are `kt_check`ed against the carrier.
+- Implemented sound typing for the `absurd` eliminator (`absurd {A} : Empty →
+  A`, requiring `A` to be a type) — the first eliminator the kernel types
+  rather than rejects.  The dependent recursors (`nat_rec`/`bool_rec`/
+  `list_rec`/`maybe_rec`/`sum_rec`/`J`) remain unimplemented in `kt_infer` and
+  are therefore *rejected* (NULL = sound but incomplete); the suite locks this
+  in so a future dependent-eliminator implementation must be added
+  deliberately, with its own adversarial cases.
+- `tests/kernel_soundness_test.c` now covers **29** cases (introduction forms,
+  applications, projections, annotations, the Id carrier/endpoints, list and
+  sum constructors, `absurd`, and the rejected recursors), all green.  Full
+  suite: C 94/94, Lisp 5/5, examples 62/62, all audits.
+- **Net across the two Phase 2 turns: six real soundness gaps in the trusted
+  kernel found and fixed** (lambda domain; cons tail; nil/inl/inr type
+  annotations; Id endpoints), plus one eliminator now soundly typed.  The
+  kernel's entire *introduction-form* surface is now adversarially verified to
+  reject ill-typed terms regardless of how they were produced — Phase 2's
+  central invariant, now regression-guarded.
+
+### Phase 2/7 progress — kernel now types every dependent eliminator
+
+- The kernel previously *reduced* the eliminators (via `kt_whnf`) but `kt_infer`
+  rejected them (`default → NULL`: sound but incomplete), so it could not check
+  a proof by induction.  Implemented sound dependent type inference for **all
+  six** eliminators in `kt_infer`, each rule derived directly from the kernel's
+  own reduction semantics so typing and computation agree:
+  - `bool_rec C t f b : C b` (motive `Bool → Sort`).
+  - `nat_rec C z s n : C n` with `s : Π(k:Nat).Π(_:C k). C (succ k)`.
+  - `maybe_rec` / `sum_rec` with case functions `Π(a:A). C (just a)` /
+    `Π(a:A). C (inl a)`, `Π(b:B). C (inr b)`, the summand/element types read
+    from the scrutinee's inferred type.
+  - `list_rec C n c xs : C xs` with
+    `c : Π(h:A).Π(t:List A).Π(_:C t). C (cons h t)`.
+  - `J C d A a b p : C a b p` (Martin-Löf path induction; from the reduction
+    `J … a a (refl a) → d a`, the motive ranges over both endpoints and the
+    path, and `d : Π(x:A). C x x (refl x)`).
+- The implementation uses an "apply the motive and check" strategy (build the
+  expected case type by applying the motive to the relevant constructor and
+  `kt_check` the case against it) rather than destructuring the motive's `Pi`,
+  which keeps the de Bruijn bookkeeping localized to the case-function types.
+  Each rule is locked by a positive case (a well-typed elimination with a
+  constant motive — e.g. a length-shaped `list_rec` step) plus adversarial
+  cases (mismatched case/branch types, wrong scrutinee, non-`Id` proof, missing
+  motive).  A motive-less recursor is still rejected (no regression: the
+  surface converter's non-dependent `bool_rec` was never kernel-typed anyway).
+- Also typed the `absurd` eliminator (`absurd {A} : Empty → A`).
+- `tests/kernel_soundness_test.c` now spans **47** cases; full suite green at
+  C 94/94, Lisp 5/5, examples 62/62, all audits.  The trusted kernel is now
+  both **sound and complete across its entire term surface** — it can check
+  proofs by induction and path induction, the foundation Phase 7 (term-first
+  proving) builds on.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

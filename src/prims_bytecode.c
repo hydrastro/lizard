@@ -1,29 +1,54 @@
-/* src/prims_bytecode.c -- bytecode/profiling primitives.
- *
- * Split out from primitives.c as part of Recoverable Core Phase 1B.
- */
-#include "bytecode.h"
+/* prims_bytecode.c — extracted from primitives.c (#7 monolith split).
+ * Registration stays in primitives.c; definitions linked from here. */
+#include "primitives.h"
+#include "env.h"
 #include "errors.h"
 #include "lizard_internal.h"
 #include "mem.h"
-#include "primitives.h"
+#include "parser.h"
 #include "printer.h"
-
-#include <stdio.h>
+#include "runtime.h"
+#include "tokenizer.h"
+#include "prims_shared.h"
+#include "bytecode.h"
+#include <setjmp.h>
+#include <stdint.h>
 #include <string.h>
-#include <time.h>
 
-static int single_arg(lz_list_t *args) {
-  return args != NULL && args->head != args->nil && args->head->next == args->nil;
+static const char *opcode_name(lizard_opcode_t op) {
+  switch (op) {
+  case OP_CONST: return "CONST";
+  case OP_NIL: return "NIL";
+  case OP_TRUE: return "TRUE";
+  case OP_FALSE: return "FALSE";
+  case OP_LOAD: return "LOAD";
+  case OP_STORE: return "STORE";
+  case OP_SET: return "SET";
+  case OP_POP: return "POP";
+  case OP_ADD: return "ADD";
+  case OP_SUB: return "SUB";
+  case OP_MUL: return "MUL";
+  case OP_DIV: return "DIV";
+  case OP_MOD: return "MOD";
+  case OP_EQ: return "EQ";
+  case OP_LT: return "LT";
+  case OP_GT: return "GT";
+  case OP_NOT: return "NOT";
+  case OP_CONS: return "CONS";
+  case OP_CAR: return "CAR";
+  case OP_CDR: return "CDR";
+  case OP_JUMP: return "JUMP";
+  case OP_JUMP_IF_FALSE: return "JIF";
+  case OP_CALL: return "CALL";
+  case OP_TAIL_CALL: return "TCALL";
+  case OP_RETURN: return "RET";
+  case OP_CLOSURE: return "CLOSURE";
+  case OP_DISPLAY: return "DISPLAY";
+  case OP_NEWLINE: return "NEWLINE";
+  case OP_HALT: return "HALT";
+  }
+  return "???";
 }
-
-static lizard_ast_node_t *bytecode_compile_error(lizard_heap_t *heap) {
-  (void)lizard_compile_last_error();
-  return lizard_make_error(heap, LIZARD_ERROR_BYTECODE_UNSUPPORTED);
-}
-
-/* Phase E: bytecode VM primitives. */
-/* (vm-eval expr) — compile expr to bytecode and execute on the VM. */
 lizard_ast_node_t *lizard_primitive_vm_eval(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -32,15 +57,20 @@ lizard_ast_node_t *lizard_primitive_vm_eval(lz_list_t *args,
   if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  expr = lizard_reparse_datum(((lizard_ast_list_node_t *)args->head)->ast, heap);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
+  /* Strict bytecode: the VM only executes the runtime fragment.  Type-theory
+   * terms (Pi/Sigma/U/Id/... through extensions) are not runtime values and
+   * must be rejected rather than silently compiled. */
+  if (expr != NULL && expr->type >= AST_TT_PI &&
+      expr->type <= AST_TT_EXTENSION) {
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
+  }
   chunk = lizard_compile(expr, heap);
   if (chunk == NULL) {
-    return bytecode_compile_error(heap);
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   return lizard_vm_exec(chunk, env, heap);
 }
-
-/* (disassemble expr) — compile expr and print the bytecode. */
 lizard_ast_node_t *lizard_primitive_disassemble(lz_list_t *args,
                                                  lizard_env_t *env,
                                                  lizard_heap_t *heap) {
@@ -51,15 +81,15 @@ lizard_ast_node_t *lizard_primitive_disassemble(lz_list_t *args,
   if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  expr = lizard_reparse_datum(((lizard_ast_list_node_t *)args->head)->ast, heap);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
   chunk = lizard_compile(expr, heap);
   if (chunk == NULL) {
-    return bytecode_compile_error(heap);
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   printf("--- bytecode: %d instructions, %d constants ---\n",
          chunk->code_count, chunk->const_count);
   for (i = 0; i < chunk->code_count; i++) {
-    printf("  %04d  %-8s %d", i, lizard_bc_opcode_name(chunk->code[i].op),
+    printf("  %04d  %-8s %d", i, opcode_name(chunk->code[i].op),
            chunk->code[i].arg);
     /* Show constant value for CONST/LOAD/STORE instructions. */
     if ((chunk->code[i].op == OP_CONST ||
@@ -74,10 +104,6 @@ lizard_ast_node_t *lizard_primitive_disassemble(lz_list_t *args,
   printf("---\n");
   return lizard_make_bool(heap, 1);
 }
-
-#include <time.h>
-
-/* (vm-time expr) — compile + execute via bytecode VM, print elapsed time. */
 lizard_ast_node_t *lizard_primitive_vm_time(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -89,10 +115,10 @@ lizard_ast_node_t *lizard_primitive_vm_time(lz_list_t *args,
   if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  expr = lizard_reparse_datum(((lizard_ast_list_node_t *)args->head)->ast, heap);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
   chunk = lizard_compile(expr, heap);
   if (chunk == NULL) {
-    return bytecode_compile_error(heap);
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   start = clock();
   result = lizard_vm_exec(chunk, env, heap);
@@ -101,8 +127,6 @@ lizard_ast_node_t *lizard_primitive_vm_time(lz_list_t *args,
   printf("; vm-time: %.6f s\n", elapsed);
   return result;
 }
-
-/* (time-eval expr) — evaluate via tree-walker, print elapsed time. */
 lizard_ast_node_t *lizard_primitive_time_eval(lz_list_t *args,
                                                lizard_env_t *env,
                                                lizard_heap_t *heap) {
@@ -121,8 +145,6 @@ lizard_ast_node_t *lizard_primitive_time_eval(lz_list_t *args,
   printf("; time-eval: %.6f s\n", elapsed);
   return result;
 }
-
-/* (profile expr) — compile + execute with full instruction profiling. */
 lizard_ast_node_t *lizard_primitive_profile(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
@@ -135,10 +157,10 @@ lizard_ast_node_t *lizard_primitive_profile(lz_list_t *args,
   if (!single_arg(args)) {
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
-  expr = lizard_reparse_datum(((lizard_ast_list_node_t *)args->head)->ast, heap);
+  expr = ((lizard_ast_list_node_t *)args->head)->ast;
   chunk = lizard_compile(expr, heap);
   if (chunk == NULL) {
-    return bytecode_compile_error(heap);
+    return lizard_make_error(heap, LIZARD_ERROR_USER);
   }
   memset(&prof, 0, sizeof(prof));
   start = clock();
@@ -158,11 +180,10 @@ lizard_ast_node_t *lizard_primitive_profile(lz_list_t *args,
   printf("  top opcodes:\n");
   for (i = 0; i < LIZARD_OPCODE_COUNT; i++) {
     if (prof.opcode_counts[i] > 0) {
-      printf("    %-8s %lu\n", lizard_bc_opcode_name((lizard_opcode_t)i),
+      printf("    %-8s %lu\n", opcode_name((lizard_opcode_t)i),
              (unsigned long)prof.opcode_counts[i]);
     }
   }
   printf("---\n");
   return result;
 }
-
