@@ -1480,6 +1480,7 @@ static lizard_ast_node_t *subst_interval(lizard_ast_node_t *t,
   case AST_TT_I1:
   case AST_SYMBOL:
   case AST_NUMBER:
+  case AST_RATIONAL:
   case AST_BOOL:
   case AST_NIL:
   case AST_STRING:
@@ -2002,6 +2003,8 @@ static int alpha_equal_rec(lizard_ast_node_t *a, lizard_ast_node_t *b,
   switch (a->type) {
   case AST_NUMBER:
     return mpz_cmp(a->data.number, b->data.number) == 0;
+  case AST_RATIONAL:
+    return mpq_cmp(a->data.rational, b->data.rational) == 0;
   case AST_STRING:
     return strcmp(a->data.string, b->data.string) == 0;
   case AST_SYMBOL:
@@ -2492,6 +2495,8 @@ int lizard_tt_structurally_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   switch (a->type) {
   case AST_NUMBER:
     return mpz_cmp(a->data.number, b->data.number) == 0;
+  case AST_RATIONAL:
+    return mpq_cmp(a->data.rational, b->data.rational) == 0;
   case AST_STRING:
     return strcmp(a->data.string, b->data.string) == 0;
   case AST_SYMBOL:

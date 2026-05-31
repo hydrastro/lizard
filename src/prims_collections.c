@@ -152,6 +152,9 @@ static unsigned long lizard_hash_value(lizard_ast_node_t *k) {
   case AST_NUMBER:
     /* mpz hashed by mod-2^64 of its first limb. */
     return mpz_get_ui(k->data.number) * 2654435761UL;
+  case AST_RATIONAL:
+    return (mpz_get_ui(mpq_numref(k->data.rational)) * 2654435761UL) ^
+           (mpz_get_ui(mpq_denref(k->data.rational)) * 40503UL);
   case AST_STRING:
     s = k->data.string;
     h = 2166136261UL;
@@ -180,6 +183,7 @@ static int lizard_keys_eq(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   if (!a || !b || a->type != b->type) return 0;
   switch (a->type) {
   case AST_NUMBER: return mpz_cmp(a->data.number, b->data.number) == 0;
+  case AST_RATIONAL: return mpq_cmp(a->data.rational, b->data.rational) == 0;
   case AST_STRING: return strcmp(a->data.string, b->data.string) == 0;
   case AST_SYMBOL: return strcmp(a->data.variable, b->data.variable) == 0;
   case AST_BOOL:   return a->data.boolean == b->data.boolean;

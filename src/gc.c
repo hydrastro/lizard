@@ -4,6 +4,7 @@
  * type pattern used throughout the codebase.
  */
 #include "gc.h"
+#include "pvector.h"
 #include "env.h"
 #include "mem.h"
 #include "runtime.h"
@@ -323,13 +324,11 @@ void lizard_gc_mark_node(lizard_ast_node_t *node) {
     lizard_gc_mark_env(node->data.syntax.context);
     break;
 
-  /* Track C: persistent data — mark all entries. */
+  /* Track C: persistent vector — mark every element via the trie. */
   case AST_PVEC: {
-    int pi;
-    if (node->data.pvec.entries != NULL) {
-      for (pi = 0; pi < node->data.pvec.count; pi++) {
-        lizard_gc_mark_node(node->data.pvec.entries[pi]);
-      }
+    int pi, pc = lizard_pvec_count(node);
+    for (pi = 0; pi < pc; pi++) {
+      lizard_gc_mark_node(lizard_pvec_ref(node, pi));
     }
     break;
   }
@@ -517,4 +516,150 @@ int lizard_gc_metadata_lookup_object(
   }
   return lizard_gc_metadata_lookup(heap->gc_metadata, ptr, out_kind, out_size,
                                    out_trace_policy);
+}
+
+/* ===================================================================
+ * Phase 5 — per-object, non-moving, fully-conservative mark & sweep.
+ *
+ * Roots are discovered conservatively from the C stack, the spilled
+ * registers, and the program's data/BSS segment; the runtime's env and
+ * module results are additionally marked explicitly as insurance.  Live
+ * objects are traced by scanning their own bytes for anything that looks
+ * like a pointer into a tracked object.  Because the collector never
+ * moves objects, treating non-pointers as pointers is harmless (it can
+ * only retain garbage, never corrupt), which is what makes the
+ * conservative approach sound here.  Unmarked objects are returned to
+ * per-size free lists for reuse; addresses of survivors never change.
+ * ================================================================== */
+#include <setjmp.h>
+#include <stdint.h>
+#include <stdio.h>
+
+/* Bounds of the program's static storage (GNU ld / glibc). */
+extern char __data_start[];
+extern char __bss_start[];
+extern char _end[];
+
+typedef struct { void *base; size_t size; } gc_obj_t;
+typedef struct { gc_obj_t *items; size_t count, cap; int oom; } gc_worklist_t;
+
+static void gc_wl_push(gc_worklist_t *w, void *base, size_t size) {
+  if (w->count == w->cap) {
+    size_t ncap = w->cap ? w->cap * 2U : 4096U;
+    gc_obj_t *p = (gc_obj_t *)realloc(w->items, ncap * sizeof(gc_obj_t));
+    if (p == NULL) { w->oom = 1; return; }
+    w->items = p;
+    w->cap = ncap;
+  }
+  w->items[w->count].base = base;
+  w->items[w->count].size = size;
+  w->count++;
+}
+
+/* Scan [lo,hi) for word-aligned values that point into a tracked object;
+ * mark each newly found object and enqueue it for tracing. */
+static void gc_scan_range(lizard_heap_t *h, char *lo, char *hi,
+                          gc_worklist_t *wl) {
+  char *p;
+  if (lo == NULL || hi == NULL) return;
+  if (lo > hi) { char *t = lo; lo = hi; hi = t; }
+  while (((uintptr_t)lo % sizeof(void *)) != 0U) lo++;
+  for (p = lo; p + sizeof(void *) <= hi; p += sizeof(void *)) {
+    void *word = *(void **)p;
+    void *base;
+    size_t size;
+    if (word == NULL) continue;
+    if (lizard_gc_metadata_mark_addr(h->gc_metadata, word, &base, &size)) {
+      gc_wl_push(wl, base, size);
+    }
+  }
+}
+
+/* Mark a single known root object (and enqueue it) if it is tracked. */
+static void gc_mark_root_ptr(lizard_heap_t *h, void *obj, gc_worklist_t *wl) {
+  void *base;
+  size_t size;
+  if (obj == NULL) return;
+  if (lizard_gc_metadata_mark_addr(h->gc_metadata, obj, &base, &size)) {
+    gc_wl_push(wl, base, size);
+  }
+}
+
+/* The top (highest address) of the main thread's stack.  glibc sets
+ * __libc_stack_end to the client's initial stack pointer at startup, which is
+ * both correct and always within the committed/mapped stack — unlike parsing
+ * the [stack] extent from /proc/self/maps, whose reserved upper bound need not
+ * be accessible. */
+extern void *__libc_stack_end;
+
+static char *gc_stack_base(void) {
+  return (char *)__libc_stack_end;
+}
+
+static void gc_reclaim_cb(void *ptr, size_t size, lizard_gc_object_kind_t kind,
+                          void *ctx) {
+  size_t *bytes = (size_t *)ctx;
+  (void)kind; /* GMP limbs of swept numbers are intentionally not freed here:
+               * the inferred kind is not exact enough to safely call
+               * mpz_clear/mpq_clear, so we only reclaim the object chunk. */
+  lizard_heap_reclaim(ptr, size);
+  if (bytes) *bytes += size;
+}
+
+size_t lizard_gc_collect_objects(lizard_heap_t *h, lizard_env_t *env) {
+  jmp_buf regs;
+  gc_worklist_t wl;
+  volatile char *sp;
+  size_t freed_bytes = 0U;
+
+  if (h == NULL || h->gc_metadata == NULL) return 0U;
+
+  wl.items = NULL;
+  wl.count = 0U;
+  wl.cap = 0U;
+  wl.oom = 0;
+
+  lizard_gc_metadata_prepare_marking(h->gc_metadata);
+
+  /* Explicit roots: the call-site env (chains to the global env), the module
+   * base env and namespace frames, callcc state, and module results. */
+  gc_mark_root_ptr(h, env, &wl);
+  if (h->runtime != NULL) {
+    lizard_module_entry_t *mod;
+    lizard_namespace_t *ns;
+    gc_mark_root_ptr(h, h->runtime->module_base_env, &wl);
+    gc_mark_root_ptr(h, h->runtime->callcc_value, &wl);
+    for (mod = h->runtime->modules_head; mod != NULL; mod = mod->next) {
+      gc_mark_root_ptr(h, mod->result, &wl);
+    }
+    for (ns = h->runtime->namespaces_head; ns != NULL; ns = ns->next) {
+      gc_mark_root_ptr(h, ns->env, &wl);
+    }
+  }
+
+  /* Conservative roots: spilled registers, the C stack, and data/BSS. */
+  memset(&regs, 0, sizeof(regs));
+  (void)setjmp(regs);
+  sp = (volatile char *)&sp;
+  gc_scan_range(h, (char *)&regs, (char *)&regs + sizeof(regs), &wl);
+  gc_scan_range(h, (char *)(uintptr_t)sp, gc_stack_base(), &wl);
+  gc_scan_range(h, (char *)__data_start, (char *)__bss_start, &wl);
+  gc_scan_range(h, (char *)__bss_start, (char *)_end, &wl);
+
+  /* Trace: scan each live object's bytes for further pointers. */
+  while (wl.count > 0U && !wl.oom) {
+    gc_obj_t o = wl.items[--wl.count];
+    gc_scan_range(h, (char *)o.base, (char *)o.base + o.size, &wl);
+  }
+
+  if (wl.oom) {
+    /* Could not complete the mark; sweeping now could free live objects.
+     * Abort safely: free the worklist, leave every object alive. */
+    free(wl.items);
+    return 0U;
+  }
+
+  (void)lizard_gc_metadata_sweep(h->gc_metadata, gc_reclaim_cb, &freed_bytes);
+  free(wl.items);
+  return freed_bytes;
 }

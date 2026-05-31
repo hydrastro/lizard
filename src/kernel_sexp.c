@@ -90,6 +90,9 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
     const char *s = e->data.variable;
     if (strcmp(s, "Nat") == 0) return kt_nat(heap);
     if (strcmp(s, "zero") == 0) return kt_zero(heap);
+    if (strcmp(s, "I") == 0) return kt_interval(heap);
+    if (strcmp(s, "i0") == 0) return kt_i0(heap);
+    if (strcmp(s, "i1") == 0) return kt_i1(heap);
       if (strcmp(s, "Bool") == 0) {
         kterm_t *b = (kterm_t *)lizard_heap_alloc(sizeof(kterm_t));
         memset(b, 0, sizeof(*b)); b->tag = KT_BOOL; return b;
@@ -228,6 +231,37 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
         kterm_t *inner = lizard_kernel_sexp_to_kterm(heap,
             ((lizard_ast_list_node_t *)parts->head->next)->ast);
         return inner ? kt_refl(heap, inner) : NULL;
+      }
+      /* (Path A a b) */
+      if (strcmp(name, "Path") == 0 && parts != NULL) {
+        kterm_t *A = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *a = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *b = sexp_nth_kterm(heap, parts, 2);
+        if (A && a && b) return kt_path(heap, A, a, b);
+        return NULL;
+      }
+      /* (papp p r) — path application p @ r */
+      if (strcmp(name, "papp") == 0 && parts != NULL) {
+        kterm_t *p = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *r = sexp_nth_kterm(heap, parts, 1);
+        if (p && r) return kt_papp(heap, p, r);
+        return NULL;
+      }
+      /* (plam i body) — path abstraction binding interval variable i */
+      if (strcmp(name, "plam") == 0 && parts != NULL) {
+        lz_list_node_t *bn = parts->head->next;
+        lizard_ast_node_t *nm;
+        const char *iname;
+        if (bn == parts->nil) return NULL;
+        nm = ((lizard_ast_list_node_t *)bn)->ast;
+        if (nm->type != AST_SYMBOL) return NULL;
+        iname = nm->data.variable;
+        if (bn->next == parts->nil) return NULL;
+        {
+          kterm_t *body = to_kt_under(heap,
+              ((lizard_ast_list_node_t *)bn->next)->ast, iname);
+          return body ? kt_plam(heap, iname, body) : NULL;
+        }
       }
       /* (Id A a b) */
       if (strcmp(name, "Id") == 0 && parts != NULL) {

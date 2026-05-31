@@ -154,6 +154,12 @@ lizard_ast_node_t *lizard_primitive_syntax_source(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_syntaxp(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_macroexpand1(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_form_location(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_read_syntax(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
 /* Track C: persistent vectors. */
 lizard_ast_node_t *lizard_primitive_pvec(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
@@ -162,6 +168,10 @@ lizard_ast_node_t *lizard_primitive_pvec_ref(lz_list_t *args,
 lizard_ast_node_t *lizard_primitive_pvec_set(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_pvec_push(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pvec_pop(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_list_to_pvec(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_pvec_count(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
@@ -265,6 +275,23 @@ lizard_ast_node_t *lizard_primitive_tactic_right(lz_list_t *args,
 lizard_ast_node_t *lizard_primitive_phash_values(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_phash_entries(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+/* Persistent maps: removal; persistent sets (HAMT-backed). */
+lizard_ast_node_t *lizard_primitive_phash_remove(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset_add(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset_contains(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset_remove(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset_count(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pset_to_list(lz_list_t *args,
+    lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_psetp(lz_list_t *args,
     lizard_env_t *env, lizard_heap_t *heap);
 /* Metavariables. */
 lizard_ast_node_t *lizard_primitive_kernel_hole(lz_list_t *args,
@@ -432,6 +459,16 @@ lizard_ast_node_t *lizard_primitive_hash_remove(lz_list_t *args,
 
 lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_rationalp(lz_list_t *args, lizard_env_t *env,
+    lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_integerp(lz_list_t *args, lizard_env_t *env,
+    lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_exactp(lz_list_t *args, lizard_env_t *env,
+    lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_numerator(lz_list_t *args, lizard_env_t *env,
+    lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_denominator(lz_list_t *args, lizard_env_t *env,
+    lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,
                                             lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args, lizard_env_t *env,
@@ -439,6 +476,9 @@ lizard_ast_node_t *lizard_primitive_procedurep(lz_list_t *args, lizard_env_t *en
 
 /* Install every built-in primitive into `env`. Used by both the REPL
    and the test harness. */
+lizard_ast_node_t *lizard_primitive_pct_module(lz_list_t *args, lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pct_export(lz_list_t *args, lizard_env_t *env, lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_pct_import(lz_list_t *args, lizard_env_t *env, lizard_heap_t *heap);
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env);
 
 int lizard_is_empty_list(lizard_ast_node_t *node);

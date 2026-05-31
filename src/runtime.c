@@ -148,6 +148,9 @@ lizard_runtime_t *lizard_runtime_create(const lizard_runtime_options_t *options)
   runtime->kernel_def_ctx = NULL;
   /* Phase C: module loader starts with "lib/" on the search path. */
   runtime->modules_head = NULL;
+  runtime->namespaces_head = NULL;
+  runtime->current_module = NULL;
+  runtime->module_base_env = NULL;
   {
     lizard_search_path_t *lib_path;
     lib_path = (lizard_search_path_t *)malloc(sizeof(lizard_search_path_t));
@@ -503,6 +506,7 @@ lizard_value_type_t lizard_value_type(const lizard_value_t *value) {
   case AST_STRING:
     return LIZARD_VALUE_STRING;
   case AST_NUMBER:
+  case AST_RATIONAL:
     return LIZARD_VALUE_NUMBER;
   case AST_SYMBOL:
     return LIZARD_VALUE_SYMBOL;

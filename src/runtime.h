@@ -24,6 +24,22 @@ typedef struct lizard_search_path {
   struct lizard_search_path *next;
 } lizard_search_path_t;
 
+/* Phase 3: module namespaces — real modules with isolated frames and export
+ * control.  A namespace is a module's hermetic environment plus the set of
+ * names it makes public (NULL exports => export everything defined at top
+ * level). */
+typedef struct lizard_export {
+  char *name;
+  struct lizard_export *next;
+} lizard_export_t;
+
+typedef struct lizard_namespace {
+  char *name;
+  lizard_env_t *env;            /* the module's own hermetic frame */
+  lizard_export_t *exports;     /* explicit exports; NULL => export all */
+  struct lizard_namespace *next;
+} lizard_namespace_t;
+
 struct lizard_runtime {
   lizard_heap_t *heap;
   size_t initial_heap_size;
@@ -50,6 +66,10 @@ struct lizard_runtime {
   void *kernel_proof_state;
   void *kernel_meta_ctx;
   void *kernel_def_ctx;
+  /* Phase 3: module namespaces. */
+  lizard_namespace_t *namespaces_head;
+  lizard_namespace_t *current_module;   /* module being evaluated (for export) */
+  lizard_env_t *module_base_env;        /* pristine primitive env for hermetic modules */
 };
 
 struct lizard_context {

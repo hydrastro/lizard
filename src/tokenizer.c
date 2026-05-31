@@ -1,3 +1,4 @@
+#include <string.h>
 #include "tokenizer.h"
 #include "diagnostics.h"
 #include "lizard_internal.h"
@@ -95,8 +96,26 @@ void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
     node->token.data.symbol = data;
     break;
   case TOKEN_NUMBER:
-    mpz_init(node->token.data.number);
-    mpz_set_str(node->token.data.number, data, 10);
+    if (strchr(data, '/') != NULL) {
+      mpq_t q;
+      mpq_init(q);
+      mpq_set_str(q, data, 10);
+      mpq_canonicalize(q);
+      if (mpz_cmp_ui(mpq_denref(q), 1U) == 0) {
+        mpz_init(node->token.data.number);
+        mpz_set(node->token.data.number, mpq_numref(q));
+        node->token.is_rational = 0;
+      } else {
+        mpq_init(node->token.data.rational);
+        mpq_set(node->token.data.rational, q);
+        node->token.is_rational = 1;
+      }
+      mpq_clear(q);
+    } else {
+      mpz_init(node->token.data.number);
+      mpz_set_str(node->token.data.number, data, 10);
+      node->token.is_rational = 0;
+    }
     lizard_heap_free(data);
     break;
   case TOKEN_STRING:
@@ -195,6 +214,13 @@ lz_list_t *lizard_tokenize(const char *input) {
       while (lizard_is_digit(input, i)) {
         i++;
       }
+      /* optional exact-rational suffix: "/digits" (e.g. 3/4) */
+      if (input[i] == '/' && lizard_is_digit(input, i + 1)) {
+        i++;
+        while (lizard_is_digit(input, i)) {
+          i++;
+        }
+      }
       buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
       for (k = 0; j < i; j++, k++) {
         buffer[k] = input[j];
@@ -286,7 +312,11 @@ static void lizard_destroy_token(lz_list_node_t *node) {
     lizard_heap_free(token->data.string);
     break;
   case TOKEN_NUMBER:
-    mpz_clear(token->data.number);
+    if (token->is_rational) {
+      mpq_clear(token->data.rational);
+    } else {
+      mpz_clear(token->data.number);
+    }
     break;
   default:
     break;

@@ -81,6 +81,17 @@ all the way down.
   checked proof of that entailment. Discharging those with the kernel
   is the path to a genuinely verified CAS.
 
+**Machine-checked (done for differentiation):**
+- `lib/cas/diff-cert.lisp` carries this out for the derivative. The
+  differentiation rules are stated as kernel propositions — postulated
+  constructors of a judgment `Der f g` ("g is the derivative of f") — and
+  the differentiator emits, with each derivative, a proof term that the
+  kernel type-checks against `Der (\x. f) (\x. f')`. A wrong derivative
+  cannot be certified. See `examples/139-cas-certificates.lisp`. The same
+  recipe (rule = postulated constructor; proof = nested application the
+  kernel checks) extends to the remaining rules and to integration.
+
+
 ## Integrating with a Maxima-like CAS
 
 If you are writing a Maxima-style CAS in lizard, the integration points

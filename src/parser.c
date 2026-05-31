@@ -779,9 +779,15 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     }
     break;
   case TOKEN_NUMBER:
-    ast_node->type = AST_NUMBER;
-    mpz_init(ast_node->data.number);
-    mpz_set(ast_node->data.number, current_token->data.number);
+    if (current_token->is_rational) {
+      ast_node->type = AST_RATIONAL;
+      mpq_init(ast_node->data.rational);
+      mpq_set(ast_node->data.rational, current_token->data.rational);
+    } else {
+      ast_node->type = AST_NUMBER;
+      mpz_init(ast_node->data.number);
+      mpz_set(ast_node->data.number, current_token->data.number);
+    }
     *current_node_pointer = current_node->next;
     current_node = current_node->next;
     break;
@@ -846,11 +852,19 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
   }
   /* atom */
   node = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  node->span.start_line = tok->line;
+  node->span.start_column = tok->column;
   switch (tok->type) {
   case TOKEN_NUMBER:
-    node->type = AST_NUMBER;
-    mpz_init(node->data.number);
-    mpz_set(node->data.number, tok->data.number);
+    if (tok->is_rational) {
+      node->type = AST_RATIONAL;
+      mpq_init(node->data.rational);
+      mpq_set(node->data.rational, tok->data.rational);
+    } else {
+      node->type = AST_NUMBER;
+      mpz_init(node->data.number);
+      mpz_set(node->data.number, tok->data.number);
+    }
     *cur = (*cur)->next;
     return node;
   case TOKEN_STRING:

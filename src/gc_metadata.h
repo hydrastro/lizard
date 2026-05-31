@@ -54,4 +54,22 @@ int lizard_gc_metadata_lookup(lizard_gc_metadata_table_t *table,
 void lizard_gc_metadata_collect_stats(lizard_gc_metadata_table_t *table,
                                       lizard_gc_metadata_stats_t *out_stats);
 
+/* GC support (used by the non-moving conservative collector in gc.c). */
+typedef void (*lizard_gc_free_fn)(void *ptr, size_t size,
+                                  lizard_gc_object_kind_t kind, void *ctx);
+
+/* Clear all marks and (re)build the ptr-sorted index for address lookup. */
+void lizard_gc_metadata_prepare_marking(lizard_gc_metadata_table_t *table);
+
+/* Mark the tracked object containing `addr`. Returns 1 only on the transition
+ * from unmarked to marked (so the caller can enqueue it for scanning). */
+int lizard_gc_metadata_mark_addr(lizard_gc_metadata_table_t *table,
+                                 const void *addr, void **out_base,
+                                 size_t *out_size);
+
+/* Free every unmarked object via free_cb, compact the table to the survivors,
+ * and clear their marks. Returns the number of objects freed. */
+size_t lizard_gc_metadata_sweep(lizard_gc_metadata_table_t *table,
+                                lizard_gc_free_fn free_cb, void *ctx);
+
 #endif /* LIZARD_GC_METADATA_H */

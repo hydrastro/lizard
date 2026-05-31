@@ -14,6 +14,7 @@ typedef struct lizard_gc_metadata_entry {
   lizard_gc_object_kind_t kind;
   lizard_object_owner_t owner;
   lizard_object_trace_policy_t trace_policy;
+  unsigned char mark;   /* GC: set during the mark phase, cleared by sweep */
 } lizard_gc_metadata_entry_t;
 
 struct lizard_gc_metadata_table {
@@ -21,6 +22,9 @@ struct lizard_gc_metadata_table {
   size_t count;
   size_t capacity;
   size_t registration_failures;
+  size_t *sorted;       /* indices into entries[], sorted by ptr (GC mark) */
+  size_t sorted_count;
+  size_t sorted_cap;
 };
 
 static void metadata_stats_clear(lizard_gc_metadata_stats_t *stats) {
@@ -127,6 +131,9 @@ lizard_gc_metadata_table_t *lizard_gc_metadata_table_create(void) {
   table->count = 0U;
   table->capacity = 0U;
   table->registration_failures = 0U;
+  table->sorted = NULL;
+  table->sorted_count = 0U;
+  table->sorted_cap = 0U;
   if (!metadata_ensure_capacity(table, LIZARD_GC_METADATA_INITIAL_CAPACITY)) {
     free(table);
     return NULL;
@@ -139,7 +146,115 @@ void lizard_gc_metadata_table_destroy(lizard_gc_metadata_table_t *table) {
     return;
   }
   free(table->entries);
+  free(table->sorted);
   free(table);
+}
+
+/* ===================================================================
+ * GC support: mark phase (sorted address lookup) + per-object sweep.
+ * The collector (gc.c) is non-moving and fully conservative, so these
+ * routines only need to (a) find which tracked object contains an
+ * arbitrary address, (b) record marks, and (c) free + remove the
+ * unmarked objects after marking.
+ * ================================================================== */
+
+static int metadata_sorted_cmp(const void *a, const void *b,
+                               lizard_gc_metadata_entry_t *entries) {
+  size_t ia = *(const size_t *)a;
+  size_t ib = *(const size_t *)b;
+  if (entries[ia].ptr < entries[ib].ptr) return -1;
+  if (entries[ia].ptr > entries[ib].ptr) return 1;
+  return 0;
+}
+
+/* qsort lacks a context argument in C89, so sort with a simple insertion /
+ * shell sort over the index array keyed by entries[].ptr. */
+static void metadata_sort_index(lizard_gc_metadata_table_t *t) {
+  size_t gap, i, j, tmp;
+  for (gap = t->sorted_count / 2U; gap > 0U; gap /= 2U) {
+    for (i = gap; i < t->sorted_count; i++) {
+      tmp = t->sorted[i];
+      j = i;
+      while (j >= gap &&
+             metadata_sorted_cmp(&t->sorted[j - gap], &tmp, t->entries) > 0) {
+        t->sorted[j] = t->sorted[j - gap];
+        j -= gap;
+      }
+      t->sorted[j] = tmp;
+    }
+  }
+}
+
+void lizard_gc_metadata_prepare_marking(lizard_gc_metadata_table_t *table) {
+  size_t i;
+  if (table == NULL) return;
+  if (table->sorted_cap < table->count) {
+    size_t newcap = table->count > 0U ? table->count : 1U;
+    size_t *p = (size_t *)realloc(table->sorted, newcap * sizeof(size_t));
+    if (p == NULL) { table->sorted_count = 0U; return; }
+    table->sorted = p;
+    table->sorted_cap = newcap;
+  }
+  table->sorted_count = table->count;
+  for (i = 0; i < table->count; i++) {
+    table->entries[i].mark = 0;
+    table->sorted[i] = i;
+  }
+  metadata_sort_index(table);
+}
+
+/* If `addr` falls inside a tracked object that is currently UNMARKED, mark it,
+ * fill the out-parameters with its extent, and return 1.  Otherwise return 0
+ * (address not tracked, or object already marked). */
+int lizard_gc_metadata_mark_addr(lizard_gc_metadata_table_t *table,
+                                 const void *addr, void **out_base,
+                                 size_t *out_size) {
+  size_t lo, hi;
+  const char *a = (const char *)addr;
+  if (table == NULL || table->sorted_count == 0U) return 0;
+  lo = 0U;
+  hi = table->sorted_count; /* find last entry with ptr <= addr */
+  while (lo < hi) {
+    size_t mid = lo + (hi - lo) / 2U;
+    if ((const char *)table->entries[table->sorted[mid]].ptr <= a) {
+      lo = mid + 1U;
+    } else {
+      hi = mid;
+    }
+  }
+  if (lo == 0U) return 0;
+  {
+    lizard_gc_metadata_entry_t *e = &table->entries[table->sorted[lo - 1U]];
+    const char *base = (const char *)e->ptr;
+    if (a >= base && a < base + e->size) {
+      if (e->mark) return 0;
+      e->mark = 1;
+      if (out_base) *out_base = e->ptr;
+      if (out_size) *out_size = e->size;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+size_t lizard_gc_metadata_sweep(lizard_gc_metadata_table_t *table,
+                                lizard_gc_free_fn free_cb, void *ctx) {
+  size_t i, live = 0U, freed = 0U;
+  if (table == NULL) return 0U;
+  for (i = 0; i < table->count; i++) {
+    lizard_gc_metadata_entry_t *e = &table->entries[i];
+    if (e->mark) {
+      e->mark = 0;
+      if (live != i) table->entries[live] = *e;
+      live++;
+    } else {
+      if (free_cb) free_cb(e->ptr, e->size, e->kind, ctx);
+      freed++;
+    }
+  }
+  table->count = live;
+  table->sorted_count = 0U; /* index is now stale */
+  return freed;
 }
 
 int lizard_gc_metadata_register(lizard_gc_metadata_table_t *table,
@@ -162,6 +277,7 @@ int lizard_gc_metadata_register(lizard_gc_metadata_table_t *table,
   entry->kind = kind;
   entry->owner = owner;
   entry->trace_policy = trace_policy;
+  entry->mark = 0;
   table->count++;
   return 1;
 }

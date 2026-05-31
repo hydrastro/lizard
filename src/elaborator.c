@@ -43,6 +43,9 @@ static int has_hole(kterm_t *t) {
   case KT_LIST: return has_hole(t->data.list.elem_type);
   case KT_MAYBE: return has_hole(t->data.maybe.elem_type);
   case KT_SUM_K: return has_hole(t->data.sum_k.left_type) || has_hole(t->data.sum_k.right_type);
+  case KT_PATH: return has_hole(t->data.path.type) || has_hole(t->data.path.a) || has_hole(t->data.path.b);
+  case KT_PLAM: return has_hole(t->data.plam.body);
+  case KT_PAPP: return has_hole(t->data.papp.path) || has_hole(t->data.papp.arg);
   default: return 0;
   }
 }
@@ -68,6 +71,9 @@ static int has_app(kterm_t *t) {
   case KT_LIST: return has_app(t->data.list.elem_type);
   case KT_MAYBE: return has_app(t->data.maybe.elem_type);
   case KT_SUM_K: return has_app(t->data.sum_k.left_type) || has_app(t->data.sum_k.right_type);
+  case KT_PATH: return has_app(t->data.path.type) || has_app(t->data.path.a) || has_app(t->data.path.b);
+  case KT_PLAM: return has_app(t->data.plam.body);
+  case KT_PAPP: return has_app(t->data.papp.path) || has_app(t->data.papp.arg);
   default: return 0;
   }
 }
@@ -89,6 +95,9 @@ static int scan_max_meta(kterm_t *t, int acc) {
   case KT_SIGMA: acc = scan_max_meta(t->data.sigma.fst_type, acc); return scan_max_meta(t->data.sigma.snd_type, acc);
   case KT_PAIR: acc = scan_max_meta(t->data.pair.fst, acc); return scan_max_meta(t->data.pair.snd, acc);
   case KT_PROJ1: case KT_PROJ2: return scan_max_meta(t->data.proj.target, acc);
+  case KT_PATH: acc = scan_max_meta(t->data.path.type, acc); acc = scan_max_meta(t->data.path.a, acc); return scan_max_meta(t->data.path.b, acc);
+  case KT_PLAM: return scan_max_meta(t->data.plam.body, acc);
+  case KT_PAPP: acc = scan_max_meta(t->data.papp.path, acc); return scan_max_meta(t->data.papp.arg, acc);
   default: return acc;
   }
 }
@@ -338,6 +347,31 @@ static kterm_t *elab_infer(elab_state_t *st, kctx_t *ctx, kterm_t *t,
     if (l == NULL || rt == NULL) return NULL;
     r = mk(st->heap, KT_SUM_K);
     r->data.sum_k.left_type = l; r->data.sum_k.right_type = rt;
+    *out = r; return kt_infer(st->heap, ctx, r);
+  }
+  case KT_PATH: {
+    kterm_t *ty = elab_sub(st, ctx, t->data.path.type);
+    kterm_t *a = elab_sub(st, ctx, t->data.path.a);
+    kterm_t *b = elab_sub(st, ctx, t->data.path.b);
+    kterm_t *r;
+    if (ty == NULL || a == NULL || b == NULL) return NULL;
+    r = kt_path(st->heap, ty, a, b);
+    *out = r; return kt_infer(st->heap, ctx, r);
+  }
+  case KT_PLAM: {
+    kctx_t *e = kctx_extend(st->heap, ctx, t->data.plam.name,
+                            kt_interval(st->heap), NULL);
+    kterm_t *body = NULL, *r;
+    if (elab_infer(st, e, t->data.plam.body, &body) == NULL) return NULL;
+    r = kt_plam(st->heap, t->data.plam.name, body);
+    *out = r; return kt_infer(st->heap, ctx, r);
+  }
+  case KT_PAPP: {
+    kterm_t *p = elab_sub(st, ctx, t->data.papp.path);
+    kterm_t *a = elab_sub(st, ctx, t->data.papp.arg);
+    kterm_t *r;
+    if (p == NULL || a == NULL) return NULL;
+    r = kt_papp(st->heap, p, a);
     *out = r; return kt_infer(st->heap, ctx, r);
   }
   default:

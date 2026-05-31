@@ -120,6 +120,7 @@ lizard_ast_node_t *lizard_eval(
     case AST_BOOL:
     case AST_NIL:
     case AST_NUMBER:
+    case AST_RATIONAL:
     case AST_STRING:
     case AST_PAIR:
     case AST_PRIMITIVE:
@@ -850,6 +851,7 @@ lizard_ast_node_t *lizard_apply(lizard_ast_node_t *func, lz_list_t *args,
 typedef struct lizard_sr_binding {
   const char *name;
   lizard_ast_node_t *value;
+  int depth;                       /* ellipsis depth: 0 = ordinary var */
   struct lizard_sr_binding *next;
 } lizard_sr_binding_t;
 
@@ -873,6 +875,89 @@ static lizard_ast_node_t *lizard_sr_lookup(lizard_sr_binding_t *bs,
   return NULL;
 }
 
+/* ---- ellipsis (...) support ----------------------------------------------
+ * A pattern element immediately followed by the symbol `...` matches zero or
+ * more consecutive forms; each pattern variable underneath it binds to a
+ * SEQUENCE (depth one greater).  The template expander then iterates such a
+ * sub-template once per element.  This generalises to nested ellipses because
+ * a depth-(d) variable's value is a pair-chain of depth-(d-1) values. */
+static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
+                           lz_list_t *literals, lizard_sr_binding_t **out,
+                           lizard_heap_t *heap);
+static int lizard_sr_match_ellipsis(lizard_ast_node_t *subpat,
+                                     lizard_ast_node_t *restpat,
+                                     lizard_ast_node_t *form,
+                                     lz_list_t *literals,
+                                     lizard_sr_binding_t **out,
+                                     lizard_heap_t *heap);
+
+/* Is `node`'s cdr a pair whose car is the literal symbol `...`? */
+static int lizard_sr_followed_by_ellipsis(lizard_ast_node_t *node) {
+  lizard_ast_node_t *nx;
+  if (!node || node->type != AST_PAIR) return 0;
+  nx = node->data.pair.cdr;
+  return nx && nx->type == AST_PAIR && nx->data.pair.car &&
+         nx->data.pair.car->type == AST_SYMBOL &&
+         strcmp(nx->data.pair.car->data.variable, "...") == 0;
+}
+
+static lizard_ast_node_t *lizard_sr_nil(lizard_heap_t *heap) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_NIL;
+  return n;
+}
+static lizard_ast_node_t *lizard_sr_cons(lizard_ast_node_t *a,
+                                         lizard_ast_node_t *d,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_PAIR;
+  n->data.pair.car = a;
+  n->data.pair.cdr = d;
+  return n;
+}
+static int lizard_sr_len(lizard_ast_node_t *f) {
+  int n = 0;
+  while (f && f->type == AST_PAIR) { n++; f = f->data.pair.cdr; }
+  return n;
+}
+static lizard_ast_node_t *lizard_sr_drop(lizard_ast_node_t *f, int k) {
+  while (k-- > 0 && f && f->type == AST_PAIR) f = f->data.pair.cdr;
+  return f;
+}
+
+/* Collect every pattern variable in `pat` together with its ellipsis depth
+ * (number of enclosing `...` within pat).  Used so an ellipsis matching ZERO
+ * forms still binds its variables (to empty sequences). */
+static void lizard_sr_collect_vars(lizard_ast_node_t *pat, lz_list_t *literals,
+                                   int depth, lizard_sr_binding_t **acc,
+                                   lizard_heap_t *heap) {
+  if (!pat) return;
+  if (pat->type == AST_PAIR) {
+    if (lizard_sr_followed_by_ellipsis(pat)) {
+      lizard_sr_collect_vars(pat->data.pair.car, literals, depth + 1, acc, heap);
+      lizard_sr_collect_vars(pat->data.pair.cdr->data.pair.cdr, literals, depth,
+                             acc, heap);
+    } else {
+      lizard_sr_collect_vars(pat->data.pair.car, literals, depth, acc, heap);
+      lizard_sr_collect_vars(pat->data.pair.cdr, literals, depth, acc, heap);
+    }
+    return;
+  }
+  if (pat->type == AST_SYMBOL) {
+    const char *n = pat->data.variable;
+    if (strcmp(n, "_") == 0 || strcmp(n, "...") == 0) return;
+    if (lizard_is_literal_symbol(literals, n)) return;
+    {
+      lizard_sr_binding_t *b = lizard_heap_alloc(sizeof(lizard_sr_binding_t));
+      b->name = n;
+      b->value = NULL;
+      b->depth = depth;
+      b->next = *acc;
+      *acc = b;
+    }
+  }
+}
+
 /* Returns 1 on match and prepends any captured variables to *out. */
 static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
                            lz_list_t *literals, lizard_sr_binding_t **out,
@@ -881,6 +966,11 @@ static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
   if (!pattern || !form) return 0;
   /* literal-pair pattern */
   if (pattern->type == AST_PAIR) {
+    if (lizard_sr_followed_by_ellipsis(pattern)) {
+      return lizard_sr_match_ellipsis(pattern->data.pair.car,
+                                      pattern->data.pair.cdr->data.pair.cdr,
+                                      form, literals, out, heap);
+    }
     if (form->type != AST_PAIR) return 0;
     if (!lizard_sr_match(pattern->data.pair.car, form->data.pair.car,
                          literals, out, heap)) return 0;
@@ -904,6 +994,7 @@ static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
       lizard_sr_binding_t *b = lizard_heap_alloc(sizeof(lizard_sr_binding_t));
       b->name = name;
       b->value = form;
+      b->depth = 0;
       b->next = *out;
       *out = b;
       return 1;
@@ -922,6 +1013,56 @@ static int lizard_sr_match(lizard_ast_node_t *pattern, lizard_ast_node_t *form,
            pattern->data.boolean == form->data.boolean;
   }
   return 0;
+}
+
+/* Match  (subpat ... . restpat)  against `form`.  subpat consumes
+ * (len(form) - len(restpat)) leading elements; each pattern variable in subpat
+ * binds to the sequence of its per-element matches (depth + 1). */
+static int lizard_sr_match_ellipsis(lizard_ast_node_t *subpat,
+                                     lizard_ast_node_t *restpat,
+                                     lizard_ast_node_t *form,
+                                     lz_list_t *literals,
+                                     lizard_sr_binding_t **out,
+                                     lizard_heap_t *heap) {
+  int formlen = lizard_sr_len(form);
+  int restlen = lizard_sr_len(restpat);
+  int nmatch = formlen - restlen;
+  int i;
+  lizard_sr_binding_t *pvars = NULL;
+  lizard_sr_binding_t *vp;
+  lizard_sr_binding_t **subs;
+  lizard_ast_node_t *cur;
+  if (nmatch < 0) return 0;
+  lizard_sr_collect_vars(subpat, literals, 0, &pvars, heap);
+  subs = lizard_heap_alloc(sizeof(lizard_sr_binding_t *) *
+                           (size_t)(nmatch > 0 ? nmatch : 1));
+  cur = form;
+  for (i = 0; i < nmatch; i++) {
+    lizard_sr_binding_t *sub = NULL;
+    if (!cur || cur->type != AST_PAIR) return 0;
+    if (!lizard_sr_match(subpat, cur->data.pair.car, literals, &sub, heap))
+      return 0;
+    subs[i] = sub;
+    cur = cur->data.pair.cdr;
+  }
+  /* For each variable in subpat, assemble its ordered sequence (depth+1). */
+  for (vp = pvars; vp; vp = vp->next) {
+    lizard_ast_node_t *seq = lizard_sr_nil(heap);
+    lizard_sr_binding_t *b;
+    for (i = nmatch - 1; i >= 0; i--) {
+      lizard_ast_node_t *val = lizard_sr_lookup(subs[i], vp->name);
+      seq = lizard_sr_cons(val ? val : lizard_sr_nil(heap), seq, heap);
+    }
+    b = lizard_heap_alloc(sizeof(lizard_sr_binding_t));
+    b->name = vp->name;
+    b->value = seq;
+    b->depth = vp->depth + 1;
+    b->next = *out;
+    *out = b;
+  }
+  /* The forms after the ellipsis must match restpat. */
+  return lizard_sr_match(restpat, lizard_sr_drop(form, nmatch), literals, out,
+                         heap);
 }
 
 /* Hygiene rename map: for identifiers introduced inside the template
@@ -961,13 +1102,68 @@ static const char *lizard_sr_renamed(lizard_sr_rename_t *r,
 static lizard_ast_node_t *lizard_sr_expand(lizard_ast_node_t *tmpl,
                                            lizard_sr_binding_t *bs,
                                            lizard_sr_rename_t *renames,
+                                           lizard_heap_t *heap);
+static lizard_ast_node_t *lizard_sr_expand_ellipsis(lizard_ast_node_t *tmpl,
+                                                    lizard_ast_node_t *rest,
+                                                    lizard_sr_binding_t *bs,
+                                                    lizard_sr_rename_t *renames,
+                                                    lizard_heap_t *heap);
+
+/* nth element of a sequence pair-chain (NULL if out of range). */
+static lizard_ast_node_t *lizard_sr_nth(lizard_ast_node_t *seq, int i) {
+  while (i-- > 0 && seq && seq->type == AST_PAIR) seq = seq->data.pair.cdr;
+  return (seq && seq->type == AST_PAIR) ? seq->data.pair.car : NULL;
+}
+
+/* Collect the bindings (from bs) for variables appearing in `tmpl` that have
+ * ellipsis depth >= 1 — the ones an enclosing `...` iterates over. */
+static void lizard_sr_iter_vars(lizard_ast_node_t *tmpl,
+                                lizard_sr_binding_t *bs,
+                                lizard_sr_binding_t **acc,
+                                lizard_heap_t *heap) {
+  if (!tmpl) return;
+  if (tmpl->type == AST_PAIR) {
+    lizard_sr_iter_vars(tmpl->data.pair.car, bs, acc, heap);
+    lizard_sr_iter_vars(tmpl->data.pair.cdr, bs, acc, heap);
+    return;
+  }
+  if (tmpl->type == AST_SYMBOL) {
+    lizard_sr_binding_t *b;
+    for (b = bs; b; b = b->next) {
+      if (strcmp(b->name, tmpl->data.variable) == 0) {
+        if (b->depth >= 1) {
+          lizard_sr_binding_t *a;
+          for (a = *acc; a; a = a->next)
+            if (strcmp(a->name, b->name) == 0) return;  /* already noted */
+          a = lizard_heap_alloc(sizeof(lizard_sr_binding_t));
+          a->name = b->name;
+          a->value = b->value;
+          a->depth = b->depth;
+          a->next = *acc;
+          *acc = a;
+        }
+        return;  /* first (innermost) binding for this name wins */
+      }
+    }
+  }
+}
+
+static lizard_ast_node_t *lizard_sr_expand(lizard_ast_node_t *tmpl,
+                                           lizard_sr_binding_t *bs,
+                                           lizard_sr_rename_t *renames,
                                            lizard_heap_t *heap) {
   if (!tmpl) return NULL;
   if (tmpl->type == AST_PAIR) {
+    lizard_ast_node_t *head = tmpl->data.pair.car;
+    /* Ellipsis: (sub ... . rest) expands `sub` once per iteration. */
+    if (lizard_sr_followed_by_ellipsis(tmpl)) {
+      return lizard_sr_expand_ellipsis(tmpl->data.pair.car,
+                                       tmpl->data.pair.cdr->data.pair.cdr,
+                                       bs, renames, heap);
+    }
     /* Detect binding-introducing forms — let, lambda, define — and
        generate fresh names for the introduced identifiers. This is
        the hygiene step. */
-    lizard_ast_node_t *head = tmpl->data.pair.car;
     if (head && head->type == AST_SYMBOL) {
       const char *hname = head->data.variable;
       if (strcmp(hname, "let") == 0 || strcmp(hname, "let*") == 0 ||
@@ -1087,6 +1283,43 @@ static lizard_ast_node_t *lizard_sr_expand(lizard_ast_node_t *tmpl,
   }
   /* Literals and nil pass through. */
   return tmpl;
+}
+
+/* Expand  (sub ... . rest):  expand `sub` once per element of the iteration
+ * variables' sequences (shadowing each with its i-th element at depth-1), then
+ * append the expansion of `rest`. */
+static lizard_ast_node_t *lizard_sr_expand_ellipsis(lizard_ast_node_t *sub,
+                                                    lizard_ast_node_t *rest,
+                                                    lizard_sr_binding_t *bs,
+                                                    lizard_sr_rename_t *renames,
+                                                    lizard_heap_t *heap) {
+  lizard_sr_binding_t *iters = NULL;
+  lizard_sr_binding_t *it;
+  int count = -1;
+  int i;
+  lizard_ast_node_t *acc;
+  lizard_sr_iter_vars(sub, bs, &iters, heap);
+  for (it = iters; it; it = it->next) {
+    int len = lizard_sr_len(it->value);
+    if (count < 0 || len < count) count = len;  /* lockstep over the shortest */
+  }
+  if (count < 0) count = 0;  /* no iteration variable -> zero copies */
+  acc = lizard_sr_expand(rest, bs, renames, heap);
+  for (i = count - 1; i >= 0; i--) {
+    lizard_sr_binding_t *scope = bs;
+    lizard_ast_node_t *ei;
+    for (it = iters; it; it = it->next) {
+      lizard_sr_binding_t *nb = lizard_heap_alloc(sizeof(lizard_sr_binding_t));
+      nb->name = it->name;
+      nb->value = lizard_sr_nth(it->value, i);
+      nb->depth = it->depth - 1;
+      nb->next = scope;
+      scope = nb;
+    }
+    ei = lizard_sr_expand(sub, scope, renames, heap);
+    acc = lizard_sr_cons(ei, acc, heap);
+  }
+  return acc;
 }
 
 /* Build a pair-chain from an AST_APPLICATION's argument list. Used to
@@ -1376,6 +1609,81 @@ lizard_ast_node_t *lizard_reparse_datum(lizard_ast_node_t *n,
   }
 }
 
+/* ---- Phase 3: built-in module forms ----
+ * module/export/import are rewritten here, in the macro expander, into calls to
+ * the lz:* primitives with their payloads quoted.  Doing it structurally (not
+ * via syntax-rules) gives full control and works inside hermetic module bodies
+ * with no bootstrap.  The module body is passed as a pair-chain of the parsed
+ * body forms (still typed AST); lz:module re-expands and evaluates each one in
+ * the module's own environment. */
+static lizard_ast_node_t *mod_qsym(lizard_heap_t *heap, const char *s) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_SYMBOL;
+  n->data.variable = s;
+  return n;
+}
+static lizard_ast_node_t *mod_quote(lizard_heap_t *heap, lizard_ast_node_t *d) {
+  lizard_ast_node_t *q = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  q->type = AST_QUOTE;
+  q->data.quoted = d;
+  return q;
+}
+static void mod_push(lz_list_t *L, lizard_ast_node_t *ast, lizard_heap_t *heap) {
+  lizard_ast_list_node_t *w = lizard_heap_alloc(sizeof(lizard_ast_list_node_t));
+  w->ast = ast;
+  list_append(L, &w->node);
+  (void)heap;
+}
+static lizard_ast_node_t *mod_call(lizard_heap_t *heap, const char *op,
+                                   lizard_ast_node_t *a1, lizard_ast_node_t *a2) {
+  lz_list_t *L = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  lizard_ast_node_t *app = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  mod_push(L, mod_qsym(heap, op), heap);
+  mod_push(L, a1, heap);
+  if (a2 != NULL) mod_push(L, a2, heap);
+  app->type = AST_APPLICATION;
+  app->data.application_arguments = L;
+  return app;
+}
+static lizard_ast_node_t *expand_module_form(lizard_ast_node_t *node,
+                                             lizard_heap_t *heap) {
+  lz_list_t *args = node->data.application_arguments;
+  lz_list_node_t *it = args->head;            /* operator "module" */
+  lizard_ast_node_t *name_ast;
+  lz_list_t *body;
+  if (it == args->nil || it->next == args->nil) return node;
+  it = it->next;                               /* module name */
+  name_ast = ((lizard_ast_list_node_t *)it)->ast;
+  body = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  for (it = it->next; it != args->nil; it = it->next)
+    mod_push(body, ((lizard_ast_list_node_t *)it)->ast, heap);
+  return mod_call(heap, "lz:module", mod_quote(heap, name_ast),
+                  mod_quote(heap, lizard_app_to_pair(body, heap)));
+}
+static lizard_ast_node_t *expand_export_form(lizard_ast_node_t *node,
+                                             lizard_heap_t *heap) {
+  lz_list_t *args = node->data.application_arguments;
+  lz_list_node_t *it;
+  lz_list_t *names = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  if (args->head == args->nil) return node;
+  for (it = args->head->next; it != args->nil; it = it->next)
+    mod_push(names, ((lizard_ast_list_node_t *)it)->ast, heap);
+  return mod_call(heap, "lz:export",
+                  mod_quote(heap, lizard_app_to_pair(names, heap)), NULL);
+}
+static lizard_ast_node_t *expand_import_form(lizard_ast_node_t *node,
+                                             lizard_heap_t *heap) {
+  lz_list_t *args = node->data.application_arguments;
+  lz_list_node_t *it;
+  lz_list_t *all = list_create_alloc(lizard_heap_alloc, lizard_heap_free);
+  if (args->head == args->nil) return node;
+  /* datumize each option so a list like :only (a b) becomes a pair-chain. */
+  for (it = args->head->next; it != args->nil; it = it->next)
+    mod_push(all, lizard_datumize(((lizard_ast_list_node_t *)it)->ast, heap), heap);
+  return mod_call(heap, "lz:import",
+                  mod_quote(heap, lizard_app_to_pair(all, heap)), NULL);
+}
+
 lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
                                         lizard_env_t *env,
                                         lizard_heap_t *heap) {
@@ -1391,6 +1699,12 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
     if (first != node->data.application_arguments->nil) {
       operator=((lizard_ast_list_node_t *)first)->ast;
       if (operator->type == AST_SYMBOL) {
+        if (strcmp(operator->data.variable, "module") == 0)
+          return expand_module_form(node, heap);
+        if (strcmp(operator->data.variable, "export") == 0)
+          return expand_export_form(node, heap);
+        if (strcmp(operator->data.variable, "import") == 0)
+          return expand_import_form(node, heap);
         binding = lizard_env_lookup(env, operator->data.variable);
         if (binding && binding->type == AST_MACRO) {
           lizard_ast_node_t *transformer = binding->data.macro_def.transformer;
@@ -1526,6 +1840,47 @@ lizard_ast_node_t *lizard_expand_macros(lizard_ast_node_t *node,
   return node;
 }
 
+/* (macroexpand-1 form) — perform a SINGLE syntax-rules expansion step on a
+ * datum `form`.  If form is (m args...) with m a syntax-rules macro in scope,
+ * returns the template instantiated once (hygienically, via the same matcher
+ * and expander the full expander uses); otherwise returns form unchanged.
+ * The result is a datum, so it can be displayed and fed back in — this is what
+ * the macro stepper iterates over (Phase 4 tooling). */
+lizard_ast_node_t *lizard_primitive_macroexpand1(lz_list_t *args,
+                                                 lizard_env_t *env,
+                                                 lizard_heap_t *heap) {
+  lizard_ast_node_t *form, *head, *binding, *transformer, *call_pair;
+  lz_list_node_t *cit;
+  if (!args || args->head == args->nil) return lizard_make_nil(heap);
+  form = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!form || form->type != AST_PAIR) return form;
+  head = form->data.pair.car;
+  if (!head || head->type != AST_SYMBOL) return form;
+  binding = lizard_env_lookup(env, head->data.variable);
+  if (!binding || binding->type != AST_MACRO) return form;
+  transformer = binding->data.macro_def.transformer;
+  if (!transformer || transformer->type != AST_SYNTAX_RULES) return form;
+  call_pair = form->data.pair.cdr;
+  for (cit = transformer->data.syntax_rules.clauses->head;
+       cit != transformer->data.syntax_rules.clauses->nil; cit = cit->next) {
+    lizard_ast_node_t *clause = ((lizard_ast_list_node_t *)cit)->ast;
+    lizard_ast_node_t *pattern, *template, *pat_args;
+    lizard_sr_binding_t *bs = NULL;
+    if (!clause || clause->type != AST_PAIR || !clause->data.pair.cdr ||
+        clause->data.pair.cdr->type != AST_PAIR)
+      continue;
+    pattern = clause->data.pair.car;
+    template = clause->data.pair.cdr->data.pair.car;
+    if (!pattern || pattern->type != AST_PAIR) continue;
+    pat_args = pattern->data.pair.cdr;
+    if (lizard_sr_match(pat_args, call_pair,
+                        transformer->data.syntax_rules.literals, &bs, heap)) {
+      return lizard_sr_expand(template, bs, NULL, heap);
+    }
+  }
+  return form; /* no clause matched: leave unchanged */
+}
+
 lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
                                             lizard_env_t *env,
                                             lizard_heap_t *heap) {
@@ -1540,6 +1895,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
   }
   switch (node->type) {
   case AST_NUMBER:
+  case AST_RATIONAL:
   case AST_STRING:
   case AST_SYMBOL:
   case AST_BOOL:

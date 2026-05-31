@@ -125,6 +125,7 @@ static int compile_expr(lizard_bc_chunk_t *c, lizard_ast_node_t *expr,
 
   switch (expr->type) {
   case AST_NUMBER:
+  case AST_RATIONAL:
   case AST_STRING: {
     int idx = chunk_add_const(c, expr);
     if (idx < 0) return -1;

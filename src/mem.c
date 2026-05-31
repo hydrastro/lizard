@@ -55,7 +55,51 @@ lizard_heap_t *lizard_heap_create(size_t initial_size,
   heap->current = heap->head;
   heap->runtime = NULL;  /* Phase 0: set by lizard_runtime_create */
   heap->gc_metadata = lizard_gc_metadata_table_create();
+  heap->free_buckets = NULL;
+  heap->free_bucket_count = 0U;
+  heap->free_bucket_cap = 0U;
   return heap;
+}
+
+/* Phase 5: per-size free list of reclaimed chunks.  A freed chunk stores the
+ * next-pointer in its first word; buckets are keyed by exact aligned size. */
+static struct lizard_free_bucket *freelist_bucket(lizard_heap_t *h, size_t size) {
+  size_t i;
+  for (i = 0; i < h->free_bucket_count; i++) {
+    if (h->free_buckets[i].size == size) return &h->free_buckets[i];
+  }
+  if (h->free_bucket_count == h->free_bucket_cap) {
+    size_t ncap = h->free_bucket_cap ? h->free_bucket_cap * 2U : 16U;
+    struct lizard_free_bucket *p = (struct lizard_free_bucket *)realloc(
+        h->free_buckets, ncap * sizeof(struct lizard_free_bucket));
+    if (p == NULL) return NULL;
+    h->free_buckets = p;
+    h->free_bucket_cap = ncap;
+  }
+  h->free_buckets[h->free_bucket_count].size = size;
+  h->free_buckets[h->free_bucket_count].head = NULL;
+  return &h->free_buckets[h->free_bucket_count++];
+}
+
+void lizard_heap_reclaim(void *ptr, size_t size) {
+  struct lizard_free_bucket *b;
+  if (heap == NULL || ptr == NULL) return;
+  b = freelist_bucket(heap, size);
+  if (b == NULL) return;           /* OOM growing buckets: just drop it */
+  *(void **)ptr = b->head;         /* link this chunk into the bucket */
+  b->head = ptr;
+}
+
+static void *freelist_take(lizard_heap_t *h, size_t size) {
+  size_t i;
+  for (i = 0; i < h->free_bucket_count; i++) {
+    if (h->free_buckets[i].size == size && h->free_buckets[i].head != NULL) {
+      void *p = h->free_buckets[i].head;
+      h->free_buckets[i].head = *(void **)p;
+      return p;
+    }
+  }
+  return NULL;
 }
 void *lizard_heap_realloc(void *ptr, size_t old_size, size_t new_size) {
   lizard_heap_segment_t *seg;
@@ -124,6 +168,18 @@ void *lizard_heap_alloc_tagged(size_t size,
   if (trace_policy == LIZARD_OBJECT_TRACE_CUSTOM &&
       kind != LIZARD_GC_OBJECT_KERNEL_TERM) {
     trace_policy = lizard_heap_default_trace_policy(kind);
+  }
+
+  /* Phase 5: reuse a previously reclaimed chunk of the same size if one is
+   * available, before extending the bump pointer. */
+  ptr = freelist_take(heap, size);
+  if (ptr != NULL) {
+    memset(ptr, 0, size);
+    if (heap->gc_metadata != NULL) {
+      (void)lizard_gc_metadata_register(heap->gc_metadata, ptr, size, kind,
+                                        LIZARD_OBJECT_OWNER_HEAP, trace_policy);
+    }
+    return ptr;
   }
 
   seg = heap->current;

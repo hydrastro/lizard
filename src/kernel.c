@@ -82,6 +82,25 @@ kterm_t *kt_refl(lizard_heap_t *heap, kterm_t *value) {
   return t;
 }
 
+kterm_t *kt_interval(lizard_heap_t *heap) { return kt_alloc(heap, KT_INTERVAL); }
+kterm_t *kt_i0(lizard_heap_t *heap) { return kt_alloc(heap, KT_I0); }
+kterm_t *kt_i1(lizard_heap_t *heap) { return kt_alloc(heap, KT_I1); }
+kterm_t *kt_path(lizard_heap_t *heap, kterm_t *type, kterm_t *a, kterm_t *b) {
+  kterm_t *t = kt_alloc(heap, KT_PATH);
+  t->data.path.type = type; t->data.path.a = a; t->data.path.b = b;
+  return t;
+}
+kterm_t *kt_plam(lizard_heap_t *heap, const char *name, kterm_t *body) {
+  kterm_t *t = kt_alloc(heap, KT_PLAM);
+  t->data.plam.name = name; t->data.plam.body = body;
+  return t;
+}
+kterm_t *kt_papp(lizard_heap_t *heap, kterm_t *path, kterm_t *arg) {
+  kterm_t *t = kt_alloc(heap, KT_PAPP);
+  t->data.papp.path = path; t->data.papp.arg = arg;
+  return t;
+}
+
 /* Sigma constructors. */
 static kterm_t *kt_sigma(lizard_heap_t *heap, const char *name,
                           kterm_t *fst_type, kterm_t *snd_type) {
@@ -336,6 +355,18 @@ kterm_t *kt_shift(lizard_heap_t *heap, kterm_t *t, int cutoff, int delta) {
     r->data.let.body  = kt_shift(heap, t->data.let.body, cutoff + 1, delta);
     return r;
   }
+  case KT_INTERVAL: case KT_I0: case KT_I1:
+    return t;
+  case KT_PATH:
+    return kt_path(heap, kt_shift(heap, t->data.path.type, cutoff, delta),
+                         kt_shift(heap, t->data.path.a, cutoff, delta),
+                         kt_shift(heap, t->data.path.b, cutoff, delta));
+  case KT_PLAM:
+    return kt_plam(heap, t->data.plam.name,
+                   kt_shift(heap, t->data.plam.body, cutoff + 1, delta));
+  case KT_PAPP:
+    return kt_papp(heap, kt_shift(heap, t->data.papp.path, cutoff, delta),
+                         kt_shift(heap, t->data.papp.arg, cutoff, delta));
   default:
     return t;
   }
@@ -533,6 +564,19 @@ kterm_t *kt_subst(lizard_heap_t *heap, kterm_t *t, int n, kterm_t *s) {
                                  kt_shift(heap, s, 0, 1));
     return r;
   }
+  case KT_INTERVAL: case KT_I0: case KT_I1:
+    return t;
+  case KT_PATH:
+    return kt_path(heap, kt_subst(heap, t->data.path.type, n, s),
+                         kt_subst(heap, t->data.path.a, n, s),
+                         kt_subst(heap, t->data.path.b, n, s));
+  case KT_PLAM:
+    return kt_plam(heap, t->data.plam.name,
+                   kt_subst(heap, t->data.plam.body, n + 1,
+                            kt_shift(heap, s, 0, 1)));
+  case KT_PAPP:
+    return kt_papp(heap, kt_subst(heap, t->data.papp.path, n, s),
+                         kt_subst(heap, t->data.papp.arg, n, s));
   default:
     return t;
   }
@@ -673,6 +717,28 @@ kterm_t *kt_whnf(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     }
     return t;
   }
+  case KT_PAPP: {
+    kterm_t *p = kt_whnf(heap, ctx, t->data.papp.path);
+    kterm_t *r;
+    if (p->tag == KT_PLAM)
+      return kt_whnf(heap, ctx,
+                     kt_subst(heap, p->data.plam.body, 0, t->data.papp.arg));
+    r = kt_whnf(heap, ctx, t->data.papp.arg);
+    if (r->tag == KT_I0 || r->tag == KT_I1) {
+      /* boundary: a path's endpoints are recoverable from its type, so even a
+       * neutral path applied to an endpoint reduces to that endpoint. */
+      kterm_t *pt = kt_infer(heap, ctx, p);
+      if (pt != NULL) {
+        kterm_t *wpt = kt_whnf(heap, ctx, pt);
+        if (wpt->tag == KT_PATH)
+          return kt_whnf(heap, ctx,
+                         r->tag == KT_I0 ? wpt->data.path.a : wpt->data.path.b);
+      }
+    }
+    if (p != t->data.papp.path || r != t->data.papp.arg)
+      return kt_papp(heap, p, r);
+    return t;
+  }
   default:
     return t;
   }
@@ -724,15 +790,21 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
     return kt_equal(heap, ctx, na->data.succ.pred, nb->data.succ.pred);
   case KT_PI:
     return kt_equal(heap, ctx, na->data.pi.domain, nb->data.pi.domain) &&
-           kt_equal(heap, ctx, na->data.pi.codomain, nb->data.pi.codomain);
+           kt_equal(heap, kctx_extend(heap, ctx, na->data.pi.name,
+                                      na->data.pi.domain, NULL),
+                    na->data.pi.codomain, nb->data.pi.codomain);
   case KT_LAM:
-    return kt_equal(heap, ctx, na->data.lam.body, nb->data.lam.body);
+    return kt_equal(heap, kctx_extend(heap, ctx, na->data.lam.name,
+                                      na->data.lam.domain, NULL),
+                    na->data.lam.body, nb->data.lam.body);
   case KT_APP:
     return kt_equal(heap, ctx, na->data.app.fun, nb->data.app.fun) &&
            kt_equal(heap, ctx, na->data.app.arg, nb->data.app.arg);
   case KT_SIGMA:
     return kt_equal(heap, ctx, na->data.sigma.fst_type, nb->data.sigma.fst_type) &&
-           kt_equal(heap, ctx, na->data.sigma.snd_type, nb->data.sigma.snd_type);
+           kt_equal(heap, kctx_extend(heap, ctx, na->data.sigma.name,
+                                      na->data.sigma.fst_type, NULL),
+                    na->data.sigma.snd_type, nb->data.sigma.snd_type);
   case KT_PAIR:
     return kt_equal(heap, ctx, na->data.pair.fst, nb->data.pair.fst) &&
            kt_equal(heap, ctx, na->data.pair.snd, nb->data.pair.snd);
@@ -780,6 +852,19 @@ int kt_equal(lizard_heap_t *heap, kctx_t *ctx, kterm_t *a, kterm_t *b) {
   case KT_ABSURD:
     return kt_equal(heap, ctx, na->data.absurd.target_type,
                     nb->data.absurd.target_type);
+  case KT_INTERVAL: case KT_I0: case KT_I1:
+    return 1;
+  case KT_PATH:
+    return kt_equal(heap, ctx, na->data.path.type, nb->data.path.type)
+        && kt_equal(heap, ctx, na->data.path.a, nb->data.path.a)
+        && kt_equal(heap, ctx, na->data.path.b, nb->data.path.b);
+  case KT_PLAM: {
+    kctx_t *e = kctx_extend(heap, ctx, na->data.plam.name, kt_interval(heap), NULL);
+    return kt_equal(heap, e, na->data.plam.body, nb->data.plam.body);
+  }
+  case KT_PAPP:
+    return kt_equal(heap, ctx, na->data.papp.path, nb->data.papp.path)
+        && kt_equal(heap, ctx, na->data.papp.arg, nb->data.papp.arg);
   default:
     return 0;
   }
@@ -1252,6 +1337,38 @@ kterm_t *kt_infer(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
     if (bty == NULL) return NULL;
     return kt_subst(heap, bty, 0, t->data.let.value);
   }
+  case KT_INTERVAL:
+    return kt_sort(heap, 0);
+  case KT_I0: case KT_I1:
+    return kt_interval(heap);
+  case KT_PATH: {
+    kterm_t *st = kt_infer(heap, ctx, t->data.path.type);
+    if (st == NULL || kt_whnf(heap, ctx, st)->tag != KT_SORT) return NULL;
+    if (kt_check(heap, ctx, t->data.path.a, t->data.path.type) != KERNEL_OK) return NULL;
+    if (kt_check(heap, ctx, t->data.path.b, t->data.path.type) != KERNEL_OK) return NULL;
+    return st;
+  }
+  case KT_PLAM: {
+    kctx_t *e = kctx_extend(heap, ctx, t->data.plam.name, kt_interval(heap), NULL);
+    kterm_t *bt = kt_infer(heap, e, t->data.plam.body);
+    kterm_t *A, *a, *b, *path;
+    if (bt == NULL) return NULL;
+    A = kt_subst(heap, bt, 0, kt_i0(heap));
+    a = kt_subst(heap, t->data.plam.body, 0, kt_i0(heap));
+    b = kt_subst(heap, t->data.plam.body, 0, kt_i1(heap));
+    path = kt_path(heap, A, a, b);
+    if (kt_infer(heap, ctx, path) == NULL) return NULL; /* rejects dependent paths */
+    return path;
+  }
+  case KT_PAPP: {
+    kterm_t *pt = kt_infer(heap, ctx, t->data.papp.path);
+    kterm_t *wpt;
+    if (pt == NULL) return NULL;
+    wpt = kt_whnf(heap, ctx, pt);
+    if (wpt->tag != KT_PATH) return NULL;
+    if (kt_check(heap, ctx, t->data.papp.arg, kt_interval(heap)) != KERNEL_OK) return NULL;
+    return wpt->data.path.type;
+  }
   default:
     return NULL;
   }
@@ -1380,6 +1497,22 @@ void kt_fprint(FILE *fp, kterm_t *t) {
     break;
   case KT_SUM_REC:
     fprintf(fp, "(case ...)"); break;
+  case KT_INTERVAL: fprintf(fp, "I"); break;
+  case KT_I0: fprintf(fp, "i0"); break;
+  case KT_I1: fprintf(fp, "i1"); break;
+  case KT_PATH:
+    fprintf(fp, "(Path "); kt_fprint(fp, t->data.path.type);
+    fprintf(fp, " "); kt_fprint(fp, t->data.path.a);
+    fprintf(fp, " "); kt_fprint(fp, t->data.path.b); fprintf(fp, ")");
+    break;
+  case KT_PLAM:
+    fprintf(fp, "(plam %s ", t->data.plam.name ? t->data.plam.name : "i");
+    kt_fprint(fp, t->data.plam.body); fprintf(fp, ")");
+    break;
+  case KT_PAPP:
+    fprintf(fp, "("); kt_fprint(fp, t->data.papp.path);
+    fprintf(fp, " @ "); kt_fprint(fp, t->data.papp.arg); fprintf(fp, ")");
+    break;
   default:
     fprintf(fp, "<kterm:%d>", t->tag);
     break;
@@ -1627,6 +1760,18 @@ kterm_t *meta_zonk(lizard_heap_t *heap, meta_ctx_t *mctx, kterm_t *t) {
     r->data.let.body = meta_zonk(heap, mctx, t->data.let.body);
     return r;
   }
+  case KT_INTERVAL: case KT_I0: case KT_I1:
+    return t;
+  case KT_PATH:
+    return kt_path(heap, meta_zonk(heap, mctx, t->data.path.type),
+                         meta_zonk(heap, mctx, t->data.path.a),
+                         meta_zonk(heap, mctx, t->data.path.b));
+  case KT_PLAM:
+    return kt_plam(heap, t->data.plam.name,
+                   meta_zonk(heap, mctx, t->data.plam.body));
+  case KT_PAPP:
+    return kt_papp(heap, meta_zonk(heap, mctx, t->data.papp.path),
+                         meta_zonk(heap, mctx, t->data.papp.arg));
   default:
     return t;
   }
@@ -1759,12 +1904,18 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
     return kt_unify(heap, ctx, mctx, na->data.succ.pred, nb->data.succ.pred);
   case KT_PI:
     return kt_unify(heap, ctx, mctx, na->data.pi.domain, nb->data.pi.domain) &&
-           kt_unify(heap, ctx, mctx, na->data.pi.codomain, nb->data.pi.codomain);
+           kt_unify(heap, kctx_extend(heap, ctx, na->data.pi.name,
+                                      na->data.pi.domain, NULL),
+                    mctx, na->data.pi.codomain, nb->data.pi.codomain);
   case KT_SIGMA:
     return kt_unify(heap, ctx, mctx, na->data.sigma.fst_type, nb->data.sigma.fst_type) &&
-           kt_unify(heap, ctx, mctx, na->data.sigma.snd_type, nb->data.sigma.snd_type);
+           kt_unify(heap, kctx_extend(heap, ctx, na->data.sigma.name,
+                                      na->data.sigma.fst_type, NULL),
+                    mctx, na->data.sigma.snd_type, nb->data.sigma.snd_type);
   case KT_LAM:
-    return kt_unify(heap, ctx, mctx, na->data.lam.body, nb->data.lam.body);
+    return kt_unify(heap, kctx_extend(heap, ctx, na->data.lam.name,
+                                      na->data.lam.domain, NULL),
+                    mctx, na->data.lam.body, nb->data.lam.body);
   case KT_APP:
     return kt_unify(heap, ctx, mctx, na->data.app.fun, nb->data.app.fun) &&
            kt_unify(heap, ctx, mctx, na->data.app.arg, nb->data.app.arg);
@@ -1814,6 +1965,19 @@ int kt_unify(lizard_heap_t *heap, kctx_t *ctx, meta_ctx_t *mctx,
            kt_unify(heap, ctx, mctx, na->data.j.proof, nb->data.j.proof);
   case KT_ABSURD:
     return kt_unify(heap, ctx, mctx, na->data.absurd.target_type, nb->data.absurd.target_type);
+  case KT_INTERVAL: case KT_I0: case KT_I1:
+    return 1;
+  case KT_PATH:
+    return kt_unify(heap, ctx, mctx, na->data.path.type, nb->data.path.type) &&
+           kt_unify(heap, ctx, mctx, na->data.path.a, nb->data.path.a) &&
+           kt_unify(heap, ctx, mctx, na->data.path.b, nb->data.path.b);
+  case KT_PLAM:
+    return kt_unify(heap, kctx_extend(heap, ctx, na->data.plam.name,
+                                      kt_interval(heap), NULL),
+                    mctx, na->data.plam.body, nb->data.plam.body);
+  case KT_PAPP:
+    return kt_unify(heap, ctx, mctx, na->data.papp.path, nb->data.papp.path) &&
+           kt_unify(heap, ctx, mctx, na->data.papp.arg, nb->data.papp.arg);
   default:
     return 0;
   }
@@ -1992,6 +2156,10 @@ static int const_occurs(kterm_t *t, const char *name) {
   case KT_ABSURD: return const_occurs(t->data.absurd.target_type, name);
   case KT_LIST: return const_occurs(t->data.list.elem_type, name);
   case KT_CONS_K: return const_occurs(t->data.cons_k.head, name) || const_occurs(t->data.cons_k.tail, name);
+  case KT_INTERVAL: case KT_I0: case KT_I1: return 0;
+  case KT_PATH: return const_occurs(t->data.path.type, name) || const_occurs(t->data.path.a, name) || const_occurs(t->data.path.b, name);
+  case KT_PLAM: return const_occurs(t->data.plam.body, name);
+  case KT_PAPP: return const_occurs(t->data.papp.path, name) || const_occurs(t->data.papp.arg, name);
   default: return 0;
   }
 }

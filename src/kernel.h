@@ -59,6 +59,12 @@ typedef enum {
   KT_INL,          /* inl : A → Sum A B */
   KT_INR,          /* inr : B → Sum A B */
   KT_SUM_REC,      /* case/sum eliminator */
+  KT_INTERVAL,     /* the interval I (cubical) */
+  KT_I0,           /* interval endpoint 0 */
+  KT_I1,           /* interval endpoint 1 */
+  KT_PATH,         /* Path A a b — path type */
+  KT_PLAM,         /* <i> t — path abstraction (binds an interval variable) */
+  KT_PAPP,         /* p @ r — path application */
   KT_CONST         /* opaque named global constant (axiom) */
 } kterm_tag_t;
 
@@ -106,6 +112,9 @@ typedef struct kterm {
     struct { struct kterm *value; struct kterm *left_type; } inr;
     struct { struct kterm *motive; struct kterm *left_case;
              struct kterm *right_case; struct kterm *scrutinee; } sum_rec;
+    struct { struct kterm *type; struct kterm *a; struct kterm *b; } path; /* Path A a b */
+    struct { const char *name; struct kterm *body; } plam;  /* <i> body */
+    struct { struct kterm *path; struct kterm *arg; } papp; /* p @ r */
   } data;
 } kterm_t;
 
@@ -163,6 +172,12 @@ kterm_t *kt_zero(lizard_heap_t *heap);
 kterm_t *kt_succ(lizard_heap_t *heap, kterm_t *pred);
 kterm_t *kt_id(lizard_heap_t *heap, kterm_t *type, kterm_t *a, kterm_t *b);
 kterm_t *kt_refl(lizard_heap_t *heap, kterm_t *value);
+kterm_t *kt_interval(lizard_heap_t *heap);
+kterm_t *kt_i0(lizard_heap_t *heap);
+kterm_t *kt_i1(lizard_heap_t *heap);
+kterm_t *kt_path(lizard_heap_t *heap, kterm_t *type, kterm_t *a, kterm_t *b);
+kterm_t *kt_plam(lizard_heap_t *heap, const char *name, kterm_t *body);
+kterm_t *kt_papp(lizard_heap_t *heap, kterm_t *path, kterm_t *arg);
 
 /* ---- core operations ---- */
 

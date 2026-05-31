@@ -625,6 +625,50 @@ term is rejected even with a buggy elaborator).
   metatheory track (TT2: Path types, the interval, `transp`/`hcomp`), which is
   the other half of the phase's done-when.
 
+### Phase 7 progress — TT2: the cubical layer (interval, Path types, ap)
+
+- The kernel now has a cubical fragment: an interval `I : Sort 0` with endpoints
+  `i0`/`i1` (and no eliminator — the interval is not inductive, which keeps it
+  sound), path types `Path A a b`, path abstraction `(plam i body)` binding an
+  interval variable, and path application `(papp p r)`.  Surface syntax: the
+  symbols `I`/`i0`/`i1` and the forms `(Path A a b)`, `(plam i body)`,
+  `(papp p r)`.
+- Two computation rules, both in `kt_whnf`:
+  - **beta:** `(plam i. t) @ r` reduces to `t[i := r]`;
+  - **boundary:** `p @ i0` reduces to the left endpoint and `p @ i1` to the
+    right.  Crucially this fires even when `p` is *neutral* (a variable or stuck
+    term): the endpoints are recovered by inferring `p`'s type, which must be a
+    `Path`.  `kt_infer(PLAM)` reads the endpoints off the body by substituting
+    `i0`/`i1` and verifies the resulting `Path` is well-formed, which rejects
+    dependent paths (PathP), unsupported in this fragment.
+- Making the neutral boundary work required `kt_equal` and `kt_unify` to **extend
+  the typing context as they descend `Pi`/`Lam`/`Sigma` binders** (previously
+  they compared bodies in the outer context, relying on de Bruijn alone).  This
+  is what typed conversion does and is sound — it only adds type information,
+  never δ-reductions (the entries carry `value = NULL`) — and it is what lets the
+  boundary's `kt_infer` find a bound path variable's type under binders.  The
+  cubical tags are threaded through `subst`/`shift`/`whnf`/`equal`/`unify`/
+  `infer`/`zonk`/`fprint`/`const_occurs`, and `Path`/`plam`/`papp` are in the
+  elaborator too, so term-mode `def`/`theorem` can use paths.
+- Demonstrated in `examples/137-cubical-paths.lisp` (kernel level) and in
+  term mode: `plam i. x : Path A x x` (refl as the constant path); an ill-typed
+  path is rejected; the neutral boundary `p @ i0 = x` / `p @ i1 = y` for an
+  assumed `p : Path A x y`; beta `(plam i. i) @ i1 = i1`; and the general
+  `ap : {A B} (f:A->B) {a b} -> Path A a b -> Path B (f a) (f b)
+     := \A B f a b p. plam i. f (p @ i)`,
+  whose lifted path computes (`(ap f p) @ i0 = f x`).  `ap-refl-thm` proves
+  `Path B (f x) (f x)` as the term `ap f (plam i. x)` with all implicit
+  arguments inferred at the call site.
+- Soundness gains four cubical regressions (`plam i.0 : Path Nat 0 0` accepted /
+  `Path Nat 0 1` rejected; the neutral boundary; path beta), now 64.  Suite:
+  C 95/95, Lisp 5/5, examples 73/73, all audits.
+- **This closes both halves of Phase 7's done-when:** a non-trivial theorem
+  stated in surface TT, elaborated and kernel-checked with no tactics (TT3), and
+  ≥1 cubical milestone (TT2).  The next cubical milestones are the Kan
+  operations (`transp`/`hcomp`) and ultimately `Glue`/univalence; this fragment
+  has none of those and is sound on its own (no transport, no `PathP`, no
+  path-eta).
+
 ### Phase 7 progress — named variables make the proving surface human-writable
 
 - The proving surface still forced raw de Bruijn indices (`(var 0)`,
@@ -654,6 +698,241 @@ term is rejected even with a buggy elaborator).
   rejects an unbound name; `kernel_soundness_test.c` is up to 49 cases (with
   the `KT_LET` accept/reject).  Suite green: C 95/95, Lisp 5/5,
   examples 63/63, all audits.
+
+### Phase 3 progress — real module namespaces (module / export / import)
+
+- Until now `import` only re-evaluated a file in the *caller's* environment (with
+  load-once caching and a search path), so two libraries defining the same name
+  would clobber each other — Phase 3's "colliding names don't interfere" was not
+  met.  There is now a real module system layered on top of that loader.
+- **Model.**  A *module* is evaluated in a hermetic environment: a child of a
+  pristine primitives-only base env (`module_base_env`, built once per runtime),
+  so a module's private definitions are invisible to the importer and to other
+  modules.  `export` names the public bindings; with no `export` form, every
+  top-level definition is public.  A loaded module is recorded as a
+  `lizard_namespace_t { name; env; exports; }` in the runtime's namespace list.
+- **Surface.**  `(module NAME body...)` defines a hermetic namespace.
+  `(export a b ...)` marks exports.  `(import SRC ...)` brings a namespace's
+  exports into the caller — qualified `alias:name` by default, or unqualified
+  with `:only (a b)` / `:all`; `:as alias` renames the qualifier.  `SRC` is a
+  registered namespace name (symbol) or a file path (string); a file is loaded
+  as a hermetic module named by its basename (or `:as` alias).  Qualified names
+  like `cas:simplify` need no reader changes — `:` is an ordinary symbol
+  constituent, and the qualified binding is just `lizard_env_define` of the
+  string `"prefix:name"`.
+- **Legacy preserved.**  A lone-string `(import "match.lisp")` (no options) keeps
+  its historic "load unqualified into the caller" behaviour by delegating to the
+  original import primitive — all 131 existing import sites are unaffected.
+- **Architecture.**  module/export/import are rewritten in `lizard_expand_macros`
+  (the macro expander) into calls to three primitives, `lz:module` / `lz:export`
+  / `lz:import`, with their payloads quoted.  This is done structurally in C
+  rather than via `syntax-rules` (whose ellipsis-into-`quote` expansion is
+  unreliable for 3+-element bodies) and needs no bootstrap, so it works the same
+  inside a hermetic module body as at top level.  The module body is passed as a
+  pair-chain of the *parsed* body forms; `lz:module` re-expands and evaluates each
+  in the module's own environment, which is what makes `export`/nested `import`
+  inside a module resolve correctly.  No new AST node kinds, so the bytecode
+  path, printer, and GC are untouched.  Kernel definitions
+  (`kernel-define`/`theorem`/`data`/axioms) remain global by design — modules
+  namespace the Lisp environment, not the proof context.
+- **Done-when met**, demonstrated in `examples/138-module-namespaces.lisp`
+  (self-checking): two modules both exporting `foo` coexist as `alpha:foo`=1 /
+  `beta:foo`=2; a private `helper` stays unbound in the importer; export/import
+  round-trips a value; `:as`, `:only`, `:all`, and the export-all default all
+  hold; and `cas.lisp` loads as a namespaced library (`cas:simplify (+ x 0)` =
+  `x`), its own internal `(import "match.lisp")` resolved hermetically.  Suite
+  green: C 95/95, Lisp 5/5, examples 74/74, soundness 64/64, all audits.
+- Not done here (future Phase 3 polish): splitting the CAS into namespaced
+  `lib/cas/{core,poly,...}.lisp` (item #10); and the load-once cache is keyed
+  globally, so a file imported hermetically after it was already imported flatly
+  returns the cached value rather than re-binding — fine for the demo, worth
+  revisiting when modules and the legacy loader are unified.
+
+### Phase 8 progress — proof-carrying CAS (kernel-checked differentiation)
+
+- `lib/cas-proof.lisp` already attaches an *informal* justification (a chain of
+  named rules bottoming out at ZFC) to each step, and `docs/CAS.md` names the
+  next move: "state each [rule] as a kernel proposition ... a checked proof the
+  kernel accepts."  That is now done for differentiation: a derivative emits a
+  CERTIFICATE the trusted kernel type-checks.
+- **Encoding — a typed derivative judgment, not equational rewriting.**  Over an
+  abstract commutative ring `R` we postulate one relation
+  `Der : (R -> R) -> (R -> R) -> Sort 0` ("g is the derivative of f"), and the
+  differentiation rules as postulated *constructors* of it: `der_id` (the
+  variable), `der_const` (a constant, `(c:R) -> Der (\x.c) (\x.0)`), `der_add`
+  (`Der f f' -> Der g g' -> Der (\x. f x + g x) (\x. f' x + g' x)`), and `der_mul`
+  (the product rule).  These four axioms *are* the "cited rules" of `docs/CAS.md`,
+  now expressed as kernel propositions.  A derivative's certificate is simply a
+  nested application of them; the kernel checks it because β-reduction lines the
+  dependent types up — so none of the fragile `sym`/`trans`/`cong` equational
+  plumbing is needed, and congruence-under-operators is avoided entirely by the
+  judgment design.  Because the proof term must literally inhabit
+  `Der (\x. f) (\x. f')`, a *wrong* derivative cannot be certified — the kernel
+  refuses it.
+- **The differentiator** (`diff`) recurses over a ring term in `x`, returning the
+  derivative term *and* its proof, mirroring the four rules; `certify` then calls
+  `kernel-check` on the proof against `Der (\x. e) (\x. e')`.  The trust anchor is
+  the kernel: the differentiator is ordinary (untrusted) Lisp, but a derivation
+  is only believed once the kernel has accepted the proof.  The fragment is
+  polynomials — variable, constants, sums, products, and powers as repeated
+  products (`x*x*x`); a dedicated power/scalar/chain rule would be more postulated
+  constructors in the same style.
+- **Packaged as a namespaced library** (`lib/cas/diff-cert.lisp`, the first
+  resident of the `lib/cas/` tree from Phase 3 item #10), imported with
+  `(import "cas/diff-cert.lisp" :as dc)`.  Caveat: `kernel-assume` is *global*
+  kernel state, so importing the module postulates the ring + rules into the one
+  shared proof context (the Lisp helpers are namespaced as usual) — proofs are
+  global facts, which is the intended reading.
+- **Done-when met.**  `examples/139-cas-certificates.lisp` (self-checking)
+  certifies the polynomial cases (d/dx(x), d/dx(a), d/dx(x·x), d/dx(x·x·x), …)
+  and the elementary/chain-rule cases (d/dx(sin x)=cos x, d/dx(exp x)=exp x,
+  d/dx(ln x)=1/x, d/dx(sin(x·x)), d/dx(ln(sin x)), d/dx(x·sin x)), and shows the
+  kernel *rejecting* two wrong claims
+  (d/dx(x·x)=x and d/dx(x)=0).  Combined with Phase 3 (the CAS loads as a
+  namespaced library), this satisfies Phase 8's done-when — "the CAS loads as
+  libraries; a derivative emits a certificate the kernel accepts."  Suite green:
+  C 95/95, Lisp 5/5, examples 75/75, soundness 64/64, all audits.
+- Reserved-symbol caveat worth recording: the kernel converter reserves `I` (the
+  cubical interval) and `zero`/`succ` (Nat constructors), so the ring's units are
+  named `oneR`/`zeroR` to avoid silently mis-typing as `Interval`/`Nat`.
+
+### Phase 4 — hygienic macros (COMPLETE)
+
+All three done-when clauses are met: an imported macro expands hygienically; the
+macro stepper shows located expansion; and a contract violation names the blaming
+party.  `lib/macros.lisp`, `lib/macro-stepper.lisp`, `lib/contract.lisp`, and
+`examples/140`–`142` exercise the whole phase.
+
+- `syntax-rules` now supports the **ellipsis** (`...`), the feature that makes
+  macros genuinely usable, plus the existing lightweight hygiene.  `lib/macros.lisp`
+  (my-or, my-and, unless, swap!) and `examples/140-hygienic-macros.lisp` exercise it.
+- **Matching.**  A pattern element immediately followed by `...` matches a prefix
+  of the form: the sub-pattern consumes `len(form) − len(rest-pattern)` leading
+  elements, and each pattern variable beneath the ellipsis binds to the *sequence*
+  of its per-element matches at depth one greater.  The forms after the ellipsis
+  match the remaining suffix.  Variables are collected structurally first, so an
+  ellipsis matching **zero** elements still binds them (to empty sequences).
+- **Expansion.**  A template element followed by `...` is expanded once per
+  iteration: the iteration variables (those in the sub-template with depth ≥ 1)
+  are found, the copy count is the shortest of their sequence lengths (lockstep),
+  and for each `i` the variables are shadowed by their `i`-th element at depth−1
+  before expanding the sub-template; the results are spliced in, then the rest of
+  the template follows.  Because a depth-`d` value is a pair-chain of depth-`(d−1)`
+  values, this generalises to **nested ellipsis** with no special case — verified
+  on `(rows (x ...) ...)` and per-row `(+ x ...) ...`.
+- **Hygiene.**  Template-introduced binders in `let`/`let*`/`letrec`/`lambda`
+  positions are renamed to fresh gensyms (`name.hN`), so a macro's temporaries
+  can't capture caller identifiers.  `examples/140` checks the classic cases —
+  `(my-or #f t)` returns the caller's `t`, and `(swap! tmp other)` works even when
+  the caller's variable is literally named `tmp`.
+- **Imported macros.**  A macro defined in a file and brought in with
+  `(import "macros.lisp")` expands hygienically in the importing code (done-when
+  clause 1), on top of Phase 3's module system.
+- **Macro stepper (done-when clause 2).**  Three new primitives support tooling:
+  `macroexpand-1` performs ONE hygienic `syntax-rules` step on a datum (reusing the
+  same matcher/expander as the full expander); `read-syntax` tokenises and parses a
+  string into a datum WITH source spans (a one-line fix made `lizard_parse_datum`
+  attach spans like the main parser); and `form-location` reads the span of a form's
+  head.  `lib/macro-stepper.lisp` iterates `macroexpand-1` to a fixed point, printing
+  each rewrite with the source location of the call it expanded — and the trace shows
+  hygiene at work (renamed binders) and even traces template-introduced forms back to
+  their definition site.  `examples/141-macro-stepper.lisp`.
+- **Contracts with blame (done-when clause 3).**  `lib/contract.lisp` is a pure-Lisp
+  Findler–Felleisen contract system: a flat (predicate) contract blames whoever
+  produced the bad value, and `(-> dom rng)` checks the domain with the parties
+  *swapped* (a bad argument blames the caller) and the range as-is (a bad result
+  blames the function); since `rng` can itself be `(-> …)`, contracts are curried and
+  higher-order.  Lizard's exceptions are values (`raise` yields an error object), so
+  `protect` threads them through explicitly and a violation surfaces as an error
+  object whose payload is `(contract-violation party name value)`.
+  `examples/142-contracts-blame.lisp` checks that a bad argument blames the client, a
+  bad result blames the implementation, and a bad *second* argument of a curried
+  function still blames the client.
+- **Beyond the done-when (future).**  The full Racket-style infrastructure would add
+  proper syntax objects with scope-set hygiene replacing the gensym pass (the
+  `AST_SYNTAX` type with `scopes`/`scope_count` already exists, used by
+  `datum->syntax`/`syntax-source`) and `#lang` reader extensions (MM4).
+
+### Language — exact rational arithmetic (numeric tower over ℚ)
+- **What landed.**  Lizard now has a real numeric tower: integers stay exact
+  `mpz` (`AST_NUMBER`), and any operation that produces a fraction yields an
+  exact, fully-reduced rational backed by GMP `mpq` (a new `AST_RATIONAL`).  The
+  representation is canonical — rationals always have denominator > 1, and a
+  result that reduces to a whole number (`6/3`, `1/2 + 1/2`, `4/2`) automatically
+  **demotes** back to an integer, so "integers are always `AST_NUMBER`" is an
+  invariant the rest of the system can rely on.
+- **`/` is now exact.**  Previously `(/ 7 2)` truncated to `3` (`mpz_tdiv_q`); it
+  now returns `7/2`.  `+ - * expt ^` accept and produce rationals (the fast
+  integer paths are unchanged when no operand is rational), and `< <= > >= =`
+  and `zero?/positive?/negative?` compare exactly across integers and rationals.
+- **Reader + printer.**  Rational literals are written `n/m` (the tokenizer
+  consumes the `/m` suffix, canonicalizes, and demotes `4/2` → `2` at read time);
+  the printer shows reduced fractions via `%Qd`.
+- **New primitives.**  `rational?`, `real?`, `integer?`, `exact?`, `numerator`,
+  `denominator`.  Rationals also work as keys in persistent maps/sets and the
+  collection hash (equal rationals like `2/4` and `1/2` collide/merge correctly).
+- **Scope.**  This is a *runtime/value* feature; it stays out of the trusted
+  kernel term language (the kernel still uses `mpz` for `Nat`), so soundness is
+  unaffected (`kernel_soundness_test` 64/64 still green).  Covered by
+  `examples/144-exact-rationals.lisp` (40 checks) and `tests/rationals_test.c`.
+
+### Phase 5 — per-object conservative GC (the hard gate)
+- **What landed.**  `(gc)` is now a per-object, **non-moving, fully
+  conservative** mark & sweep.  It reclaims *individual* dead objects (not just
+  whole segments as before) into per-size free lists that the bump allocator
+  reuses on the next allocation; the addresses of surviving objects never move.
+- **Why it is sound.**  Because the collector never relocates objects, treating
+  a non-pointer as a pointer can only *retain* garbage, never corrupt — so a
+  conservative scan is safe.  Roots are discovered **root-completely by
+  construction**: the C stack, the callee-saved registers (spilled with
+  `setjmp`), and the entire data/BSS segment are scanned, so there is no manual
+  root list that could be missing an entry.  (An audit confirmed the only
+  file-scope AST pointers are `callcc_value_fallback`, `lizard_jump_value`, and
+  the runtime struct, and that there is no symbol-intern table; the runtime
+  env / module results / namespace frames are also marked explicitly as
+  insurance.)  Live objects are traced by scanning their own bytes for tracked
+  pointers, which needs no per-type tracer.
+- **One real bug, fixed.**  The first cut segfaulted intermittently (and under
+  valgrind) in the stack scan: deriving the stack top by parsing
+  `/proc/self/maps` `[stack]` is wrong — its reserved upper bound need not be
+  mapped, and under valgrind it is valgrind's stack.  Switching to glibc's
+  `__libc_stack_end` (the client's true initial SP, always within committed
+  stack) fixed it; valgrind then reports no invalid reads/writes.
+- **Tests.**  `tests/gc_objects_test.c` checks reclamation > 0, that diverse
+  live data (lists, HAMT map, set, rational, closure) survives 5 cycles of
+  *collect-then-reuse*, and that a survivor's address is unchanged (non-moving).
+  `examples/145-object-gc.lisp` does the same end-to-end over 6 cycles.
+- **Honest limitations.**  (1) The sweep does not `mpz_clear`/`mpq_clear` swept
+  numbers (the size-inferred `kind` is not exact enough to do so safely against
+  a same-sized string buffer), so GMP limbs of dead numbers leak while the
+  object chunk is reclaimed — a future exact-tagging pass closes this.  (2) GC
+  is **explicit** via `(gc)`; no automatic collect-on-allocation yet.  (3) Being
+  conservative, it can retain a little genuine garbage.  Net: Phase 5's done-when
+  (reclaims individual objects, addresses stable, no `make ci` regressions) is
+  met, and the real-threads half of Phase 6 is unblocked.
+
+### Phase 6 — persistent vector becomes a bit-partitioned trie
+- **What landed.**  The persistent **vector** was upgraded from a flat
+  copy-on-write array (whose `pvec-set`/`pvec-push` copied the whole backing
+  store, O(n)) to a **32-way bit-partitioned trie with a tail buffer** — the
+  Clojure PersistentVector design (`src/pvector.c`).  `pvec-push` is now O(1)
+  amortized, `pvec-ref`/`pvec-set` are O(log32 n), and an update **path-copies**:
+  it allocates only the O(log32 n) nodes along one root-to-leaf path and shares
+  every other node with the original.
+- **Why it matters.**  Vectors now have the same structural-sharing guarantee
+  the HAMT maps and sets got earlier, so the whole immutable-data half of
+  Phase 6 is consistent and cheap to share.  Building/​updating large vectors is
+  no longer quadratic.
+- **Surface.**  Existing `pvec`, `pvec-ref`, `pvec-set`, `pvec-push`,
+  `pvec-count`, `pvec->list`, `pvec?` keep working; added `pvec-pop` and
+  `list->pvec`.  The mutable-vector bridge (`transient!` / `persistent!`)
+  continues to work over the new representation.
+- **Tests.**  `tests/pvector_test.c` checks correctness across the 32 / 1024
+  trie-growth boundaries, persistence (the original is unchanged after an
+  update), pop across a boundary, and — at the node level — that off-path leaves
+  are pointer-identical between an original and its update while the on-path leaf
+  is a fresh copy (i.e. genuine structural sharing).  `examples/146` mirrors this
+  end-to-end over a 3000-element vector.
 
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
@@ -1019,7 +1298,7 @@ context hardening.
 - **Done when:** two modules with colliding names don't interfere; an
   export/import round-trips; the CAS loads as a namespaced library.
 
-### Phase 4 — Syntax objects + hygienic macros (Racket infrastructure)
+### Phase 4 — Syntax objects + hygienic macros (Racket infrastructure)  ✅ COMPLETE
 - **Goal:** macros carry source + scope, not raw symbols.
 - **Items:** MM2 syntax objects (datum + scope-set + srcloc + phase,
   reusing Phase 1 locations); MM3 hygienic expansion + macro phases; MM4
@@ -1029,8 +1308,14 @@ context hardening.
 - **Depends:** Phase 1 (srcloc), Phase 3 (modules). **Risk:** med-high.
 - **Done when:** an imported macro expands hygienically; the stepper shows
   located expansion; a contract violation names the blaming party.
+- **Status:** DONE — `syntax-rules` ellipsis (basic/recursive/parallel/nested)
+  + lightweight hygiene; imported hygienic macros (`examples/140`); a located
+  macro stepper via `macroexpand-1`/`read-syntax`/`form-location`
+  (`examples/141`); and Findler–Felleisen contracts with blame
+  (`examples/142`).  Remaining for a full Racket port (scope-set hygiene, `#lang`)
+  is tracked as future work in the Phase 4 completion note above.
 
-### Phase 5 — Object-level GC
+### Phase 5 — Object-level GC  ✅ COMPLETE (conservative · non-moving · explicit)
 - **Goal:** per-object non-moving mark-sweep (§3.5).
 - **Items:** #8 object-level mark bit; root registration from the context
   (envs, stacks, modules, globals, VM frames); per-object sweep; size-class
@@ -1038,8 +1323,35 @@ context hardening.
 - **Depends:** Phase 1 (contexts as root sources). **Risk:** high.
 - **Done when:** GC reclaims individual objects; addresses stay stable;
   no regressions in `make check`.
+- **Status:** DONE — `(gc)` now performs a per-object, non-moving, **fully
+  conservative** mark & sweep that reclaims individual dead objects into
+  per-size free lists which the bump allocator reuses; survivor addresses never
+  change. Roots are discovered conservatively and **root-completely by
+  construction**: the C stack, the callee-saved registers (spilled via
+  `setjmp`), and the whole data/BSS segment are scanned, so no manual root
+  enumeration can be incomplete (the only file-scope AST pointers are
+  `callcc_value_fallback`, `lizard_jump_value`, and the runtime, all covered;
+  there is no symbol-intern table). The runtime env / module results /
+  namespace frames are additionally marked explicitly as insurance. Tracing is
+  conservative too — each live object's own bytes are scanned for anything that
+  looks like a pointer — which needs no per-type tracer and is **sound precisely
+  because the collector never moves objects** (a false positive can only retain
+  garbage, never corrupt). The stack top is taken from glibc's
+  `__libc_stack_end` (correct and always mapped, unlike parsing `/proc/self/maps`).
+  Validated by `tests/gc_objects_test.c` (reclamation > 0, diverse live data
+  intact across 5 cycles of collect-then-reuse, **survivor address stable**) and
+  `examples/145-object-gc.lisp` (lists, nested data, HAMT map, set, rational,
+  closure, string survive 6 cycles); valgrind reports **no invalid reads/writes**
+  on the stress path. **Honest limitations:** (1) the sweep does *not*
+  `mpz_clear`/`mpq_clear` swept numbers — the metadata `kind` is inferred from
+  size and a same-sized string buffer could be mis-tagged, so GMP limbs of dead
+  numbers leak (the object chunk itself is reclaimed); a future exact-tagging
+  pass would fix this. (2) Collection is **explicit** via `(gc)`; there is no
+  automatic collect-on-allocation yet. (3) Being conservative, it may retain a
+  little genuine garbage (values on the stack that merely look like pointers).
+  This unblocks the real-threads half of Phase 6.
 
-### Phase 6 — Persistent data + concurrency
+### Phase 6 — Persistent data + concurrency  ⏳ IN PROGRESS (persistent structures landed)
 - **Goal:** your DS library becomes the runtime substrate; then threads.
 - **Items:** promote persistent vector / HAMT map+set / transients /
   atoms / refs+STM / futures into the runtime with §3.4 sharing rules
@@ -1052,6 +1364,28 @@ context hardening.
 - **Done when:** two contexts on two threads share an immutable map with
   no locks; a cross-thread transient is rejected with a diagnostic; an STM
   transfer is atomic under contention.
+- **Status:** the immutable-structures half has landed, single-threaded. The
+  persistent maps and sets are now backed by a **real Hash Array Mapped Trie**
+  (`src/hamt.c`): 32-way branching, bitmap-compressed nodes, collision nodes,
+  and **path-copying** so an update copies only the nodes on one root-to-leaf
+  path (O(log32 n)) and shares the rest with the original.  This replaces the
+  previous flat array whose `phash-set` copied the whole table (O(n)); a
+  10000-entry build that was effectively quadratic is now instant
+  (`examples/143`).  New surface: `phash-remove`, and a full persistent **set**
+  API (`pset`, `pset-add`, `pset-contains?`, `pset-remove`, `pset-count`,
+  `pset->list`, `pset?`) sharing the same HAMT (`is_set` distinguishes sets from
+  maps).  `transient!`/`conj!`/`persistent!` continue to work over the new
+  representation.  **Still pending (now unblocked — Phase 5 GC has landed):** real
+  thread-safe contexts + thread pool, cross-thread transient rejection, and
+  atomic STM.  The persistent **vector** has also been upgraded from
+  copy-on-write to a **32-way bit-partitioned trie with a tail** (Clojure's
+  PersistentVector): O(1) amortized `pvec-push`, O(log32 n) `pvec-ref`/`pvec-set`,
+  and path-copying so an update shares every node off the updated path (proven
+  at the node level in `tests/pvector_test.c`; `examples/146`).  New surface:
+  `pvec-pop`, `list->pvec`.  So vectors, maps, and sets now all have the same
+  structural-sharing guarantee — the immutable-data half of Phase 6 is complete.
+  Also future: upgrade the persistent *vector* from copy-on-write to a
+  bit-partitioned trie for the same sharing guarantee.
 
 ### Phase 7 — Elaborator / proof mode (term-first)
 - **Goal:** term-first proving end to end; cubical milestones in parallel.

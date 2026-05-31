@@ -1,4 +1,5 @@
 #include "primitives.h"
+#include "pvector.h"
 #include "prims_shared.h"
 #include "env.h"
 #include "errors.h"
@@ -42,19 +43,87 @@ static lizard_ast_node_t *lizard_make_number_copy(lizard_heap_t *heap,
   return copy;
 }
 
+/* Numeric tower helpers (exact integers + exact rationals). Canonical form:
+ * integers are always AST_NUMBER; AST_RATIONAL always has denominator > 1. */
+static int lizard_num_like(const lizard_ast_node_t *n) {
+  return n && (n->type == AST_NUMBER || n->type == AST_RATIONAL);
+}
+
+/* Build a canonical numeric node from an mpq, demoting to an integer when the
+ * (canonicalized) denominator is 1.  Caller still owns/clears its own q. */
+static lizard_ast_node_t *lizard_make_rational(lizard_heap_t *heap, mpq_t q) {
+  lizard_ast_node_t *r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  mpq_canonicalize(q);
+  if (mpz_cmp_ui(mpq_denref(q), 1U) == 0) {
+    r->type = AST_NUMBER;
+    mpz_init_set(r->data.number, mpq_numref(q));
+  } else {
+    r->type = AST_RATIONAL;
+    mpq_init(r->data.rational);
+    mpq_set(r->data.rational, q);
+  }
+  return r;
+}
+
+/* Initialize `out` and set it to the value of numeric node `n`. */
+static void lizard_num_to_mpq(const lizard_ast_node_t *n, mpq_t out) {
+  mpq_init(out);
+  if (n->type == AST_RATIONAL) {
+    mpq_set(out, n->data.rational);
+  } else {
+    mpq_set_z(out, n->data.number);
+  }
+}
+
+/* Three-way compare of two numeric nodes (-1/0/1), exact across int/rational. */
+static int lizard_num_cmp(const lizard_ast_node_t *a, const lizard_ast_node_t *b) {
+  int c;
+  mpq_t qa, qb;
+  if (a->type == AST_NUMBER && b->type == AST_NUMBER) {
+    return mpz_cmp(a->data.number, b->data.number);
+  }
+  lizard_num_to_mpq(a, qa);
+  lizard_num_to_mpq(b, qb);
+  c = mpq_cmp(qa, qb);
+  mpq_clear(qa);
+  mpq_clear(qb);
+  return c;
+}
+
 lizard_ast_node_t *lizard_primitive_plus(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
   lz_list_node_t *node;
   lizard_ast_list_node_t *arg_node;
   lizard_ast_node_t *arg, *result;
-  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
-  result->type = AST_NUMBER;
-  mpz_init(result->data.number);
-
   node = args->head;
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGC);
   }
+  { /* exact-rational path when any operand is a rational */
+    lz_list_node_t *s;
+    int any_rat = 0;
+    for (s = node; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+      if (a->type == AST_RATIONAL) any_rat = 1;
+    }
+    if (any_rat) {
+      mpq_t acc, t;
+      mpq_init(acc);
+      for (s = node; s != args->nil; s = s->next) {
+        lizard_num_to_mpq(((lizard_ast_list_node_t *)s)->ast, t);
+        mpq_add(acc, acc, t);
+        mpq_clear(t);
+      }
+      result = lizard_make_rational(heap, acc);
+      mpq_clear(acc);
+      return result;
+    }
+  }
+  result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  result->type = AST_NUMBER;
+  mpz_init(result->data.number);
   while (node != args->nil) {
     arg_node = (lizard_ast_list_node_t *)node;
     arg = arg_node->ast;
@@ -77,6 +146,37 @@ lizard_ast_node_t *lizard_primitive_minus(lz_list_t *args, lizard_env_t *env,
   node = args->head;
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGC);
+  }
+  { /* exact-rational path when any operand is a rational */
+    lz_list_node_t *s;
+    int any_rat = 0, idx = 0;
+    for (s = node; s != args->nil; s = s->next, idx++) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, idx == 0 ? LIZARD_ERROR_MINUS_ARGT
+                                                : LIZARD_ERROR_MINUS_ARGT_2);
+      if (a->type == AST_RATIONAL) any_rat = 1;
+    }
+    if (any_rat) {
+      mpq_t accq, t;
+      lizard_ast_node_t *r;
+      lizard_num_to_mpq(((lizard_ast_list_node_t *)node)->ast, accq);
+      s = node->next;
+      if (s == args->nil) {
+        mpq_neg(accq, accq);
+        r = lizard_make_rational(heap, accq);
+        mpq_clear(accq);
+        return r;
+      }
+      for (; s != args->nil; s = s->next) {
+        lizard_num_to_mpq(((lizard_ast_list_node_t *)s)->ast, t);
+        mpq_sub(accq, accq, t);
+        mpq_clear(t);
+      }
+      r = lizard_make_rational(heap, accq);
+      mpq_clear(accq);
+      return r;
+    }
   }
   first_arg_node = (lizard_ast_list_node_t *)node;
   arg = first_arg_node->ast;
@@ -125,6 +225,30 @@ lizard_ast_node_t *lizard_primitive_multiply(lz_list_t *args, lizard_env_t *env,
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGC);
   }
+  { /* exact-rational path when any operand is a rational */
+    lz_list_node_t *s;
+    int any_rat = 0;
+    for (s = node; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGT);
+      if (a->type == AST_RATIONAL) any_rat = 1;
+    }
+    if (any_rat) {
+      mpq_t accq, t;
+      lizard_ast_node_t *r;
+      mpq_init(accq);
+      mpq_set_ui(accq, 1U, 1U);
+      for (s = node; s != args->nil; s = s->next) {
+        lizard_num_to_mpq(((lizard_ast_list_node_t *)s)->ast, t);
+        mpq_mul(accq, accq, t);
+        mpq_clear(t);
+      }
+      r = lizard_make_rational(heap, accq);
+      mpq_clear(accq);
+      return r;
+    }
+  }
   first_arg_node = (lizard_ast_list_node_t *)node;
   acc = first_arg_node->ast;
   if (acc->type != AST_NUMBER) {
@@ -160,33 +284,40 @@ lizard_ast_node_t *lizard_primitive_multiply(lz_list_t *args, lizard_env_t *env,
 lizard_ast_node_t *lizard_primitive_divide(lz_list_t *args, lizard_env_t *env,
                                            lizard_heap_t *heap) {
   lz_list_node_t *node;
-  lizard_ast_list_node_t *first_arg_node, *arg_node;
-  lizard_ast_node_t *acc, *arg;
-
+  lizard_ast_node_t *arg, *result;
+  mpq_t accq, t;
+  int idx = 0;
+  (void)env;
   node = args->head;
   if (node == args->nil || node->next == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGC);
   }
-  first_arg_node = (lizard_ast_list_node_t *)node;
-  acc = first_arg_node->ast;
-  if (acc->type != AST_NUMBER) {
+  arg = ((lizard_ast_list_node_t *)node)->ast;
+  if (!lizard_num_like(arg)) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT);
   }
-  acc = lizard_make_number_copy(heap, acc);
-  node = node->next;
-  while (node != args->nil) {
-    arg_node = (lizard_ast_list_node_t *)node;
-    arg = arg_node->ast;
-    if (arg->type != AST_NUMBER) {
+  /* Exact division: accumulate over the rationals, dividing each in turn.
+   * Integer operands divide exactly into a reduced fraction (7/2), not a
+   * truncated quotient. */
+  lizard_num_to_mpq(arg, accq);
+  for (node = node->next; node != args->nil; node = node->next, idx++) {
+    arg = ((lizard_ast_list_node_t *)node)->ast;
+    if (!lizard_num_like(arg)) {
+      mpq_clear(accq);
       return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT_2);
     }
-    if (mpz_cmp_ui(arg->data.number, 0) == 0) {
+    if ((arg->type == AST_NUMBER && mpz_sgn(arg->data.number) == 0) ||
+        (arg->type == AST_RATIONAL && mpq_sgn(arg->data.rational) == 0)) {
+      mpq_clear(accq);
       return lizard_make_error(heap, LIZARD_ERROR_DIV_ZERO);
     }
-    mpz_tdiv_q(acc->data.number, acc->data.number, arg->data.number);
-    node = node->next;
+    lizard_num_to_mpq(arg, t);
+    mpq_div(accq, accq, t);
+    mpq_clear(t);
   }
-  return acc;
+  result = lizard_make_rational(heap, accq);
+  mpq_clear(accq);
+  return result;
 }
 
 int lizard_is_empty_list(lizard_ast_node_t *node) {
@@ -222,6 +353,8 @@ int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
   switch (a->type) {
   case AST_NUMBER:
     return (mpz_cmp(a->data.number, b->data.number) == 0);
+  case AST_RATIONAL:
+    return (mpq_cmp(a->data.rational, b->data.rational) == 0);
   case AST_SYMBOL:
     return (strcmp(a->data.variable, b->data.variable) == 0);
   case AST_BOOL:
@@ -359,11 +492,22 @@ lizard_ast_node_t *lizard_primitive_pow(lz_list_t *args, lizard_env_t *env,
   arg_node = CAST(args->head->next, lizard_ast_list_node_t);
   exp_node = arg_node->ast;
 
-  if (base_node->type != AST_NUMBER || exp_node->type != AST_NUMBER) {
+  if (!lizard_num_like(base_node) || exp_node->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_POW_ARGT);
   }
 
   exp = mpz_get_ui(exp_node->data.number);
+
+  if (base_node->type == AST_RATIONAL) {
+    /* (num/den)^exp = num^exp / den^exp (exp >= 0). */
+    mpq_t q;
+    mpq_init(q);
+    mpz_pow_ui(mpq_numref(q), mpq_numref(base_node->data.rational), exp);
+    mpz_pow_ui(mpq_denref(q), mpq_denref(base_node->data.rational), exp);
+    ret = lizard_make_rational(heap, q);
+    mpq_clear(q);
+    return ret;
+  }
 
   ret = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   ret->type = AST_NUMBER;
@@ -386,7 +530,7 @@ lizard_ast_node_t *lizard_primitive_lt(lz_list_t *args, lizard_env_t *env,
 
   arg_node = CAST(args->head, lizard_ast_list_node_t);
   prev = arg_node->ast;
-  if (prev->type != AST_NUMBER) {
+  if (!lizard_num_like(prev)) {
     return lizard_make_error(heap, LIZARD_ERROR_LT_ARGT);
   }
 
@@ -394,10 +538,10 @@ lizard_ast_node_t *lizard_primitive_lt(lz_list_t *args, lizard_env_t *env,
   while (node != args->nil) {
     arg_node = CAST(node, lizard_ast_list_node_t);
     current = arg_node->ast;
-    if (current->type != AST_NUMBER) {
+    if (!lizard_num_like(current)) {
       return lizard_make_error(heap, LIZARD_ERROR_LT_ARGT_2);
     }
-    cmp = mpz_cmp(prev->data.number, current->data.number);
+    cmp = lizard_num_cmp(prev, current);
     if (cmp >= 0) {
       return lizard_make_bool(heap, 0);
     }
@@ -420,7 +564,7 @@ lizard_ast_node_t *lizard_primitive_le(lz_list_t *args, lizard_env_t *env,
 
   arg_node = CAST(args->head, lizard_ast_list_node_t);
   prev = arg_node->ast;
-  if (prev->type != AST_NUMBER) {
+  if (!lizard_num_like(prev)) {
     return lizard_make_error(heap, LIZARD_ERROR_LE_ARGT);
   }
 
@@ -428,10 +572,10 @@ lizard_ast_node_t *lizard_primitive_le(lz_list_t *args, lizard_env_t *env,
   while (node != args->nil) {
     arg_node = CAST(node, lizard_ast_list_node_t);
     current = arg_node->ast;
-    if (current->type != AST_NUMBER) {
+    if (!lizard_num_like(current)) {
       return lizard_make_error(heap, LIZARD_ERROR_LE_ARGT_2);
     }
-    cmp = mpz_cmp(prev->data.number, current->data.number);
+    cmp = lizard_num_cmp(prev, current);
     if (cmp > 0) {
       return lizard_make_bool(heap, 0);
     }
@@ -454,7 +598,7 @@ lizard_ast_node_t *lizard_primitive_gt(lz_list_t *args, lizard_env_t *env,
 
   arg_node = CAST(args->head, lizard_ast_list_node_t);
   prev = arg_node->ast;
-  if (prev->type != AST_NUMBER) {
+  if (!lizard_num_like(prev)) {
     return lizard_make_error(heap, LIZARD_ERROR_GT_ARGT);
   }
 
@@ -462,10 +606,10 @@ lizard_ast_node_t *lizard_primitive_gt(lz_list_t *args, lizard_env_t *env,
   while (node != args->nil) {
     arg_node = CAST(node, lizard_ast_list_node_t);
     current = arg_node->ast;
-    if (current->type != AST_NUMBER) {
+    if (!lizard_num_like(current)) {
       return lizard_make_error(heap, LIZARD_ERROR_GT_ARGT_2);
     }
-    cmp = mpz_cmp(prev->data.number, current->data.number);
+    cmp = lizard_num_cmp(prev, current);
     if (cmp <= 0) {
       return lizard_make_bool(heap, 0);
     }
@@ -488,7 +632,7 @@ lizard_ast_node_t *lizard_primitive_ge(lz_list_t *args, lizard_env_t *env,
 
   arg_node = CAST(args->head, lizard_ast_list_node_t);
   prev = arg_node->ast;
-  if (prev->type != AST_NUMBER) {
+  if (!lizard_num_like(prev)) {
     return lizard_make_error(heap, LIZARD_ERROR_GE_ARGT);
   }
 
@@ -496,10 +640,10 @@ lizard_ast_node_t *lizard_primitive_ge(lz_list_t *args, lizard_env_t *env,
   while (node != args->nil) {
     arg_node = CAST(node, lizard_ast_list_node_t);
     current = arg_node->ast;
-    if (current->type != AST_NUMBER) {
+    if (!lizard_num_like(current)) {
       return lizard_make_error(heap, LIZARD_ERROR_GE_ARGT_2);
     }
-    cmp = mpz_cmp(prev->data.number, current->data.number);
+    cmp = lizard_num_cmp(prev, current);
     if (cmp < 0) {
       return lizard_make_bool(heap, 0);
     }
@@ -826,7 +970,69 @@ lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
     return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   }
   node_arg = (lizard_ast_list_node_t *)args->head;
-  return lizard_make_bool(heap, node_arg->ast->type == AST_NUMBER);
+  return lizard_make_bool(heap, lizard_num_like(node_arg->ast));
+}
+
+/* (rational? x) / (real? x) — every exact number here is a rational. */
+lizard_ast_node_t *lizard_primitive_rationalp(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      lizard_num_like(((lizard_ast_list_node_t *)args->head)->ast));
+}
+
+/* (integer? x) — true only for the canonical integer representation. */
+lizard_ast_node_t *lizard_primitive_integerp(lz_list_t *args,
+                                             lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_NUMBER);
+}
+
+/* (exact? x) — all numbers in lizard's tower are exact. */
+lizard_ast_node_t *lizard_primitive_exactp(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      lizard_num_like(((lizard_ast_list_node_t *)args->head)->ast));
+}
+
+/* (numerator q) — for an integer, itself; for n/d, n (as an integer). */
+lizard_ast_node_t *lizard_primitive_numerator(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *x, *r;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(x)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  r->type = AST_NUMBER;
+  if (x->type == AST_RATIONAL) mpz_init_set(r->data.number, mpq_numref(x->data.rational));
+  else mpz_init_set(r->data.number, x->data.number);
+  return r;
+}
+
+/* (denominator q) — for an integer, 1; for n/d, d (as an integer). */
+lizard_ast_node_t *lizard_primitive_denominator(lz_list_t *args,
+                                                lizard_env_t *env,
+                                                lizard_heap_t *heap) {
+  lizard_ast_node_t *x, *r;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  x = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(x)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  r = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  r->type = AST_NUMBER;
+  if (x->type == AST_RATIONAL) mpz_init_set(r->data.number, mpq_denref(x->data.rational));
+  else mpz_init_set_ui(r->data.number, 1U);
+  return r;
 }
 
 lizard_ast_node_t *lizard_primitive_symbolp(lz_list_t *args, lizard_env_t *env,
@@ -944,6 +1150,10 @@ lizard_ast_node_t *lizard_ast_deep_copy(lizard_ast_node_t *node,
   case AST_NUMBER:
     mpz_init(copy->data.number);
     mpz_set(copy->data.number, node->data.number);
+    break;
+  case AST_RATIONAL:
+    mpq_init(copy->data.rational);
+    mpq_set(copy->data.rational, node->data.rational);
     break;
   case AST_STRING:
     copy->data.string = lizard_heap_strdup(heap, node->data.string);
@@ -1549,9 +1759,22 @@ lizard_ast_node_t *name(lz_list_t *args, lizard_env_t *env, \
   return lizard_make_bool(heap, test); \
 }
 
-NUM_PRED(lizard_primitive_zerop,     mpz_sgn(a->data.number) == 0)
-NUM_PRED(lizard_primitive_positivep, mpz_sgn(a->data.number) > 0)
-NUM_PRED(lizard_primitive_negativep, mpz_sgn(a->data.number) < 0)
+/* Sign predicates accept rationals too (mpq_sgn); even?/odd? stay integer-only. */
+#define SGN_PRED(name, op) \
+lizard_ast_node_t *name(lz_list_t *args, lizard_env_t *env, \
+                         lizard_heap_t *heap) { \
+  lizard_ast_node_t *a; int sg; \
+  (void)env; \
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC); \
+  a = ((lizard_ast_list_node_t *)args->head)->ast; \
+  if (a->type == AST_NUMBER) sg = mpz_sgn(a->data.number); \
+  else if (a->type == AST_RATIONAL) sg = mpq_sgn(a->data.rational); \
+  else return lizard_make_bool(heap, 0); \
+  return lizard_make_bool(heap, sg op 0); \
+}
+SGN_PRED(lizard_primitive_zerop,     ==)
+SGN_PRED(lizard_primitive_positivep, >)
+SGN_PRED(lizard_primitive_negativep, <)
 NUM_PRED(lizard_primitive_evenp,     mpz_even_p(a->data.number))
 NUM_PRED(lizard_primitive_oddp,      mpz_odd_p(a->data.number))
 
@@ -1673,12 +1896,9 @@ lizard_ast_node_t *lizard_primitive_persistent(lz_list_t *args,
     int i;
     result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
     result->type = AST_PVEC;
-    result->data.pvec.count = count;
-    result->data.pvec.capacity = count;
-    result->data.pvec.entries = (lizard_ast_node_t **)
-        lizard_heap_alloc((size_t)count * sizeof(lizard_ast_node_t *));
+    lizard_pvec_init_empty(result);
     for (i = 0; i < count; i++) {
-      result->data.pvec.entries[i] = vec->data.vector.elements[i];
+      result = lizard_pvec_push(result, vec->data.vector.elements[i]);
     }
     return result;
   }
@@ -1767,15 +1987,29 @@ lizard_ast_node_t *lizard_primitive_arith_shift(lz_list_t *args, lizard_env_t *e
  * Uses mpz_pow_ui: GMP's optimised power routine, O(log exp). */
 lizard_ast_node_t *lizard_primitive_expt(lz_list_t *args, lizard_env_t *env,
                                          lizard_heap_t *heap) {
-  lizard_ast_node_t *b, *e, *err = NULL;
+  lizard_ast_node_t *b, *e;
   lizard_ast_node_t *result;
   unsigned long exp;
   (void)env;
-  if (!binary_numbers(args, heap, &b, &e, &err)) return err;
+  if (!two_args(args)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  b = ((lizard_ast_list_node_t *)args->head)->ast;
+  e = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (!lizard_num_like(b) || e->type != AST_NUMBER) {
+    return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  }
   if (mpz_sgn(e->data.number) < 0 || !mpz_fits_ulong_p(e->data.number)) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
   exp = mpz_get_ui(e->data.number);
+  if (b->type == AST_RATIONAL) {
+    mpq_t q;
+    mpq_init(q);
+    mpz_pow_ui(mpq_numref(q), mpq_numref(b->data.rational), exp);
+    mpz_pow_ui(mpq_denref(q), mpq_denref(b->data.rational), exp);
+    result = lizard_make_rational(heap, q);
+    mpq_clear(q);
+    return result;
+  }
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
   result->type = AST_NUMBER;
   mpz_init(result->data.number);
@@ -2718,6 +2952,12 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "string?", lizard_primitive_stringp);
   install_one(heap, env, "bool?",   lizard_primitive_boolp);
   install_one(heap, env, "number?", lizard_primitive_numberp);
+  install_one(heap, env, "rational?", lizard_primitive_rationalp);
+  install_one(heap, env, "real?",     lizard_primitive_rationalp);
+  install_one(heap, env, "integer?",  lizard_primitive_integerp);
+  install_one(heap, env, "exact?",    lizard_primitive_exactp);
+  install_one(heap, env, "numerator", lizard_primitive_numerator);
+  install_one(heap, env, "denominator", lizard_primitive_denominator);
   install_one(heap, env, "symbol?", lizard_primitive_symbolp);
   install_one(heap, env, "procedure?", lizard_primitive_procedurep);
   install_one(heap, env, "+",       lizard_primitive_plus);
@@ -2752,6 +2992,9 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "load",    lizard_primitive_load);
   /* Phase C: module loader. */
   install_one(heap, env, "import",            lizard_primitive_import);
+  install_one(heap, env, "lz:module",           lizard_primitive_pct_module);
+  install_one(heap, env, "lz:export",           lizard_primitive_pct_export);
+  install_one(heap, env, "lz:import",           lizard_primitive_pct_import);
   install_one(heap, env, "module-loaded?",    lizard_primitive_module_loadedp);
   install_one(heap, env, "module-search-path",lizard_primitive_module_search_path);
   install_one(heap, env, "add-module-path!",  lizard_primitive_add_module_path);
@@ -2786,11 +3029,16 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "syntax-e",         lizard_primitive_syntax_to_datum);
   install_one(heap, env, "syntax-source",    lizard_primitive_syntax_source);
   install_one(heap, env, "syntax?",          lizard_primitive_syntaxp);
+  install_one(heap, env, "macroexpand-1",    lizard_primitive_macroexpand1);
+  install_one(heap, env, "form-location",    lizard_primitive_form_location);
+  install_one(heap, env, "read-syntax",      lizard_primitive_read_syntax);
   /* Track C: persistent vectors. */
   install_one(heap, env, "pvec",             lizard_primitive_pvec);
   install_one(heap, env, "pvec-ref",         lizard_primitive_pvec_ref);
   install_one(heap, env, "pvec-set",         lizard_primitive_pvec_set);
   install_one(heap, env, "pvec-push",        lizard_primitive_pvec_push);
+  install_one(heap, env, "pvec-pop",         lizard_primitive_pvec_pop);
+  install_one(heap, env, "list->pvec",       lizard_primitive_list_to_pvec);
   install_one(heap, env, "pvec-count",       lizard_primitive_pvec_count);
   install_one(heap, env, "pvec->list",       lizard_primitive_pvec_to_list);
   install_one(heap, env, "pvec?",            lizard_primitive_pvecp);
@@ -2827,6 +3075,14 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   /* Track C: hash map utilities. */
   install_one(heap, env, "phash-values",     lizard_primitive_phash_values);
   install_one(heap, env, "phash-entries",    lizard_primitive_phash_entries);
+  install_one(heap, env, "phash-remove",     lizard_primitive_phash_remove);
+  install_one(heap, env, "pset",             lizard_primitive_pset);
+  install_one(heap, env, "pset-add",         lizard_primitive_pset_add);
+  install_one(heap, env, "pset-contains?",   lizard_primitive_pset_contains);
+  install_one(heap, env, "pset-remove",      lizard_primitive_pset_remove);
+  install_one(heap, env, "pset-count",       lizard_primitive_pset_count);
+  install_one(heap, env, "pset->list",       lizard_primitive_pset_to_list);
+  install_one(heap, env, "pset?",            lizard_primitive_psetp);
   /* Track C.4: atoms. */
   install_one(heap, env, "atom",             lizard_primitive_atom);
   install_one(heap, env, "deref",            lizard_primitive_deref);

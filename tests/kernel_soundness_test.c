@@ -572,6 +572,38 @@ int main(void) {
           kind_declare(heap, d, &decl) == 0);
   }
 
+  /* ---- cubical: Path types, the boundary, and path beta.  The boundary
+   * (p @ i0 = left endpoint) holds even for a neutral path, recovered from its
+   * type; an ill-typed path (mismatched endpoints) is rejected; path beta
+   * computes. ---- */
+  {
+    kterm_t *prefl = kt_plam(heap, "i", kt_zero(heap));
+    kterm_t *good = kt_path(heap, kt_nat(heap), kt_zero(heap), kt_zero(heap));
+    kterm_t *bad = kt_path(heap, kt_nat(heap), kt_zero(heap),
+                           kt_succ(heap, kt_zero(heap)));
+    check("cubical: plam i.0 : Path Nat 0 0 accepted",
+          kt_check(heap, ctx, prefl, good) == KERNEL_OK);
+    check("cubical: plam i.0 : Path Nat 0 1 rejected (endpoints)",
+          kt_check(heap, ctx, prefl, bad) != KERNEL_OK);
+  }
+  {
+    kctx_t *e = kctx_extend(heap, ctx, "p",
+                  kt_path(heap, kt_nat(heap), kt_zero(heap),
+                          kt_succ(heap, kt_zero(heap))), NULL);
+    kterm_t *goal = kt_id(heap, kt_nat(heap),
+                          kt_papp(heap, kt_var(heap, 0), kt_i0(heap)),
+                          kt_zero(heap));
+    check("cubical: neutral boundary p@i0 = left endpoint",
+          kt_check(heap, e, kt_refl(heap, kt_zero(heap)), goal) == KERNEL_OK);
+  }
+  {
+    kterm_t *idp = kt_plam(heap, "i", kt_var(heap, 0));     /* plam i. i */
+    kterm_t *goal = kt_id(heap, kt_interval(heap),
+                          kt_papp(heap, idp, kt_i1(heap)), kt_i1(heap));
+    check("cubical: path beta (plam i.i)@i1 = i1",
+          kt_check(heap, ctx, kt_refl(heap, kt_i1(heap)), goal) == KERNEL_OK);
+  }
+
   printf("kernel soundness: %d passed, %d failed\n", pass_count, fail_count);
   /* --- An opaque constant (axiom reference) with no definition context must
    * be rejected, not crash: kt_infer needs ctx->defs to resolve it, and a

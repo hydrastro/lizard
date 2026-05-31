@@ -1,4 +1,5 @@
 #include "printer.h"
+#include "pvector.h"
 #include <gmp.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,6 +26,11 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
   case AST_NUMBER:
     fprintf(fp, "Number: ");
     gmp_printf("%Zd", node->data.number);
+    fprintf(fp, "\n");
+    break;
+  case AST_RATIONAL:
+    fprintf(fp, "Rational: ");
+    gmp_printf("%Qd", node->data.rational);
     fprintf(fp, "\n");
     break;
   case AST_SYMBOL:
@@ -249,6 +255,9 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     return;
   case AST_NUMBER:
     gmp_fprintf(fp, "%Zd", node->data.number);
+    return;
+  case AST_RATIONAL:
+    gmp_fprintf(fp, "%Qd", node->data.rational);
     return;
   case AST_BOOL:
     fprintf(fp, "%s", node->data.boolean ? "#t" : "#f");
@@ -1059,11 +1068,11 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
     fprintf(fp, ">");
     return;
   case AST_PVEC: {
-    int pi;
+    int pi, pc = lizard_pvec_count(node);
     fprintf(fp, "#pvec(");
-    for (pi = 0; pi < node->data.pvec.count; pi++) {
+    for (pi = 0; pi < pc; pi++) {
       if (pi > 0) fprintf(fp, " ");
-      lizard_fprint_value(fp, node->data.pvec.entries[pi]);
+      lizard_fprint_value(fp, lizard_pvec_ref(node, pi));
     }
     fprintf(fp, ")");
     return;

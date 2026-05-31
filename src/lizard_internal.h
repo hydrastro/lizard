@@ -36,6 +36,7 @@ ___                     .-*''*-.
 typedef enum {
   AST_STRING,
   AST_NUMBER,
+  AST_RATIONAL,
   AST_SYMBOL,
   AST_BOOL,
   AST_PAIR,
@@ -565,6 +566,7 @@ struct lizard_ast_node {
     bool boolean;
     const char *string;
     mpz_t number;
+    mpq_t rational;  /* exact rational; canonical => denom > 1 */
     const char *variable;
     struct lizard_ast_node *quoted;
     struct {
@@ -1006,16 +1008,20 @@ struct lizard_ast_node {
       unsigned int *scopes;            /* scope set (array of scope ids) */
       int scope_count;                 /* number of scopes */
     } syntax;
-    /* Track C: persistent vector (32-way trie). */
+    /* Track C: persistent vector — 32-way bit-partitioned trie + tail
+     * (see src/pvector.c). root/tail are lizard_pvec_node_t* (opaque here). */
     struct {
-      lizard_ast_node_t **entries;     /* flat backing array (small vecs) */
-      int count;                       /* number of elements */
-      int capacity;                    /* allocated slots */
+      void *root;                      /* trie root holding tailoff elements */
+      void *tail;                      /* leaf holding the trailing elements */
+      int count;                       /* total number of elements */
+      int shift;                       /* root-level bit shift (multiple of 5) */
+      int tail_count;                  /* elements currently in the tail */
     } pvec;
     /* Track C: persistent hash-array mapped trie. */
     struct {
-      void *root;                      /* hamt_node_t* (opaque) */
+      void *root;                      /* lizard_hamt_node_t* (opaque) */
       int count;                       /* number of entries */
+      int is_set;                      /* 1 = persistent set, 0 = map */
     } hamt;
   } data;
 };
@@ -1032,6 +1038,12 @@ typedef struct lizard_heap_segment {
   struct lizard_heap_segment *next;
 } lizard_heap_segment_t;
 
+/* Phase 5: a per-size free list of reclaimed chunks. */
+struct lizard_free_bucket {
+  size_t size;
+  void *head;
+};
+
 struct lizard_heap {
   lizard_heap_segment_t *head;
   lizard_heap_segment_t *current;
@@ -1043,6 +1055,12 @@ struct lizard_heap {
   lizard_runtime_t *runtime;
   /* Phase 3B: per-object metadata side table. C-owned, non-moving. */
   lizard_gc_metadata_table_t *gc_metadata;
+  /* Phase 5: per-size free lists of swept (reclaimed) chunks for reuse.
+   * Each bucket links free chunks of one exact (aligned) size; the link
+   * pointer is stored in the first word of each free chunk. */
+  struct lizard_free_bucket *free_buckets;
+  size_t free_bucket_count;
+  size_t free_bucket_cap;
 };
 
 typedef struct lizard_env_entry {

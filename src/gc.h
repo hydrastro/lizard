@@ -41,6 +41,11 @@ void lizard_gc_collect_stats(lizard_heap_t *heap, lizard_env_t *env,
  * Does NOT move objects — no pointer updating needed. */
 size_t lizard_gc_collect(lizard_heap_t *heap, lizard_env_t *env);
 
+/* Phase 5: per-object, non-moving, conservative mark & sweep. Reclaims
+ * individual dead objects into per-size free lists for reuse (addresses of
+ * live objects are never changed). Returns the number of bytes reclaimed. */
+size_t lizard_gc_collect_objects(lizard_heap_t *heap, lizard_env_t *env);
+
 
 /* Phase 3B: non-invasive metadata side-table inspection. */
 void lizard_gc_metadata_stats(lizard_heap_t *heap,

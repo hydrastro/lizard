@@ -37,25 +37,24 @@ lizard_ast_node_t *lizard_primitive_gc(lz_list_t *args,
                                         lizard_env_t *env,
                                         lizard_heap_t *heap) {
   lizard_gc_stats_t before, after;
-  size_t freed;
+  size_t freed_bytes;
   lizard_ast_node_t *result;
   (void)args;
 
-  /* Stats before collection. */
+  /* Object-level stats before collection. */
   lizard_gc_collect_stats(heap, env, 1, &before);
 
-  /* Collect — frees dead segments. */
-  freed = lizard_gc_collect(heap, env);
+  /* Per-object, non-moving, conservative reclamation (Phase 5). */
+  freed_bytes = lizard_gc_collect_objects(heap, env);
 
   /* Stats after. */
   lizard_gc_collect_stats(heap, env, 1, &after);
 
   /* Build result alist. */
   result = lizard_make_nil(heap);
-  result = gc_cons(heap, gc_make_stat(heap, "freed-bytes",      (unsigned long)freed),                result);
-  result = gc_cons(heap, gc_make_stat(heap, "segments-after",   (unsigned long)after.total_segments), result);
-  result = gc_cons(heap, gc_make_stat(heap, "segments-before",  (unsigned long)before.total_segments),result);
-  result = gc_cons(heap, gc_make_stat(heap, "garbage",          (unsigned long)before.nodes_garbage), result);
-  result = gc_cons(heap, gc_make_stat(heap, "live",             (unsigned long)before.nodes_marked),  result);
+  result = gc_cons(heap, gc_make_stat(heap, "freed-bytes",     (unsigned long)freed_bytes),          result);
+  result = gc_cons(heap, gc_make_stat(heap, "live-after",      (unsigned long)after.nodes_marked),   result);
+  result = gc_cons(heap, gc_make_stat(heap, "live-before",     (unsigned long)before.nodes_marked),  result);
+  result = gc_cons(heap, gc_make_stat(heap, "garbage-before",  (unsigned long)before.nodes_garbage), result);
   return result;
 }
