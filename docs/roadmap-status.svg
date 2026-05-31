@@ -9,7 +9,7 @@
   </defs>
   <rect x="0" y="0" width="760" height="624" fill="#ffffff"/>
   <text class="title" x="32" y="42">Lizard - roadmap status</text>
-  <text class="sub" x="32" y="64">A C89 Scheme with a trusted dependent-type kernel and a proof-carrying CAS · 8 of 10 phases complete</text>
+  <text class="sub" x="32" y="64">A C89 Scheme with a trusted dependent-type kernel and a proof-carrying CAS · 9 of 10 phases complete</text>
   <text class="tier" x="32" y="100">COMPLETE - FOUNDATION</text>
   <g>
     <rect x="32"  y="110" width="160" height="50" rx="9" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.2"/>
@@ -43,25 +43,24 @@
     <text class="ph done" x="44" y="318">Phase 5 - Object-level GC</text>
     <text class="nm done" x="44" y="337">per-object conservative, non-moving mark &amp; sweep · reclaims into free lists · addresses stable · valgrind-clean</text>
   </g>
-  <text class="tier" x="32" y="384">IN PROGRESS</text>
+  <text class="tier" x="32" y="384">COMPLETE - NATIVE COMPILER</text>
   <g>
-    <rect x="32" y="394" width="676" height="58" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
-    <text class="ph prog" x="44" y="418">Phase 6 - Persistent data + concurrency</text>
-    <text class="nm prog" x="44" y="438">Immutable half DONE: persistent vector (trie) + HAMT maps &amp; sets, all with structural sharing · threads/STM next</text>
+    <rect x="32" y="394" width="676" height="58" rx="9" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.6"/>
+    <text class="ph done" x="44" y="416">Phase 9 - Native compiler (compile-to-C)</text>
+    <text class="nm done" x="44" y="434">Scheme subset to C reusing the runtime: full closures, proper TCO (trampoline), top-level mutual recursion</text>
+    <text class="new" x="44" y="448">differentially tested against the interpreter - 10/10 programs byte-identical</text>
   </g>
-  <text class="tier" x="32" y="484">PLANNED</text>
+  <text class="tier" x="32" y="484">IN PROGRESS</text>
   <g>
-    <rect x="32" y="494" width="676" height="54" rx="9" fill="#f1f5f9" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5 4"/>
-    <text class="ph plan" x="370" y="518" text-anchor="middle">Phase 9 - Native compiler</text>
-    <text class="nm plan" x="370" y="536" text-anchor="middle">the largest remaining effort</text>
+    <rect x="32" y="494" width="676" height="58" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
+    <text class="ph prog" x="44" y="518">Phase 6 - Persistent data + concurrency</text>
+    <text class="nm prog" x="44" y="538">Immutable half DONE: persistent vector (trie) + HAMT maps &amp; sets, structural sharing · cooperative concurrency next</text>
   </g>
   <g transform="translate(32,584)">
     <rect x="0"   y="0" width="14" height="14" rx="3" fill="#ccfbf1" stroke="#0f766e"/>
-    <text class="lg" x="20" y="11">Complete (8)</text>
+    <text class="lg" x="20" y="11">Complete (9)</text>
     <rect x="150" y="0" width="14" height="14" rx="3" fill="#fef3c7" stroke="#b45309"/>
     <text class="lg" x="170" y="11">In progress (1)</text>
-    <rect x="300" y="0" width="14" height="14" rx="3" fill="#f1f5f9" stroke="#64748b" stroke-dasharray="5 4"/>
-    <text class="lg" x="320" y="11">Planned (1)</text>
-    <text class="lg" x="446" y="11" fill="#64748b">+ exact rationals · object GC · persistent vector · verified integral</text>
+    <text class="lg" x="300" y="11" fill="#64748b">+ exact rationals · inexact reals · object GC · persistent vector · verified d/dx &amp; integral · native compiler</text>
   </g>
 </svg>

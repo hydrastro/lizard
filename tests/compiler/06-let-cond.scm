@@ -1,0 +1,7 @@
+(define (f n)
+  (cond ((and (>= n 0) (<= n 9)) (quote digit))
+        ((or (< n 0) (> n 1000)) (quote out))
+        (else (quote mid))))
+(display (f 5)) (display " ") (display (f -1)) (display " ") (display (f 500)) (newline)
+(display (let ((a 3) (b 4)) (let ((s (+ (* a a) (* b b)))) s))) (newline)
+(display (let ((x 10)) (let ((y (* x 2))) (let ((z (+ x y))) z)))) (newline)

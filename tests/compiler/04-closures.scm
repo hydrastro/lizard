@@ -1,0 +1,7 @@
+(define (make-counter start) (lambda (d) (+ start d)))
+(define c (make-counter 100))
+(display (c 5)) (display " ") (display (c 50)) (newline)
+(define (compose f g) (lambda (x) (f (g x))))
+(define inc (lambda (x) (+ x 1)))
+(define dbl (lambda (x) (* x 2)))
+(display ((compose inc dbl) 10)) (newline)

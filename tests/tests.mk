@@ -23,9 +23,13 @@ $(BUILD_DIR)/tests/%: $(TEST_DIR)/%.c $(TEST_HELPER_OBJ) $(LIB_STATIC) | $(BUILD
 	$(CC) $(CPPFLAGS) -I$(TEST_DIR) $(CFLAGS) $(LDFLAGS) -o $@ $< $(TEST_HELPER_OBJ) $(LIB_STATIC) $(LDLIBS)
 
 # Run a single Lisp golden test: <stem>.lisp + <stem>.expected.
-.PHONY: test test-c test-lisp
-test: test-c test-lisp
+.PHONY: test test-c test-lisp test-compiler
+test: test-c test-lisp test-compiler
 	@echo "All tests passed."
+
+# Phase 9 native compiler: differential tests (compiled output == interpreter).
+test-compiler: $(REPL_BIN) $(LIB_STATIC)
+	@$(RUN_ENV) ./scripts/run-compiler-tests.sh
 
 test-c: $(TEST_C_BINS) $(REPL_BIN)
 	@set -e; failures=0; total=0; \

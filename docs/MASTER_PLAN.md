@@ -1644,3 +1644,51 @@ the untrusted tower, and let each phase stand on its own.
 - Fixed the remaining surface-layer filename propagation gap from the current status recap: source filenames now survive tokenizer/source parsing, parser diagnostics, top-level AST spans, SurfaceTerm wrapping, syntax expansion, and expansion trace events.
 - Reconciled the Phase 3 audit scripts with the current tree: `kernel_sexp` is treated as the live AST→kernel bridge, report snapshot modules are explicitly C-owned, and `surface_term.h` now declares its public API dependency directly.
 - Cleaned the packaged tree of generated build artifacts and obvious wrong-project leftovers.
+
+### Phase 9 — native compiler (compile-to-C) [COMPLETE for a core subset]
+
+A from-scratch ahead-of-time compiler that translates a Scheme subset to C and
+reuses the lizard runtime. The compiled program links `liblizard.a` and is
+observably identical to the interpreter over the supported subset — so the
+correctness signal is *differential*: compiled output must match interpreted
+output byte-for-byte.
+
+- **Runtime (`src/lzrt.c` / `src/lzrt.h`, the only lizard header a generated
+  `.c` includes).** Compiled values are ordinary `lizard_ast_node_t *`, so the
+  C code reuses lizard's numeric tower (bignums, exact rationals, inexact
+  reals), all primitives, the value printer and the conservative GC. Provides:
+  literal constructors; `lzrt_global_ref` / `lzrt_define_global` (late-bound
+  global environment — this is what makes top-level mutual recursion work);
+  `lzrt_closure` (free vars copied into a GC-scanned heap array);
+  `lzrt_apply` (the trampoline *driver*); and `lzrt_tailcall` (sets a static
+  bounce register and returns a sentinel). Tail calls therefore run in constant
+  C stack — a 2,000,000-deep tail loop returns without overflowing.
+- **New AST node `AST_COMPILED_PROC`** (enum + union member): a compiled closure
+  is `{entry, freevars, nfree, arity, variadic}`, dispatched by `lzrt_apply`
+  with an arity check and variadic rest-collection.
+- **Compiler (`lib/compile/to-c.lisp`).** Written in Lisp, operating on the
+  program as quoted s-expression data (`program->c` → C source string). Does
+  closure conversion (captures = a lambda's free variables that are bound in an
+  enclosing scope; everything else is a global ref), lexical addressing
+  (parameters → `av[i]`, captures → `fv[j]`), and trampolined proper tail calls.
+  Codegen is C89-clean: every temporary is declared at the top of its function
+  and control flow uses nested blocks containing only statements.
+- **Supported subset (v1).** Integer / rational / real / boolean / string /
+  symbol / `()` and quoted-list literals; variable reference; `if`; `begin`;
+  `lambda` (fixed and rest args) with full closures; application with proper
+  tail calls; top-level `define` (mutual recursion via late global binding);
+  `set!` on locals/parameters; and the derived forms `let`, `let*`, `cond`,
+  `and`, `or`, `when`, `unless` (desugared — note `when`/`unless` work in
+  compiled output even though the bare interpreter lacks them).
+- **Honest limitations (out of v1).** User-defined macros; `call/cc`;
+  nested/internal `define` and `letrec` (use top-level `define` or `let`);
+  `set!` on a variable captured by another closure (no boxing yet); and the
+  compiled runtime does not auto-trigger GC (short programs allocate and exit).
+  None of these are in the kernel; the compiler is a non-trusted code generator.
+- **Differential test harness (`tests/compiler/*.scm` +
+  `scripts/run-compiler-tests.sh`, wired into `make ci` as `test-compiler`).**
+  Ten programs covering arithmetic, recursion (tail + non-tail), deep TCO,
+  closures, higher-order functions, `let`/`cond`/`and`/`or`, lists/quote,
+  strings, top-level mutual recursion, and exact rationals / inexact reals.
+  Each is interpreted, then compiled-and-run, and the two outputs are diffed.
+  Result: 10/10 byte-identical; CI green (C 100/100, Lisp 5/5, compiler 10/10).

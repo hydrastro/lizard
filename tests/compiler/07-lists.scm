@@ -1,0 +1,6 @@
+(define (len l) (if (null? l) 0 (+ 1 (len (cdr l)))))
+(define (rev l acc) (if (null? l) acc (rev (cdr l) (cons (car l) acc))))
+(display (quote (a b c))) (newline)
+(display (len (quote (1 2 3 4 5 6 7)))) (newline)
+(display (rev (quote (1 2 3 4 5)) (quote ()))) (newline)
+(display (cons 1 (cons 2 (cons 3 (quote ()))))) (newline)

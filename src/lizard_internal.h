@@ -54,6 +54,7 @@ typedef enum {
   AST_COND,
   AST_APPLICATION,
   AST_PRIMITIVE,
+  AST_COMPILED_PROC,
   AST_MACRO,
   AST_PROMISE,
   AST_CONTINUATION,
@@ -596,6 +597,17 @@ struct lizard_ast_node {
       lizard_ast_node_t *cdr;
     } pair;
     lizard_primitive_func_t primitive;
+    /* Phase 9: a natively-compiled procedure (see src/lzrt.c).  entry is the
+     * generated C function; freevars is a heap array of captured values that
+     * the conservative GC scans. */
+    struct {
+      lizard_ast_node_t *(*entry)(lizard_ast_node_t **freevars,
+                                  lizard_ast_node_t **argv, long argc);
+      lizard_ast_node_t **freevars;
+      int nfree;
+      int arity;     /* number of required parameters */
+      int variadic;  /* 1 => extra args collected into a list in the last slot */
+    } compiled;
     struct {
       lizard_ast_node_t *expr;
       lizard_env_t *env;
