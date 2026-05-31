@@ -64,6 +64,27 @@ lizard_ast_node_t *lzrt_cons(lizard_ast_node_t *a, lizard_ast_node_t *d) {
   return n;
 }
 
+/* ---- assignment-conversion boxes -------------------------------------- *
+ * A variable that is the target of set! and is captured by a closure must
+ * live in a shared, mutable cell so every closure observes the same value.
+ * A box is just a one-slot mutable cell (reusing AST_PAIR); the compiler
+ * wraps such a variable's binding in lzrt_box and routes reads/writes through
+ * lzrt_box_get / lzrt_box_set. */
+lizard_ast_node_t *lzrt_box(lizard_ast_node_t *v) {
+  lizard_ast_node_t *n = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  n->type = AST_PAIR;
+  n->data.pair.car = v;
+  n->data.pair.cdr = lzrt_nil();
+  return n;
+}
+lizard_ast_node_t *lzrt_box_get(lizard_ast_node_t *b) {
+  return b->data.pair.car;
+}
+lizard_ast_node_t *lzrt_box_set(lizard_ast_node_t *b, lizard_ast_node_t *v) {
+  b->data.pair.car = v;
+  return v;
+}
+
 /* ---- environment ---- */
 
 lizard_ast_node_t *lzrt_global_ref(const char *name) {

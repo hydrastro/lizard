@@ -20,10 +20,12 @@
 ; quoted list literals; variable reference; if; begin; lambda (fixed and rest
 ; args) with full closures; application (with proper tail calls); top-level
 ; define (mutual recursion works via late global binding); set! on
-; locals/parameters; and derived forms let, let*, cond, and, or, when, unless
-; (desugared).  Deliberately NOT in v1: user-defined macros, call/cc,
-; nested/internal define and letrec (use top-level define or let), and
-; set! on a variable captured by another closure (no boxing yet).
+; locals/parameters AND on variables captured by other closures (via
+; assignment conversion: set!-ed variables are heap-boxed so every closure
+; shares one mutable cell); internal/nested define and letrec, including
+; mutual recursion (desugared to a boxed letrec frame); and derived forms
+; let, let*, cond, and, or, when, unless (desugared).  Deliberately NOT in
+; v1: user-defined macros and call/cc.
 
 ; ----------------------------------------------------------------------------
 ;  small list helpers (cadr/caddr etc. are not primitives here)
@@ -39,6 +41,7 @@
 ; ----------------------------------------------------------------------------
 (define *ctr* (atom 0))
 (define *fns* (atom ""))
+(define *boxed* (atom '()))   ; names that are set!-ed (assignment conversion)
 
 (define (gensym prefix)
   (swap! *ctr* (lambda (n) (+ n 1)))
@@ -49,7 +52,24 @@
 
 (define (reset-compiler!)
   (swap! *ctr* (lambda (n) 0))
-  (swap! *fns* (lambda (s) "")))
+  (swap! *fns* (lambda (s) ""))
+  (swap! *boxed* (lambda (s) '())))
+
+(define (boxed? name) (mem? name (deref *boxed*)))
+
+; collect every variable that is the target of a set! anywhere in `expr`.
+; Boxing such variables (conservatively, by name) lets closures share one
+; mutable cell, so set! on a captured variable behaves like the interpreter.
+(define (set-vars-seq exprs acc)
+  (if (null? exprs) acc
+      (set-vars-seq (cdr exprs) (set-vars (car exprs) acc))))
+(define (set-vars expr acc)
+  (cond
+    ((not (pair? expr)) acc)
+    ((equal? (car expr) 'quote) acc)
+    ((equal? (car expr) 'set!)
+     (set-vars (caddr expr) (cons (cadr expr) acc)))
+    (else (set-vars-seq (cdr expr) (set-vars (car expr) acc)))))
 
 ; ----------------------------------------------------------------------------
 ;  C string-literal escaping (no char primitives, so iterate via substring)
@@ -149,6 +169,11 @@
                              (union (map car binds) bound)))))
     ((equal? (car expr) 'let*)
      (free-vars (let*->let expr) bound))
+    ((equal? (car expr) 'letrec)
+     (let ((binds (cadr expr)))
+       (let ((names (map car binds)))
+         (union (fv-list (map cadr binds) (union names bound))
+                (free-vars-seq (cddr expr) (union names bound))))))
     ((equal? (car expr) 'set!)
      (union (if (mem? (cadr expr) bound) '() (list (cadr expr)))
             (free-vars (caddr expr) bound)))
@@ -193,7 +218,10 @@
   (cond
     ((symbol? expr)
      (let ((b (assoc expr env)))
-       (if b (R "" "" (cdr b))
+       (if b
+           (if (boxed? expr)
+               (R "" "" (string-append "lzrt_box_get(" (cdr b) ")"))
+               (R "" "" (cdr b)))
            (R "" "" (string-append "lzrt_global_ref(\"" (symbol->string expr) "\")")))))
     ((not (pair? expr)) (R "" "" (lit->c expr)))
     ((equal? (car expr) 'quote) (R "" "" (quote->c (cadr expr))))
@@ -202,6 +230,7 @@
     ((equal? (car expr) 'lambda) (comp-lambda expr env))
     ((equal? (car expr) 'set!) (comp-set expr env))
     ((equal? (car expr) 'let) (comp (let->lambda expr) env tail))
+    ((equal? (car expr) 'letrec) (comp (letrec->lambda expr) env tail))
     ((equal? (car expr) 'let*) (comp (let*->let expr) env tail))
     ((equal? (car expr) 'cond) (comp (cond->if (cdr expr)) env tail))
     ((equal? (car expr) 'and) (comp-and (cdr expr) env tail))
@@ -218,6 +247,40 @@
   (let ((binds (cadr expr)) (body (cddr expr)))
     (cons (cons 'lambda (cons (map car binds) body))
           (map cadr binds))))
+
+; (letrec ((v e) ...) body...) desugars to a lambda whose params are the bound
+; names (so they share a frame), initialised to #f and then set! to their real
+; values — which is exactly why the names must be boxed (they are mutated and
+; captured).  We add them to *boxed* here so the assignment conversion fires.
+(define (letrec->lambda expr)
+  (let ((binds (cadr expr)) (body (cddr expr)))
+    (let ((names (map car binds)))
+      (swap! *boxed* (lambda (s) (append names s)))
+      (cons (cons 'lambda
+                  (cons names
+                        (append (map (lambda (b) (list 'set! (car b) (cadr b))) binds)
+                                body)))
+            (map (lambda (n) (list 'quote #f)) names)))))
+
+; (define (f a ...) body) -> (f (lambda (a ...) body)); (define x e) -> (x e)
+(define (define->binding d)
+  (let ((t (cadr d)))
+    (if (pair? t)
+        (list (car t) (cons 'lambda (cons (cdr t) (cddr d))))
+        (list t (caddr d)))))
+
+(define (split-defines body defs)
+  (if (and (pair? body) (pair? (car body)) (equal? (car (car body)) 'define))
+      (split-defines (cdr body) (cons (car body) defs))
+      (list (reverse defs) body)))
+
+; leading internal defines in a body become a letrec wrapping the rest
+(define (wrap-internal-defines body)
+  (let ((sp (split-defines body '())))
+    (let ((defs (car sp)) (rest (cadr sp)))
+      (if (null? defs)
+          body
+          (list (cons 'letrec (cons (map define->binding defs) rest)))))))
 
 (define (comp-if expr env tail)
   (let ((c (comp (cadr expr) env #f))) (let ((t (comp (caddr expr) env tail))) (let ((e (if (null? (cdddr expr))
@@ -271,9 +334,14 @@
         (v (comp (caddr expr) env #f)))
     (if (not b)
         (raise "compile: set! on a non-local (global) variable is not supported in v1")
-        (R (R-decls v)
-           (string-append (R-stmts v) "  " (cdr b) " = " (R-result v) ";\n")
-           "lzrt_bool(1)"))))
+        (if (boxed? (cadr expr))
+            (R (R-decls v)
+               (string-append (R-stmts v) "  lzrt_box_set(" (cdr b) ", "
+                              (R-result v) ");\n")
+               "lzrt_bool(1)")
+            (R (R-decls v)
+               (string-append (R-stmts v) "  " (cdr b) " = " (R-result v) ";\n")
+               "lzrt_bool(1)")))))
 
 ; build the argv element-assignment statements; returns (list decls stmts arrname)
 (define (args-each items i env arrname dacc sacc)
@@ -359,12 +427,22 @@
                      (string-append sacc "  " cap-arr "["
                                     (number->string i) "] = " (cdr b) ";\n")))))
 
+; at function entry, replace each set!-ed parameter's slot with a fresh box so
+; that closures capturing it share one mutable cell (assignment conversion).
+(define (rebox-params names i acc)
+  (if (null? names) acc
+      (rebox-params (cdr names) (+ i 1)
+                    (if (boxed? (car names))
+                        (string-append acc "  av[" (number->string i)
+                                       "] = lzrt_box(av[" (number->string i) "]);\n")
+                        acc))))
+
 (define (comp-lambda expr env)
   (let ((pinfo (parse-params (cadr expr))))
    (let ((pnames (car pinfo)))
     (let ((variadic (cadr pinfo)))
      (let ((arity (caddr pinfo)))
-      (let ((body (cddr expr)))
+      (let ((body (wrap-internal-defines (cddr expr))))
        (let ((bodyfree (free-vars-seq body pnames)))
         (let ((caps (filter (lambda (nm) (assoc nm env)) bodyfree)))
          (let ((fnname (gensym "fn_")))
@@ -378,6 +456,7 @@
                 "(lizard_ast_node_t **fv, lizard_ast_node_t **av, long ac) {\n"
                 (R-decls cbody)
                 "  (void)fv; (void)av; (void)ac;\n"
+                (rebox-params pnames 0 "")
                 (R-stmts cbody)
                 "  return " (R-result cbody) ";\n}\n\n"))
               (if (= ncaps 0)
@@ -437,6 +516,7 @@
 
 (define (program->c forms)
   (reset-compiler!)
+  (swap! *boxed* (lambda (s) (set-vars-seq forms '())))
   (let ((parts (tl-collect forms "" ""))) (let ((decls (car parts))) (let ((stmts (cadr parts))) (string-append
      c-preamble
      (deref *fns*)

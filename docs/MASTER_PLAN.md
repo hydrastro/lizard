@@ -1673,22 +1673,83 @@ output byte-for-byte.
   (parameters → `av[i]`, captures → `fv[j]`), and trampolined proper tail calls.
   Codegen is C89-clean: every temporary is declared at the top of its function
   and control flow uses nested blocks containing only statements.
-- **Supported subset (v1).** Integer / rational / real / boolean / string /
+- **Supported subset.** Integer / rational / real / boolean / string /
   symbol / `()` and quoted-list literals; variable reference; `if`; `begin`;
   `lambda` (fixed and rest args) with full closures; application with proper
   tail calls; top-level `define` (mutual recursion via late global binding);
-  `set!` on locals/parameters; and the derived forms `let`, `let*`, `cond`,
-  `and`, `or`, `when`, `unless` (desugared — note `when`/`unless` work in
-  compiled output even though the bare interpreter lacks them).
-- **Honest limitations (out of v1).** User-defined macros; `call/cc`;
-  nested/internal `define` and `letrec` (use top-level `define` or `let`);
-  `set!` on a variable captured by another closure (no boxing yet); and the
+  `set!` on locals, parameters, **and variables captured by other closures**;
+  **internal/nested `define` and `letrec`, including mutual recursion**; and
+  the derived forms `let`, `let*`, `cond`, `and`, `or`, `when`, `unless`
+  (desugared — note `when`/`unless` work in compiled output even though the
+  bare interpreter lacks them).
+- **Assignment conversion (boxing).** A variable that is the target of a
+  `set!` and is also captured by a closure cannot live as a copied free
+  variable — each closure would mutate its own copy. The compiler therefore
+  identifies every `set!`-ed name and heap-boxes it (a one-slot mutable cell,
+  `lzrt_box` / `lzrt_box_get` / `lzrt_box_set`): the binding holds the box,
+  reads and writes route through it, and closures capture the box *pointer*, so
+  all of them observe one shared cell — matching the interpreter exactly.
+  `letrec` and internal `define` desugar to a boxed frame (`(lambda (names…)
+  (set! name value)… body)` applied to placeholders), which is precisely why
+  mutual recursion between internal definitions resolves correctly.
+- **Honest limitations (out of v1).** User-defined macros; `call/cc`; and the
   compiled runtime does not auto-trigger GC (short programs allocate and exit).
   None of these are in the kernel; the compiler is a non-trusted code generator.
 - **Differential test harness (`tests/compiler/*.scm` +
   `scripts/run-compiler-tests.sh`, wired into `make ci` as `test-compiler`).**
-  Ten programs covering arithmetic, recursion (tail + non-tail), deep TCO,
+  Twelve programs covering arithmetic, recursion (tail + non-tail), deep TCO,
   closures, higher-order functions, `let`/`cond`/`and`/`or`, lists/quote,
-  strings, top-level mutual recursion, and exact rationals / inexact reals.
-  Each is interpreted, then compiled-and-run, and the two outputs are diffed.
-  Result: 10/10 byte-identical; CI green (C 100/100, Lisp 5/5, compiler 10/10).
+  strings, top-level mutual recursion, exact rationals / inexact reals,
+  shared mutable state across closures (assignment conversion), and internal
+  `define` with internal mutual recursion. Each is interpreted, then
+  compiled-and-run, and the two outputs are diffed. Result: 12/12
+  byte-identical; CI green (C 101/101, Lisp 5/5, compiler 12/12).
+
+### Phase 10 — interaction-combinator runtime: the syntax GRAPH [COMPLETE for a core fragment]
+
+The AST is no longer only a tree.  A lambda term can be compiled to an
+INTERACTION NET — a graph of agents wired port-to-port — and reduced by purely
+local graph rewriting.  This is the model behind Lafont's interaction
+combinators and the HVM / HigherOrderCO runtime (Taelin), reimplemented from
+scratch in C89 (no GPU/CUDA), with two innovations of our own.
+
+- **The engine (`src/inet.c` / `src/inet.h`).** A net is a heap of binary
+  AGENTS (CON, DUP, OPR, OP1), a set of VAR wire-slots, a pool of exact GMP
+  integers for NUM agents, and a stack of REDEXES (active pairs).  A Port is a
+  packed (tag, value).  `link` does wire-chasing substitution and pushes a
+  redex when it joins two principal ports; `interact` applies one rewrite;
+  `reduce` runs to normal form.  Two universal rules cover the pure fragment —
+  ANNIHILATE (same agent; CON~CON *is* beta-reduction, DUP~DUP merges wires)
+  and COMMUTE (different agents; this is how a DUP copies a function, i.e. how
+  sharing happens) — plus ERA erasure.  Sharing makes reduction Levy-optimal:
+  a duplicated function is reduced once, not once per use.
+- **Lambda front-end + readback.** A named-variable lambda calculus
+  (`inet_var/lam/app/num/op`) compiles to a net: each LAM is a CON node, each
+  application is a CON node (so λ meeting @ annihilates into beta), a variable
+  used k times fans out through a k-leaf DUP tree (fresh label per binder), and
+  an unused binder is wired to an ERA.  `inet_normalize_int` reduces and reads
+  back an integer — the observable used for testing.
+- **Two innovations over HVM2.** (1) Numbers are *exact GMP integers*, not
+  24-bit: `(* 10^12 10^12)` returns 10^24 from inside the net.  (2) The reducer
+  counts interactions, so sharing is measurable: Church numeral n applied to
+  `succ` costs a number of rewrites that is *linear* in n (≈7 per increment:
+  19, 40, 82 for n = 3, 6, 12), not exponential.
+- **Exposed to the surface language** (`src/primitives.c`): `(inet-normalize
+  '<term>)` reduces a quoted lambda term on the net and reads back an integer
+  (or #f); `(inet-cost '<term>)` returns the interaction count.  Grammar:
+  `int | symbol | (lambda (x ...) body) | (op a b) | (f a ...)`.
+- **Tests + example.** `tests/inet_test.c` builds terms through the C API and
+  checks results: exact arithmetic incl. a 10^24 bignum, I/K/S-style
+  combinators, a variable used twice (DUP), and Church numerals 0..20 applied
+  to `succ` (which forces `succ` to be duplicated and run n times).  After
+  read-back the net is fully consumed (< 8 live nodes).  `examples/149`
+  demonstrates the same from the REPL with a linear-cost sharing meter.
+- **Honest scope.** v1 reads back integers only (every test reduces to a
+  number); a full lambda read-back is future work.  Duplication uses one fresh
+  label per binder, which is correct for the stratified / EAL fragment
+  (combinators, Church numerals over a successor, arithmetic, sharing demos).
+  Nested same-label duplication — e.g. Church *exponentiation*, numerals
+  applied to numerals — needs careful label management or the oracle and is the
+  documented boundary, exactly as for HVM without explicit label control.  The
+  engine is a non-trusted evaluation backend; the dependent-type kernel is
+  untouched and `kernel_soundness_test` (64/64) remains the trust anchor.

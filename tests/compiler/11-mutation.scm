@@ -1,0 +1,21 @@
+; two closures sharing one mutable cell (assignment conversion / boxing)
+(define (make-pair)
+  (let ((n 10))
+    (cons (lambda () n) (lambda () (set! n (+ n 5))))))
+(define p (make-pair))
+((cdr p))
+((cdr p))
+(display ((car p))) (newline)
+; a counter that mutates its captured state
+(define (make-counter)
+  (let ((c 0)) (lambda () (set! c (+ c 1)) c)))
+(define k (make-counter))
+(display (k)) (display " ") (display (k)) (display " ") (display (k)) (newline)
+; independent counters must NOT share state
+(define k2 (make-counter))
+(display (k)) (display " ") (display (k2)) (newline)
+; an accumulator
+(define (make-acc)
+  (let ((sum 0)) (lambda (x) (set! sum (+ sum x)) sum)))
+(define a (make-acc))
+(display (a 10)) (display " ") (display (a 100)) (display " ") (display (a 1000)) (newline)

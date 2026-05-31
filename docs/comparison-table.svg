@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="617" viewBox="0 0 920 617" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<rect x="0" y="0" width="920" height="617" fill="#ffffff"/>
+<text x="26" y="44" font-size="22" font-weight="700" fill="#0f172a">Lizard vs existing systems - capability comparison</text>
+<text x="26" y="68" font-size="12.5" fill="#475569">What each system provides out of the box. A C89 Scheme that also carries a dependent-type kernel, a proof-carrying CAS, and an</text>
+<text x="26" y="86" font-size="12.5" fill="#475569">interaction-net (optimal-reduction) runtime is an unusual combination - no single column below matches the full set.</text>
+<text x="26" y="164" font-size="12" font-weight="600" fill="#64748b">CAPABILITY</text>
+<text x="395" y="164" font-size="12.5" font-weight="700" fill="#0f172a" text-anchor="middle">Lizard</text>
+<text x="542" y="164" font-size="12.5" font-weight="700" fill="#334155" text-anchor="middle">HVM2 / Kind</text>
+<text x="689" y="158" font-size="12.5" font-weight="700" fill="#334155" text-anchor="middle">Typical Scheme</text>
+<text x="689" y="172" font-size="12.5" font-weight="700" fill="#334155" text-anchor="middle">(R7RS, Chez)</text>
+<text x="836" y="164" font-size="12.5" font-weight="700" fill="#334155" text-anchor="middle">Coq / Lean / Agda</text>
+<rect x="319" y="144" width="153" height="417" rx="8" fill="none" stroke="#0f766e" stroke-width="1.6"/>
+<rect x="26" y="184" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="205" font-size="12" fill="#334155">Dependent-type kernel (small, trusted)</text>
+<rect x="330" y="189" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="206" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="189" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="542" y="206" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<rect x="624" y="189" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="689" y="206" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="771" y="189" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="836" y="206" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<text x="26" y="238" font-size="12" fill="#334155">Cubical / HoTT (paths, univalence)</text>
+<rect x="330" y="222" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="239" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="222" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="239" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="222" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="689" y="239" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="771" y="222" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="836" y="239" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<rect x="26" y="250" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="271" font-size="12" fill="#334155">Proof-carrying CAS (verified d/dx, integral)</text>
+<rect x="330" y="255" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="272" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="255" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="272" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="255" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="689" y="272" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="771" y="255" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="836" y="272" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<text x="26" y="304" font-size="12" fill="#334155">Exact rationals + inexact-real tower</text>
+<rect x="330" y="288" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="305" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="288" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="305" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="288" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="689" y="305" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="771" y="288" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="836" y="305" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="26" y="316" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="337" font-size="12" fill="#334155">Arbitrary-precision integers (bignum)</text>
+<rect x="330" y="321" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="338" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="321" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="338" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="321" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="689" y="338" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="771" y="321" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="836" y="338" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<text x="26" y="370" font-size="12" fill="#334155">Object-level garbage collection</text>
+<rect x="330" y="354" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="371" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="354" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="371" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="354" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="689" y="371" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="771" y="354" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="836" y="371" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="26" y="382" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="403" font-size="12" fill="#334155">Persistent data (HAMT + vector trie)</text>
+<rect x="330" y="387" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="404" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="387" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="404" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="387" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="689" y="404" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<rect x="771" y="387" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="836" y="404" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<text x="26" y="436" font-size="12" fill="#334155">Hygienic macros</text>
+<rect x="330" y="420" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="437" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="420" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="437" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="420" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="689" y="437" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="771" y="420" width="131" height="23" rx="6" fill="#fef3c7"/>
+<text x="836" y="437" font-size="14" font-weight="700" fill="#b45309" text-anchor="middle">~</text>
+<rect x="26" y="448" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="469" font-size="12" fill="#334155">Native compiler (ahead-of-time to C)</text>
+<rect x="330" y="453" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="470" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="453" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="542" y="470" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="624" y="453" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="689" y="470" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="771" y="453" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="836" y="470" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<text x="26" y="502" font-size="12" fill="#334155">Interaction-net / optimal reduction core</text>
+<rect x="330" y="486" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="503" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="486" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="542" y="503" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="624" y="486" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="689" y="503" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="771" y="486" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="836" y="503" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="26" y="514" width="884" height="33" fill="#fafafa"/>
+<text x="26" y="535" font-size="12" fill="#334155">Exact bignum arithmetic inside that core</text>
+<rect x="330" y="519" width="131" height="23" rx="6" fill="#ccfbf1"/>
+<text x="395" y="536" font-size="14" font-weight="700" fill="#0f766e" text-anchor="middle">✓</text>
+<rect x="477" y="519" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="542" y="536" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="624" y="519" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="689" y="536" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="771" y="519" width="131" height="23" rx="6" fill="#f1f5f9"/>
+<text x="836" y="536" font-size="14" font-weight="700" fill="#94a3b8" text-anchor="middle">✕</text>
+<rect x="26" y="564" width="13" height="13" rx="3" fill="#ccfbf1"/><text x="45" y="575" font-size="11.5" fill="#334155">built in</text>
+<rect x="146" y="564" width="13" height="13" rx="3" fill="#fef3c7"/><text x="165" y="575" font-size="11.5" fill="#334155">partial / via libraries</text>
+<rect x="326" y="564" width="13" height="13" rx="3" fill="#f1f5f9"/><text x="345" y="575" font-size="11.5" fill="#334155">not provided</text>
+<text x="26" y="597" font-size="10.5" fill="#94a3b8">Comparison reflects built-in capabilities; mature ecosystems can add many rows via libraries. Lizard is research-grade.</text>
+</svg>

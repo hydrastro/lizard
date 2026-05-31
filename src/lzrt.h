@@ -31,6 +31,9 @@ lizard_ast_node_t *lzrt_nil(void);
 lizard_ast_node_t *lzrt_string(const char *s);
 lizard_ast_node_t *lzrt_symbol(const char *s);
 lizard_ast_node_t *lzrt_cons(lizard_ast_node_t *a, lizard_ast_node_t *d);
+lizard_ast_node_t *lzrt_box(lizard_ast_node_t *v);
+lizard_ast_node_t *lzrt_box_get(lizard_ast_node_t *b);
+lizard_ast_node_t *lzrt_box_set(lizard_ast_node_t *b, lizard_ast_node_t *v);
 
 /* ---- environment ---- */
 /* Look up a global/primitive by name (top-level reference). Errors if unbound. */

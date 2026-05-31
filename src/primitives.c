@@ -2,6 +2,7 @@
 #include <math.h>
 #include <float.h>
 #include "pvector.h"
+#include "inet.h"
 #include "prims_shared.h"
 #include "env.h"
 #include "errors.h"
@@ -3292,7 +3293,157 @@ int lizard_rule_on(const char *name) {
 
 
 
+/* ------------------------------------------------------------------------
+ * Phase 10: interaction-net evaluator, exposed to the surface language.
+ *
+ *   (inet-normalize '<term>)  reduce a lambda term on the interaction net and
+ *                             read back an integer (or #f if it is not one).
+ *   (inet-cost '<term>)       the number of graph rewrites (interactions) the
+ *                             reduction took — a direct measure of sharing.
+ *
+ * Surface term grammar (a quoted datum):
+ *   integer | symbol | (lambda (x ...) body) | (op a b) | (f a ...)
+ * where op is one of + - * / % = < > .  The parser lowers this to inet_term_t
+ * and the engine (src/inet.c) does the rest.
+ * ---------------------------------------------------------------------- */
+static int lz_inet_opcode(const char *s) {
+  if (strcmp(s, "+") == 0) return INET_ADD;
+  if (strcmp(s, "-") == 0) return INET_SUB;
+  if (strcmp(s, "*") == 0) return INET_MUL;
+  if (strcmp(s, "/") == 0) return INET_DIV;
+  if (strcmp(s, "%") == 0) return INET_MOD;
+  if (strcmp(s, "=") == 0) return INET_EQ;
+  if (strcmp(s, "<") == 0) return INET_LT;
+  if (strcmp(s, ">") == 0) return INET_GT;
+  return -1;
+}
+
+static lizard_ast_node_t *lz_inet_nth(lizard_ast_node_t *lst, int k) {
+  while (k > 0 && lst != NULL && lst->type == AST_PAIR) {
+    lst = lst->data.pair.cdr;
+    k--;
+  }
+  if (lst != NULL && lst->type == AST_PAIR) return lst->data.pair.car;
+  return NULL;
+}
+
+static inet_term_t *lz_inet_parse(lizard_ast_node_t *t) {
+  if (t == NULL) return NULL;
+  if (t->type == AST_NUMBER) return inet_num_z(t->data.number);
+  if (t->type == AST_SYMBOL) return inet_var(t->data.variable);
+  if (t->type == AST_PAIR) {
+    lizard_ast_node_t *head = t->data.pair.car;
+    if (head != NULL && head->type == AST_SYMBOL) {
+      const char *h = head->data.variable;
+      int opc;
+      if (strcmp(h, "lambda") == 0) {
+        lizard_ast_node_t *params = lz_inet_nth(t, 1);
+        lizard_ast_node_t *bodyn = lz_inet_nth(t, 2);
+        inet_term_t *body;
+        const char *names[64];
+        int n = 0, i;
+        if (bodyn == NULL) return NULL;
+        while (params != NULL && params->type == AST_PAIR && n < 64) {
+          lizard_ast_node_t *p = params->data.pair.car;
+          if (p == NULL || p->type != AST_SYMBOL) return NULL;
+          names[n++] = p->data.variable;
+          params = params->data.pair.cdr;
+        }
+        if (n == 0) return NULL;
+        body = lz_inet_parse(bodyn);
+        if (body == NULL) return NULL;
+        for (i = n - 1; i >= 0; i--) body = inet_lam(names[i], body);
+        return body;
+      }
+      opc = lz_inet_opcode(h);
+      if (opc >= 0) {
+        lizard_ast_node_t *l = lz_inet_nth(t, 1);
+        lizard_ast_node_t *r = lz_inet_nth(t, 2);
+        inet_term_t *lt, *rt;
+        if (l == NULL || r == NULL) return NULL;
+        lt = lz_inet_parse(l);
+        rt = lz_inet_parse(r);
+        if (lt == NULL || rt == NULL) {
+          inet_term_free(lt);
+          inet_term_free(rt);
+          return NULL;
+        }
+        return inet_op(opc, lt, rt);
+      }
+    }
+    {
+      /* application: (f a b ...) folds left */
+      inet_term_t *acc = lz_inet_parse(t->data.pair.car);
+      lizard_ast_node_t *r = t->data.pair.cdr;
+      if (acc == NULL) return NULL;
+      while (r != NULL && r->type == AST_PAIR) {
+        inet_term_t *arg = lz_inet_parse(r->data.pair.car);
+        if (arg == NULL) {
+          inet_term_free(acc);
+          return NULL;
+        }
+        acc = inet_app(acc, arg);
+        r = r->data.pair.cdr;
+      }
+      return acc;
+    }
+  }
+  return NULL;
+}
+
+static lizard_ast_node_t *lz_inet_run(lz_list_t *args, lizard_heap_t *heap,
+                                      int want_cost) {
+  lizard_ast_list_node_t *node;
+  lizard_ast_node_t *out;
+  inet_term_t *t;
+  mpz_t res;
+  long inter = 0;
+  int st;
+  if (args->head == args->nil || args->head->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_INVALID_PARAMETER);
+  }
+  node = (lizard_ast_list_node_t *)args->head;
+  t = lz_inet_parse(node->ast);
+  if (t == NULL) return lizard_make_bool(heap, false);
+  mpz_init(res);
+  st = inet_normalize_int(t, res, &inter);
+  inet_term_free(t);
+  if (want_cost) {
+    mpz_clear(res);
+    if (st < 0) return lizard_make_bool(heap, false);
+    out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    out->type = AST_NUMBER;
+    mpz_init_set_si(out->data.number, inter);
+    return out;
+  }
+  if (st != 1) {
+    mpz_clear(res);
+    return lizard_make_bool(heap, false);
+  }
+  out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  out->type = AST_NUMBER;
+  mpz_init_set(out->data.number, res);
+  mpz_clear(res);
+  return out;
+}
+
+static lizard_ast_node_t *lizard_primitive_inet_normalize(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
+  (void)env;
+  return lz_inet_run(args, heap, 0);
+}
+
+static lizard_ast_node_t *lizard_primitive_inet_cost(lz_list_t *args,
+                                              lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  (void)env;
+  return lz_inet_run(args, heap, 1);
+}
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
+  install_one(heap, env, "inet-normalize", lizard_primitive_inet_normalize);
+  install_one(heap, env, "inet-cost",      lizard_primitive_inet_cost);
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
   install_one(heap, env, "string?", lizard_primitive_stringp);
