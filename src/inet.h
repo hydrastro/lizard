@@ -68,6 +68,15 @@ void inet_term_free(inet_term_t *t);
  * or -1 on resource exhaustion.  `out` must be an initialised mpz_t. */
 int inet_normalize_int(inet_term_t *t, mpz_t out, long *interactions);
 
+/* Reduce `t` to normal form and read the result back as a lambda term written
+ * in de Bruijn notation: variables "#k" (0 = innermost binder), applications
+ * "(f a)", abstractions "(lam body)", and integers in decimal.  Writes a
+ * NUL-terminated string into `buf` (capacity `cap`).  Returns 1 on success,
+ * 0 if the normal form is not representable (residual operator, or the buffer
+ * was too small), or -1 on resource exhaustion.  Correct for closed normal
+ * forms in the stratified fragment compiled by the front-end. */
+int inet_readback(inet_term_t *t, char *buf, size_t cap, long *interactions);
+
 /* Number of agent nodes still live after the last reduction (for tests). */
 long inet_live_nodes(void);
 

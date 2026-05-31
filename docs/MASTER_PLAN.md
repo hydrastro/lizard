@@ -909,7 +909,9 @@ party.  `lib/macros.lisp`, `lib/macro-stepper.lisp`, `lib/contract.lisp`, and
   is **explicit** via `(gc)`; no automatic collect-on-allocation yet.  (3) Being
   conservative, it can retain a little genuine garbage.  Net: Phase 5's done-when
   (reclaims individual objects, addresses stable, no `make ci` regressions) is
-  met, and the real-threads half of Phase 6 is unblocked.
+  met, and Phase 6's remaining concurrency work proceeded on the cooperative
+  model (OS-level threads being out of scope under the build's no-threads
+  constraint — see Phase 6).
 
 ### Phase 6 — persistent vector becomes a bit-partitioned trie
 - **What landed.**  The persistent **vector** was upgraded from a flat
@@ -1403,7 +1405,7 @@ context hardening.
   little genuine garbage (values on the stack that merely look like pointers).
   This unblocks the real-threads half of Phase 6.
 
-### Phase 6 — Persistent data + concurrency  ⏳ IN PROGRESS (persistent structures landed)
+### Phase 6 — Persistent data + concurrency  ✅ COMPLETE (cooperative model)
 - **Goal:** your DS library becomes the runtime substrate; then threads.
 - **Items:** promote persistent vector / HAMT map+set / transients /
   atoms / refs+STM / futures into the runtime with §3.4 sharing rules
@@ -1436,6 +1438,51 @@ context hardening.
   at the node level in `tests/pvector_test.c`; `examples/146`).  New surface:
   `pvec-pop`, `list->pvec`.  So vectors, maps, and sets now all have the same
   structural-sharing guarantee — the immutable-data half of Phase 6 is complete.
+
+- **Concurrency half — landed as a sound COOPERATIVE model.** The original
+  "done when" above was written around OS-level threads (two contexts on two
+  threads sharing a map).  That target is *unreachable under this project's own
+  hard build constraint*: the Makefile compiles with `-pedantic-errors`, which
+  rejects `__thread` and the pthreads headers, and `call/cc` is escape-only, so
+  there is no portable way to get either preemptive threads or resumable
+  continuations.  The principled substitute — and the only model that is
+  actually *sound* here — is **cooperative single-threaded scheduling**, which
+  is now complete:
+  - **Effect-based processes** (`lib/coroutine.lisp`): a process is a
+    step-function returning an effect — `(co-done v)`, `(co-yield v k)`,
+    `(co-send ch v k)`, `(co-recv ch k)` — that a trampoline scheduler
+    interprets, parking a blocked receiver and waking it on a matching send.
+  - **The CSP capstone** (`lib/csp-select.lisp`): adds `(co-select alts)` — the
+    defining CSP/Go choice over several channel operations, committing to the
+    first ready alternative or parking a *cancellable* waiter on every receive
+    channel until one fires — plus `(co-fork child k)` for structured spawning,
+    and **deadlock detection**: the scheduler counts live (spawned-but-
+    unfinished) processes, so a drained ready queue with live > 0 is reported as
+    `(deadlock results live)` rather than hanging silently.
+  - **A representation lesson, fixed honestly.** The interpreter copies compound
+    values placed inside other structures, so a mutable cell (atom) carried
+    *inside* an effect step is duplicated and the two ends silently stop sharing
+    state.  Channels are therefore **integer handles into one shared registry**
+    (integers copy harmlessly; the registry atom is reached directly, never
+    nested in an effect), and a select's commit flag is likewise a registry-free
+    integer id tracked in one top-level "committed" set.  This makes send/receive
+    correct regardless of scheduling order (buffered-send-then-later-receive
+    still rendezvous), which a naive atom-in-channel design got wrong.
+  - **Also in the cooperative substrate:** atoms with `swap!`/CAS
+    (`lib/concurrent.lisp`), software-transactional `ref`s with optimistic
+    validation and retry (`lib/stm.lisp`), compute-once futures, and actor-style
+    agents (`lib/csp.lisp`).
+  - **Verified.** `examples/151` is self-checking on scheduling-INDEPENDENT
+    properties (a pipeline sum, two select fan-in sums computed both
+    producers-first and merger-first, a fork/join sum, and the deadlock verdict
+    with its blocked count); `tests/csp_select.lisp` is a golden CI test
+    (deterministic sums / counts / verdict) — Lisp suite now 6/6.  The earlier
+    cooperative examples (`89`, `112`, `117`, `121`) continue to pass.
+  - **Honest scope.** This is *concurrency* (interleaved logical processes that
+    synchronize through channels), not *parallelism* (simultaneous execution on
+    multiple cores).  True multicore would need the thread support the build
+    constraint forbids; it is explicitly out of scope, and the scheduler is a
+    non-trusted library feature outside the kernel.
   Also future: upgrade the persistent *vector* from copy-on-write to a
   bit-partitioned trie for the same sharing guarantee.
 
@@ -1728,7 +1775,22 @@ scratch in C89 (no GPU/CUDA), with two innovations of our own.
   application is a CON node (so λ meeting @ annihilates into beta), a variable
   used k times fans out through a k-leaf DUP tree (fresh label per binder), and
   an unused binder is wired to an ERA.  `inet_normalize_int` reduces and reads
-  back an integer — the observable used for testing.
+  back an integer — the original observable used for testing.
+- **Full normal-form read-back (`inet_readback`).** Reading back only an
+  integer throws away most of what the net computed.  `inet_readback` rebuilds
+  the entire normal form as a lambda term in de Bruijn notation: `#k` for a
+  bound variable (0 = innermost binder), `(lam b)` for an abstraction, `(f a)`
+  for an application, decimals for numbers.  The obstacle is that the reducer
+  stores each wire one-directionally (a variable use cannot find its binder),
+  so after reduction we build a **bidirectional partner snapshot** — one
+  O(nodes) pass that records, for every port, the port at the other end — and
+  then walk it: a CON reached through its principal is an abstraction, a CON
+  whose aux2 is the output is an application, a wire arriving at a lambda's
+  aux1 is a bound-variable occurrence, and a DUP is followed through its
+  principal toward the binder so every occurrence of a shared variable reads
+  back to the *same* index.  This turns the graph machine into a lambda
+  evaluator you can actually observe: `S K K` reduces on the graph and reads
+  back as `(lam #0)`, and `PLUS 2 3` reads back as Church 5.
 - **Two innovations over HVM2.** (1) Numbers are *exact GMP integers*, not
   24-bit: `(* 10^12 10^12)` returns 10^24 from inside the net.  (2) The reducer
   counts interactions, so sharing is measurable: Church numeral n applied to
@@ -1736,20 +1798,31 @@ scratch in C89 (no GPU/CUDA), with two innovations of our own.
   19, 40, 82 for n = 3, 6, 12), not exponential.
 - **Exposed to the surface language** (`src/primitives.c`): `(inet-normalize
   '<term>)` reduces a quoted lambda term on the net and reads back an integer
-  (or #f); `(inet-cost '<term>)` returns the interaction count.  Grammar:
+  (or #f); `(inet-reduce '<term>)` reduces and reads back the whole normal form
+  as a de Bruijn lambda-term string (or #f if not representable, see boundary);
+  `(inet-cost '<term>)` returns the interaction count.  Grammar:
   `int | symbol | (lambda (x ...) body) | (op a b) | (f a ...)`.
 - **Tests + example.** `tests/inet_test.c` builds terms through the C API and
   checks results: exact arithmetic incl. a 10^24 bignum, I/K/S-style
   combinators, a variable used twice (DUP), and Church numerals 0..20 applied
-  to `succ` (which forces `succ` to be duplicated and run n times).  After
-  read-back the net is fully consumed (< 8 live nodes).  `examples/149`
-  demonstrates the same from the REPL with a linear-cost sharing meter.
-- **Honest scope.** v1 reads back integers only (every test reduces to a
-  number); a full lambda read-back is future work.  Duplication uses one fresh
-  label per binder, which is correct for the stratified / EAL fragment
-  (combinators, Church numerals over a successor, arithmetic, sharing demos).
-  Nested same-label duplication — e.g. Church *exponentiation*, numerals
-  applied to numerals — needs careful label management or the oracle and is the
-  documented boundary, exactly as for HVM without explicit label control.  The
-  engine is a non-trusted evaluation backend; the dependent-type kernel is
-  untouched and `kernel_soundness_test` (64/64) remains the trust anchor.
+  to `succ` (which forces `succ` to be duplicated and run n times).  It also
+  asserts exact READ-BACK strings — identity, K, Church 2/3, `S K K`, and
+  `PLUS 2 3` — and asserts that the compound-sharing boundary (below) *refuses*
+  rather than emits a wrong term.  After read-back the net is fully consumed
+  (< 8 live nodes).  `examples/149` demonstrates reduction + the linear-cost
+  sharing meter; `examples/150` demonstrates full lambda read-back.
+- **Honest scope.** Read-back is general for closed normal forms in the
+  stratified / EAL fragment the front-end targets: combinators, Church
+  numerals as terms, and Church *addition* (`PLUS 2 3` → Church 5) all read
+  back exactly.  Duplication uses one fresh label per binder, which is correct
+  there.  The boundary is a BARE normal form that retains residual sharing of
+  a *compound* subterm — Church *multiplication* (`MUL 2 3` as a term) or
+  self-application like `(2 2)` — whose net keeps DUP nodes that are not in
+  active-pair position; faithfully expanding that sharing into a tree needs the
+  labelled-dup (bracket) bookkeeping of optimal reduction, which the reader
+  does not do, so it returns #f.  The refusal is *safe and verified*: the same
+  term still reduces to the correct value on demand (`MUL 2 3` applied to
+  `succ`/0 = 6), and a wrong term is never printed.  This is the same
+  boundary HVM hits without explicit label control.  The engine is a
+  non-trusted evaluation backend; the dependent-type kernel is untouched and
+  `kernel_soundness_test` (64/64) remains the trust anchor.

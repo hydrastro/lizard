@@ -1,0 +1,9 @@
+1/3*x^3 + C
+1/2 * log(x - 1) + -1/2 * log(x + 1) + C
+1/2*x^2 + 1/2 * log(x - 1) + 1/2 * log(x + 1) + C
+(-1)/(x - 1) + C
+arctan(x) + C
+2/sqrt(3) * arctan((2*x + 1)/sqrt(3)) + C
+-1/2 * log(x^2 + 1) + log(x) + C
+-9/10 * log(x^2 + 4) + 9/5 * log(x - 1) + 8/5 * arctan(1/2*x) + C
+<no elementary form over Q by current method>

@@ -1,0 +1,21 @@
+x = 3
+x = 2
+--
+x = sqrt(2)
+x = -sqrt(2)
+--
+x = i
+x = -i
+--
+x = -1/2 + 1/2*sqrt(5)
+x = -1/2 - 1/2*sqrt(5)
+--
+x = RootOf(x^3 - 2)  [3 roots, 1 real]
+--
+x = RootOf(x^4 - 10*x^2 + 1)  [4 roots, 4 real]
+--
+res(x^2-1,x^2-4) = 9
+disc(x^2-2) = 8
+disc(x^3-2) = -108
+realroots(x^4-10x^2+1) = 4
+RT-res(1/(x^2-1)) = -4*z^2 + 1

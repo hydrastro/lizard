@@ -1,0 +1,6 @@
+fork-join-status ok
+fork-join-sum 30
+select-status ok
+select-sum 66
+deadlock-status deadlock
+deadlock-blocked 2

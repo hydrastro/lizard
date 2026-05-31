@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1462" viewBox="0 0 1120 1462">
+<rect x="0.0" y="0.0" width="1120.0" height="1462.0" rx="0" fill="#f1f5f9" stroke="none" stroke-width="0" />
+<rect x="0.0" y="0.0" width="1120.0" height="132.0" rx="0" fill="#0b1220" stroke="none" stroke-width="0" />
+<text x="40.0" y="52.0" font-size="27" fill="#f8fafc" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Lizard CAS — roadmap to full Risch integration (and beyond)</text>
+<text x="40.0" y="84.0" font-size="14.5" fill="#cbd5e1" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >An exact, proof-carrying computer algebra system. Each result self-certifies; the goal is the complete Risch decision procedure.</text>
+<rect x="40.0" y="96.0" width="16.0" height="16.0" rx="4" fill="#dcfce7" stroke="#15803d" stroke-width="2" />
+<text x="62.0" y="109.0" font-size="12.5" fill="#e2e8f0" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >shipped</text>
+<rect x="138.4" y="96.0" width="16.0" height="16.0" rx="4" fill="#fef3c7" stroke="#b45309" stroke-width="2" />
+<text x="160.4" y="109.0" font-size="12.5" fill="#e2e8f0" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >near-term</text>
+<rect x="251.2" y="96.0" width="16.0" height="16.0" rx="4" fill="#fde68a" stroke="#b45309" stroke-width="2" />
+<text x="273.2" y="109.0" font-size="12.5" fill="#e2e8f0" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Risch summit</text>
+<rect x="385.6" y="96.0" width="16.0" height="16.0" rx="4" fill="#e0e7ff" stroke="#4338ca" stroke-width="2" />
+<text x="407.6" y="109.0" font-size="12.5" fill="#e2e8f0" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >broad CAS</text>
+<rect x="498.4" y="96.0" width="16.0" height="16.0" rx="4" fill="#f3e8ff" stroke="#7e22ce" stroke-width="2" />
+<text x="520.4" y="109.0" font-size="12.5" fill="#e2e8f0" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >the bridge</text>
+<rect x="28.0" y="150.0" width="1064.0" height="46.0" rx="10" fill="#15803d" stroke="none" stroke-width="0" />
+<text x="44.0" y="180.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >SHIPPED · self-certifying foundation</text>
+<rect x="928.8" y="159.0" width="153.2" height="28.0" rx="14" fill="#ffffff22" stroke="#ffffff" stroke-width="1.2" />
+<text x="1005.4" y="178.0" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >✓ done &amp; CI-green</text>
+<rect x="46.0" y="208.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="60.0" y="233.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Exact ℚ + bignums</text>
+<text x="60.0" y="252.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >kernel + Der certificates</text>
+<rect x="394.0" y="208.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="408.0" y="233.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Univariate polynomial algebra</text>
+<text x="408.0" y="252.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >gcd, divmod, square-free (Yun)</text>
+<rect x="742.0" y="208.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="756.0" y="233.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Factorization over 𝔽ₚ</text>
+<text x="756.0" y="252.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Cantor–Zassenhaus</text>
+<rect x="46.0" y="290.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="60.0" y="315.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Factorization over ℤ/ℚ</text>
+<text x="60.0" y="334.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Hensel lift + Zassenhaus — multiply-back proof</text>
+<rect x="394.0" y="290.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="408.0" y="315.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Partial fractions</text>
+<text x="408.0" y="334.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >CRT + f-adic, recombine-checked</text>
+<rect x="742.0" y="290.0" width="332.0" height="70.0" rx="9" fill="#dcfce7" stroke="#15803d" stroke-width="1.6" />
+<text x="756.0" y="315.0" font-size="14.5" fill="#14532d" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Certified rational integration</text>
+<text x="756.0" y="334.0" font-size="12" fill="#14532d" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >differentiate-back, exact over ℚ</text>
+<rect x="28.0" y="382.0" width="1064.0" height="46.0" rx="10" fill="#b45309" stroke="none" stroke-width="0" />
+<text x="44.0" y="412.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >TIER 1 — near-term extensions</text>
+<rect x="1004.8" y="391.0" width="77.2" height="28.0" rx="14" fill="#ffffff22" stroke="#ffffff" stroke-width="1.2" />
+<text x="1043.4" y="410.0" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >next up</text>
+<rect x="46.0" y="440.0" width="332.0" height="70.0" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6" />
+<text x="60.0" y="465.0" font-size="14.5" fill="#7c2d12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Resultants &amp; subresultant PRS</text>
+<text x="60.0" y="484.0" font-size="12" fill="#7c2d12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >+ discriminants</text>
+<rect x="394.0" y="440.0" width="332.0" height="70.0" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6" />
+<text x="408.0" y="465.0" font-size="14.5" fill="#7c2d12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Equation solving</text>
+<text x="408.0" y="484.0" font-size="12" fill="#7c2d12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >univariate via factor; radicals ≤ quartic;</text>
+<text x="408.0" y="500.0" font-size="12" fill="#7c2d12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >linear systems</text>
+<rect x="742.0" y="440.0" width="332.0" height="70.0" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6" />
+<text x="756.0" y="465.0" font-size="14.5" fill="#7c2d12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Algebraic numbers</text>
+<text x="756.0" y="484.0" font-size="12" fill="#7c2d12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >minimal polynomials, arithmetic, Sturm</text>
+<text x="756.0" y="500.0" font-size="12" fill="#7c2d12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >real-root isolation</text>
+<rect x="28.0" y="532.0" width="1064.0" height="46.0" rx="10" fill="#1d4ed8" stroke="none" stroke-width="0" />
+<text x="44.0" y="562.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >TIER 2 — rational integration, completed over ℚ̄</text>
+<rect x="46.0" y="590.0" width="332.0" height="70.0" rx="9" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6" />
+<text x="60.0" y="615.0" font-size="14.5" fill="#1e3a8a" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Rothstein–Trager / LRT log part</text>
+<text x="60.0" y="634.0" font-size="12" fill="#1e3a8a" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >resultant-based logarithmic part</text>
+<rect x="394.0" y="590.0" width="332.0" height="70.0" rx="9" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6" />
+<text x="408.0" y="615.0" font-size="14.5" fill="#1e3a8a" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >General Hermite reduction</text>
+<text x="408.0" y="634.0" font-size="12" fill="#1e3a8a" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >the rational part, any denominator</text>
+<rect x="742.0" y="590.0" width="332.0" height="70.0" rx="9" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6" />
+<text x="756.0" y="615.0" font-size="14.5" fill="#1e3a8a" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Closes the deferred cases</text>
+<text x="756.0" y="634.0" font-size="12" fill="#1e3a8a" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >real-irrational quadratics, √ in the answer</text>
+<rect x="28.0" y="682.0" width="1064.0" height="54.0" rx="10" fill="#b45309" stroke="none" stroke-width="0" />
+<text x="44.0" y="717.0" font-size="21" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >★  THE RISCH SUMMIT  ★  full elementary integration</text>
+<rect x="951.6" y="694.0" width="130.4" height="30.0" rx="14" fill="#ffffff22" stroke="#ffffff" stroke-width="1.2" />
+<text x="1016.8" y="714.0" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >the North Star</text>
+<rect x="46.0" y="748.0" width="332.0" height="70.0" rx="9" fill="#fde68a" stroke="#b45309" stroke-width="1.6" />
+<text x="60.0" y="773.0" font-size="14.5" fill="#713f12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Differential fields</text>
+<text x="60.0" y="792.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >derivation; monomial tower ℚ(x) ⊂ … ⊂</text>
+<text x="60.0" y="808.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >K(θ₁…θₙ), θ = exp/log</text>
+<rect x="394.0" y="748.0" width="332.0" height="70.0" rx="9" fill="#fde68a" stroke="#b45309" stroke-width="1.6" />
+<text x="408.0" y="773.0" font-size="14.5" fill="#713f12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Liouville&#x27;s theorem</text>
+<text x="408.0" y="792.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >the organizing principle: the shape any</text>
+<text x="408.0" y="808.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >elementary integral must take</text>
+<rect x="742.0" y="748.0" width="332.0" height="70.0" rx="9" fill="#fde68a" stroke="#b45309" stroke-width="1.6" />
+<text x="756.0" y="773.0" font-size="14.5" fill="#713f12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Transcendental Risch</text>
+<text x="756.0" y="792.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Hermite-in-tower · Risch differential-equation</text>
+<text x="756.0" y="808.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >solver · log &amp; exp cases + coupling</text>
+<rect x="220.0" y="830.0" width="332.0" height="70.0" rx="9" fill="#fde68a" stroke="#b45309" stroke-width="1.6" />
+<text x="234.0" y="855.0" font-size="14.5" fill="#713f12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Parametric / limited integration</text>
+<text x="234.0" y="874.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Risch–Norman; decides non-elementarity (proves</text>
+<text x="234.0" y="890.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >no answer exists)</text>
+<rect x="568.0" y="830.0" width="332.0" height="70.0" rx="9" fill="#fde68a" stroke="#b45309" stroke-width="1.6" />
+<text x="582.0" y="855.0" font-size="14.5" fill="#713f12" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >[stretch] Algebraic Risch</text>
+<text x="582.0" y="874.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Trager–Bronstein — integrands with algebraic</text>
+<text x="582.0" y="890.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >functions; FriCAS-only territory</text>
+<rect x="28.0" y="926.0" width="1064.0" height="46.0" rx="9" fill="#fffbeb" stroke="#b45309" stroke-width="1.4" />
+<text x="42.0" y="945.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Maxima implements only the transcendental case, partially, and none of the algebraic case — completing transcendental</text>
+<text x="42.0" y="961.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Risch already surpasses it, and every step here carries a proof.</text>
+<rect x="28.0" y="984.0" width="1064.0" height="46.0" rx="10" fill="#4338ca" stroke="none" stroke-width="0" />
+<text x="44.0" y="1014.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >TIER 3 — a broad CAS beyond integration</text>
+<rect x="46.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="60.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Limits (Gruntz) + series</text>
+<text x="60.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Taylor / Laurent / Puiseux</text>
+<rect x="394.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="408.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation</text>
+<text x="408.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Gosper, Zeilberger / WZ</text>
+<rect x="742.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="756.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODE solving</text>
+<text x="756.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >first-order, linear, series</text>
+<rect x="46.0" y="1124.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="60.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra</text>
+<text x="60.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Bareiss det, charpoly, eigen, Smith/Hermite</text>
+<text x="60.0" y="1184.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >normal form</text>
+<rect x="394.0" y="1124.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="408.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Multivariate</text>
+<text x="408.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >GCD, factorization, Gröbner bases (Buchberger</text>
+<text x="408.0" y="1184.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >/ F4)</text>
+<rect x="742.0" y="1124.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="756.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Simplification + assumptions</text>
+<text x="756.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >canonical forms, trig/exp/log, facts database</text>
+<rect x="394.0" y="1206.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
+<text x="408.0" y="1231.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Special functions</text>
+<text x="408.0" y="1250.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Γ, ζ, erf, Bessel, …</text>
+<rect x="28.0" y="1298.0" width="1064.0" height="46.0" rx="10" fill="#7e22ce" stroke="none" stroke-width="0" />
+<text x="44.0" y="1328.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >THE BRIDGE — where the two tracks meet</text>
+<rect x="959.2" y="1307.0" width="122.8" height="28.0" rx="14" fill="#ffffff22" stroke="#ffffff" stroke-width="1.2" />
+<text x="1020.6" y="1326.0" font-size="12.5" fill="#ffffff" font-weight="600" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >cross-cutting</text>
+<rect x="394.0" y="1356.0" width="332.0" height="70.0" rx="9" fill="#f3e8ff" stroke="#7e22ce" stroke-width="1.6" />
+<text x="408.0" y="1381.0" font-size="14.5" fill="#581c87" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Kernel-checked CAS</text>
+<text x="408.0" y="1400.0" font-size="12" fill="#581c87" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >route every certificate (multiply-back,</text>
+<text x="408.0" y="1416.0" font-size="12" fill="#581c87" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >differentiate-back) through the kernel Der</text>
+<text x="408.0" y="1432.0" font-size="12" fill="#581c87" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >judgment — results that are not merely</text>
+<text x="408.0" y="1448.0" font-size="12" fill="#581c87" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >computed but PROVED, traceable to the axioms</text>
+</svg>

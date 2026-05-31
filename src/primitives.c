@@ -3441,9 +3441,40 @@ static lizard_ast_node_t *lizard_primitive_inet_cost(lz_list_t *args,
   return lz_inet_run(args, heap, 1);
 }
 
+/* (inet-reduce '<term>) -> the normal form read back as a de Bruijn lambda
+ * term string (e.g. "(lam #0)" for the identity), or #f if the term does not
+ * reduce to a representable normal form. */
+static lizard_ast_node_t *lizard_primitive_inet_reduce(lz_list_t *args,
+                                               lizard_env_t *env,
+                                               lizard_heap_t *heap) {
+  lizard_ast_list_node_t *node;
+  lizard_ast_node_t *out;
+  inet_term_t *t;
+  char *buf;
+  long inter = 0;
+  int st;
+  size_t cap = (size_t)1 << 16;
+  (void)env;
+  if (args->head == args->nil || args->head->next != args->nil) {
+    return lizard_make_error(heap, LIZARD_ERROR_INVALID_PARAMETER);
+  }
+  node = (lizard_ast_list_node_t *)args->head;
+  t = lz_inet_parse(node->ast);
+  if (t == NULL) return lizard_make_bool(heap, false);
+  buf = lizard_heap_alloc(cap);
+  st = inet_readback(t, buf, cap, &inter);
+  inet_term_free(t);
+  if (st != 1) return lizard_make_bool(heap, false);
+  out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+  out->type = AST_STRING;
+  out->data.string = lizard_heap_strdup(heap, buf);
+  return out;
+}
+
 void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "inet-normalize", lizard_primitive_inet_normalize);
   install_one(heap, env, "inet-cost",      lizard_primitive_inet_cost);
+  install_one(heap, env, "inet-reduce",    lizard_primitive_inet_reduce);
   install_one(heap, env, "null?",   lizard_primitive_nullp);
   install_one(heap, env, "pair?",   lizard_primitive_pairp);
   install_one(heap, env, "string?", lizard_primitive_stringp);

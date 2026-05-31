@@ -29,6 +29,52 @@ static inet_term_t *church(int k) {
   return inet_lam("f", inet_lam("x", body));
 }
 
+/* combinators (fresh tree each call) */
+static inet_term_t *k_comb(void) {
+  return inet_lam("a", inet_lam("b", inet_var("a")));
+}
+static inet_term_t *s_comb(void) {
+  return inet_lam("f", inet_lam("g", inet_lam("x",
+    inet_app(inet_app(inet_var("f"), inet_var("x")),
+             inet_app(inet_var("g"), inet_var("x"))))));
+}
+static inet_term_t *plus_comb(void) {
+  return inet_lam("m", inet_lam("n", inet_lam("f", inet_lam("x",
+    inet_app(inet_app(inet_var("m"), inet_var("f")),
+             inet_app(inet_app(inet_var("n"), inet_var("f")), inet_var("x")))))));
+}
+static inet_term_t *mul_comb(void) {
+  return inet_lam("m", inet_lam("n", inet_lam("f",
+    inet_app(inet_var("m"), inet_app(inet_var("n"), inet_var("f"))))));
+}
+
+/* readback: assert a term's normal form prints to an exact de Bruijn string. */
+static int rb_eq(inet_term_t *t, const char *want) {
+  char buf[4096];
+  long inter;
+  int st, ok;
+  st = inet_readback(t, buf, sizeof(buf), &inter);
+  inet_term_free(t);
+  ok = (st == 1) && (strcmp(buf, want) == 0);
+  if (!ok) {
+    fprintf(stderr, "  readback: want \"%s\", status %d, got \"%s\"\n",
+            want, st, (st == 1) ? buf : "<none>");
+  }
+  return ok;
+}
+
+/* readback boundary: a term whose bare normal form keeps residual compound
+ * sharing must REFUSE (status != 1), never emit a wrong term. */
+static int rb_refuses(inet_term_t *t) {
+  char buf[4096];
+  long inter;
+  int st;
+  st = inet_readback(t, buf, sizeof(buf), &inter);
+  inet_term_free(t);
+  if (st == 1) fprintf(stderr, "  readback: expected refusal, got \"%s\"\n", buf);
+  return st != 1;
+}
+
 /* reduce a term to an integer; returns the status, fills out + interactions. */
 static int run(inet_term_t *t, mpz_t out, long *inter) {
   int st = inet_normalize_int(t, out, inter);
@@ -111,6 +157,40 @@ int main(void) {
   TEST_ASSERT(eq_si(inet_app(inet_app(church(5), succ_fn()), inet_num_si(0)),
                     5, &inter));
   TEST_ASSERT(inet_live_nodes() < 8);
+
+  /* ---- full lambda READBACK: reduce, then read the normal form back as a
+   * de Bruijn term (#k = bound var, (f a) = app, (lam b) = abstraction) ---- */
+  /* identity reads back to its own normal form */
+  TEST_ASSERT(rb_eq(inet_lam("x", inet_var("x")), "(lam #0)"));
+  /* K = the outer binder, used once; inner binder erased */
+  TEST_ASSERT(rb_eq(k_comb(), "(lam (lam #1))"));
+  /* Church numerals as TERMS: the duplicated f reads back to one variable */
+  TEST_ASSERT(rb_eq(church(2), "(lam (lam (#1 (#1 #0))))"));
+  TEST_ASSERT(rb_eq(church(3), "(lam (lam (#1 (#1 (#1 #0)))))"));
+  /* a numeric normal form reads back as a decimal */
+  TEST_ASSERT(rb_eq(inet_op(INET_ADD, inet_num_si(3), inet_num_si(4)), "7"));
+  /* identity applied to identity reduces on the graph to the identity */
+  TEST_ASSERT(rb_eq(inet_app(inet_lam("x", inet_var("x")),
+                             inet_lam("y", inet_var("y"))), "(lam #0)"));
+  /* S K K reduces (real combinatory reduction) and reads back as identity */
+  TEST_ASSERT(rb_eq(inet_app(inet_app(s_comb(), k_comb()), k_comb()),
+                    "(lam #0)"));
+  /* Church addition: PLUS 2 3 reduces to Church 5 and reads back fully */
+  TEST_ASSERT(rb_eq(inet_app(inet_app(plus_comb(), church(2)), church(3)),
+                    "(lam (lam (#1 (#1 (#1 (#1 (#1 #0)))))))"));
+
+  /* ---- readback BOUNDARY (honest): a bare normal form that keeps residual
+   * sharing of a compound subterm refuses rather than emit a wrong term ---- */
+  /* MUL 2 3 (bare) keeps DUP nodes not in active-pair position -> refuse */
+  TEST_ASSERT(rb_refuses(inet_app(inet_app(mul_comb(), church(2)), church(3))));
+  /* (2 2) self-application has the same shape -> refuse */
+  TEST_ASSERT(rb_refuses(inet_app(church(2), church(2))));
+  /* ...yet the SAME multiplication reduces to the right integer on demand */
+  TEST_ASSERT(eq_si(
+      inet_app(inet_app(inet_app(inet_app(mul_comb(), church(2)), church(3)),
+                        succ_fn()),
+               inet_num_si(0)),
+      6, &inter));
 
   mpz_clear(out);
   TEST_RETURN();

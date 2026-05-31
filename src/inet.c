@@ -433,3 +433,187 @@ int inet_normalize_int(inet_term_t *t, mpz_t out, long *interactions) {
 long inet_live_nodes(void) {
   return (long)g_nnode - (long)g_nfree;
 }
+
+/* ---- readback to a lambda term (de Bruijn normal form) ---------------- *
+ * Integer readback (above) only observes a NUM at the root.  To read back an
+ * arbitrary normal form we need to walk the net as a term, which the reducer's
+ * one-directional wiring does not allow directly (a use cannot find its
+ * binder).  So after reduction we build a *bidirectional* partner snapshot:
+ * for every port we record the port at the other end of its wire.  Ports are
+ * numbered 3*node + slot (slot 0 = principal, 1 = aux1, 2 = aux2); leaves and
+ * the root are encoded as small negative sentinels.  A lambda is a CON reached
+ * through its principal; an application is a CON whose *aux2* is the output;
+ * a bound-variable occurrence is a wire arriving at a lambda's aux1; sharing
+ * (a DUP chain) is followed through its principal toward the binder, so every
+ * occurrence of a duplicated variable reads back to the same de Bruijn index.
+ * Variables are printed "#k" (de Bruijn, 0 = innermost binder); applications
+ * "(f a)"; abstractions "(lam body)"; numbers in decimal.  Correct for closed
+ * normal forms in the stratified fragment the front-end targets — including
+ * combinators (e.g. S K K), Church numerals, and Church addition.  When a
+ * BARE normal form retains residual sharing of a *compound* subterm (e.g.
+ * Church multiplication or self-application like (2 2), whose normal form
+ * keeps DUP nodes that are not in active-pair position), readback returns 0:
+ * faithfully expanding that sharing into a tree needs the labelled-dup
+ * (bracket) bookkeeping of optimal reduction, which this reader does not do.
+ * The refusal is safe — such a term still reduces to the correct value when
+ * demanded (e.g. (MUL 2 3) succ 0 = 6 via inet_normalize_int). */
+#define RB_NONE (-1)
+#define RB_ERA  (-2)
+/* a NUM leaf with pool index k is encoded as -(k) - 16 (so it never collides
+ * with RB_NONE/RB_ERA, and decodes as k = -code - 16) */
+#define RB_NUM_BIAS 16
+
+static int  g_partner[3 * NODECAP];
+static int  g_varowner[VARCAP];      /* aux var -> node*4 + slot; else -1 */
+static int  g_bkt_a[VARCAP];         /* rendezvous var -> first/second aux  */
+static int  g_bkt_b[VARCAP];
+static int  g_bind_depth[NODECAP];   /* lambda node -> binder depth         */
+static char g_live[NODECAP];
+
+static char  *g_rb_buf;
+static size_t g_rb_cap;
+static size_t g_rb_pos;
+static int    g_rb_of;               /* output overflowed the buffer        */
+static int    g_rb_ok;               /* term representable so far           */
+static long   g_rb_steps;
+
+static void rb_putc(char c) {
+  if (g_rb_of) return;
+  if (g_rb_pos + 1u >= g_rb_cap) { g_rb_of = 1; return; }
+  g_rb_buf[g_rb_pos++] = c;
+}
+static void rb_puts(const char *s) { while (*s) { rb_putc(*s); s++; } }
+static void rb_putint(int n) {
+  char tmp[16];
+  int k = 0, j;
+  if (n == 0) { rb_putc('0'); return; }
+  if (n < 0) { rb_putc('-'); n = -n; }
+  while (n > 0 && k < 15) { tmp[k++] = (char)('0' + (n % 10)); n /= 10; }
+  for (j = k - 1; j >= 0; j--) rb_putc(tmp[j]);
+}
+static void rb_putmpz(const mpz_t z) {
+  size_t need = mpz_sizeinbase(z, 10) + 2u;
+  if (g_rb_of) return;
+  if (g_rb_pos + need >= g_rb_cap) { g_rb_of = 1; return; }
+  (void)mpz_get_str(g_rb_buf + g_rb_pos, 10, z);
+  g_rb_pos += strlen(g_rb_buf + g_rb_pos);
+}
+
+static void rb_build_partners(void) {
+  int i, slot;
+  for (i = 0; i < g_nnode; i++) g_live[i] = 1;
+  for (i = 0; i < g_nfree; i++) g_live[g_freelist[i]] = 0;
+  for (i = 0; i < 3 * g_nnode; i++) g_partner[i] = RB_NONE;
+  for (i = 0; i < g_nvar; i++) { g_varowner[i] = -1; g_bkt_a[i] = -1; g_bkt_b[i] = -1; }
+  for (i = 0; i < g_nnode; i++) {
+    if (!g_live[i]) continue;
+    g_varowner[PVAL(g_p1[i])] = i * 4 + 1;
+    g_varowner[PVAL(g_p2[i])] = i * 4 + 2;
+  }
+  for (i = 0; i < g_nnode; i++) {
+    if (!g_live[i]) continue;
+    for (slot = 1; slot <= 2; slot++) {
+      Port ap = (slot == 1) ? g_p1[i] : g_p2[i];
+      int auxid = i * 3 + slot;
+      Port t = enter(ap);
+      unsigned tg = PTAG(t);
+      if (tg == T_CON || tg == T_DUP || tg == T_OPR || tg == T_OP1) {
+        int m = (int)PVAL(t);
+        g_partner[auxid] = m * 3;
+        g_partner[m * 3] = auxid;
+      } else if (tg == T_NUM) {
+        g_partner[auxid] = -(int)PVAL(t) - RB_NUM_BIAS;
+      } else if (tg == T_ERA) {
+        g_partner[auxid] = RB_ERA;
+      } else {                       /* T_VARP: an aux-aux rendezvous */
+        unsigned long vt = PVAL(t);
+        if (g_bkt_a[vt] < 0) g_bkt_a[vt] = auxid;
+        else g_bkt_b[vt] = auxid;
+      }
+    }
+  }
+  for (i = 0; i < g_nvar; i++) {
+    if (g_bkt_a[i] >= 0 && g_bkt_b[i] >= 0) {
+      g_partner[g_bkt_a[i]] = g_bkt_b[i];
+      g_partner[g_bkt_b[i]] = g_bkt_a[i];
+    }
+  }
+}
+
+static void rb_read_from(int consumer_id, int depth);
+
+static void rb_read_producer(int id, int depth) {
+  int m, slot, tag;
+  if (!g_rb_ok) return;
+  if (++g_rb_steps > 5000000L) { g_rb_ok = 0; return; }
+  m = id / 3; slot = id % 3; tag = g_tag[m];
+  if (slot == 0) {
+    if (tag == T_CON) {                    /* reached via principal -> lambda */
+      g_bind_depth[m] = depth;
+      rb_puts("(lam ");
+      rb_read_from(m * 3 + 2, depth + 1);
+      rb_putc(')');
+    } else { g_rb_ok = 0; }                /* DUP/OPR principal: see boundary note */
+  } else if (slot == 2) {
+    if (tag == T_CON) {                    /* aux2 is the output -> application */
+      rb_putc('(');
+      rb_read_from(m * 3 + 0, depth);
+      rb_putc(' ');
+      rb_read_from(m * 3 + 1, depth);
+      rb_putc(')');
+    } else if (tag == T_DUP) {
+      rb_read_from(m * 3 + 0, depth);      /* follow toward the binder */
+    } else { g_rb_ok = 0; }
+  } else {                                 /* slot == 1 */
+    if (tag == T_CON) {                    /* a lambda's binder -> bound var */
+      rb_putc('#');
+      rb_putint(depth - g_bind_depth[m] - 1);
+    } else if (tag == T_DUP) {
+      rb_read_from(m * 3 + 0, depth);
+    } else { g_rb_ok = 0; }
+  }
+}
+
+static void rb_read_from(int consumer_id, int depth) {
+  int p;
+  if (!g_rb_ok) return;
+  p = g_partner[consumer_id];
+  if (p == RB_NONE) { g_rb_ok = 0; return; }
+  if (p == RB_ERA) { rb_putc('_'); return; }
+  if (p <= -RB_NUM_BIAS) { rb_putmpz(g_num[-p - RB_NUM_BIAS]); return; }
+  rb_read_producer(p, depth);
+}
+
+int inet_readback(inet_term_t *t, char *buf, size_t cap, long *interactions) {
+  Port r, root;
+  unsigned tg;
+  if (cap == 0) return 0;
+  inet_reset();
+  g_sp = 0; g_label = 0;
+  root = compile(t);
+  g_root = MKP(T_VARP, new_var());
+  link_ports(g_root, root);
+  reduce();
+  if (interactions) *interactions = g_inter;
+  if (g_oom) return -1;
+
+  rb_build_partners();
+  r = enter(g_root);
+  g_rb_buf = buf; g_rb_cap = cap; g_rb_pos = 0; g_rb_of = 0;
+  g_rb_ok = 1; g_rb_steps = 0;
+  tg = PTAG(r);
+  if (tg == T_NUM) {
+    rb_putmpz(g_num[PVAL(r)]);
+  } else if (tg == T_ERA) {
+    rb_putc('_');
+  } else if (tg == T_CON || tg == T_DUP || tg == T_OPR || tg == T_OP1) {
+    rb_read_producer((int)PVAL(r) * 3, 0);
+  } else {                                 /* root meets an aux-aux rendezvous */
+    int rp = g_bkt_a[PVAL(r)];
+    if (rp < 0) g_rb_ok = 0;
+    else rb_read_producer(rp, 0);
+  }
+  if (!g_rb_ok || g_rb_of) return 0;
+  buf[g_rb_pos] = '\0';
+  return 1;
+}
