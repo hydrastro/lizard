@@ -157,3 +157,4 @@
 (example "144-exact-rationals.lisp" :expect pass)
 (example "145-object-gc.lisp" :expect pass)
 (example "146-persistent-vector.lisp" :expect pass)
+(example "147-verified-integration.lisp" :expect pass)

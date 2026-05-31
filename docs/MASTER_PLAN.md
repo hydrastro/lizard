@@ -934,6 +934,30 @@ party.  `lib/macros.lisp`, `lib/macro-stepper.lisp`, `lib/contract.lisp`, and
   is a fresh copy (i.e. genuine structural sharing).  `examples/146` mirrors this
   end-to-end over a 3000-element vector.
 
+### Phase 8 — proof-carrying integration (FTC as a verification strategy)
+- **What landed.**  Symbolic **integration** whose every result carries a
+  kernel-checked proof, reusing the differentiation judgment with **no new
+  axioms** (`lib/cas/integral-cert.lisp`).  The observation: "F is an
+  antiderivative of f" *is* the existing judgment `Der F f` ("f is the derivative
+  of F").  So the untrusted integrator only has to *find* F; the same trusted
+  rules that certify derivatives (`der_id`, `der_sin`, `der_exp`, `der_ln`,
+  `der_cos`, `der_add`) then certify the integral.  `verify` calls
+  `kernel-check` on the certificate against `Der F f`.
+- **Why it matters.**  Mainstream CASes ask you to trust their integrals; here a
+  wrong antiderivative inhabits no `Der F f` and the kernel **rejects** it
+  (`examples/147` shows ∫cos=exp and others refused).  Integration — the harder,
+  search-driven direction — is made trustworthy by the trivial-to-check reverse
+  direction.
+- **Surface + scope.**  `integrate`/`verify`/`antiderivative` over the
+  descriptor DSL `'cos 'exp 'recip 'one 'negsin` closed under `(+ …)` (linearity
+  via `der_add`).  **Honestly limited:** the polynomial power rule
+  ∫xⁿ = xⁿ⁺¹/(n+1) is *excluded* because verifying it needs the kernel to compute
+  (n+1)·(1/(n+1)) = 1 — rational arithmetic inside the trusted kernel, a
+  soundness-critical extension we are not making.  The fragment here is exactly
+  the elementary rules that carry no rational coefficients.  `examples/147`
+  (self-checking) verifies the base table and several sums and shows three wrong
+  claims rejected.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,
@@ -1407,6 +1431,15 @@ context hardening.
 - **Risk:** medium (engine) / high (certificates).
 - **Done when:** the CAS loads as libraries; a derivative emits a
   certificate the kernel accepts.
+- **Status:** DONE and extended — differentiation certificates
+  (`lib/cas/diff-cert.lisp`, `examples/139`) and now proof-carrying
+  **integration** (`lib/cas/integral-cert.lisp`, `examples/147`).  Integration
+  reuses the derivative judgment with no new axioms — `Der F f` *is* "F is an
+  antiderivative of f" — so the untrusted integrator finds F and the trusted
+  rules certify it; wrong antiderivatives are kernel-rejected.  Scope is the
+  elementary rules without rational coefficients (cos, exp, 1/x, 1, -sin, and
+  sums); the polynomial power rule awaits kernel rationals (a deliberate,
+  soundness-critical omission).
 
 ### Phase 9 — Native compiler
 - **Goal:** native performance via shared-IR compile-to-C (§3.6).
