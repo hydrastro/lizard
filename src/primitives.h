@@ -465,6 +465,25 @@ lizard_ast_node_t *lizard_primitive_integerp(lz_list_t *args, lizard_env_t *env,
     lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_exactp(lz_list_t *args, lizard_env_t *env,
     lizard_heap_t *heap);
+lizard_ast_node_t *lizard_primitive_realp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_inexactp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_exact_integerp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_nanp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_infinitep(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_finitep(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_exact_to_inexact(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_inexact_to_exact(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_exp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_log(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_sin(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_cos(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_tan(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_atan(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_sqrt(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_floor(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_ceiling(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_truncate(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
+lizard_ast_node_t *lizard_primitive_round(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h);
 lizard_ast_node_t *lizard_primitive_numerator(lz_list_t *args, lizard_env_t *env,
     lizard_heap_t *heap);
 lizard_ast_node_t *lizard_primitive_denominator(lz_list_t *args, lizard_env_t *env,

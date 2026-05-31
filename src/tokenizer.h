@@ -18,11 +18,13 @@ typedef struct lizard_token {
   int column;
   int offset;
   int is_rational;   /* for TOKEN_NUMBER: 1 => use data.rational (mpq) */
+  int is_real;       /* for TOKEN_NUMBER: 1 => use data.real (inexact double) */
   union {
     char *string;
     char *symbol;
     mpz_t number;
     mpq_t rational;
+    double real;
   } data;
 } lizard_token_t;
 

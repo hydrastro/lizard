@@ -158,3 +158,4 @@
 (example "145-object-gc.lisp" :expect pass)
 (example "146-persistent-vector.lisp" :expect pass)
 (example "147-verified-integration.lisp" :expect pass)
+(example "148-inexact-reals.lisp" :expect pass)

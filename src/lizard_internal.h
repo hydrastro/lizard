@@ -37,6 +37,7 @@ typedef enum {
   AST_STRING,
   AST_NUMBER,
   AST_RATIONAL,
+  AST_REAL,
   AST_SYMBOL,
   AST_BOOL,
   AST_PAIR,
@@ -567,6 +568,7 @@ struct lizard_ast_node {
     const char *string;
     mpz_t number;
     mpq_t rational;  /* exact rational; canonical => denom > 1 */
+    double real;     /* inexact real (IEEE double); type == AST_REAL */
     const char *variable;
     struct lizard_ast_node *quoted;
     struct {

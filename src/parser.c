@@ -779,7 +779,10 @@ lizard_ast_node_t *lizard_parse_expression(lz_list_t *token_list,
     }
     break;
   case TOKEN_NUMBER:
-    if (current_token->is_rational) {
+    if (current_token->is_real) {
+      ast_node->type = AST_REAL;
+      ast_node->data.real = current_token->data.real;
+    } else if (current_token->is_rational) {
       ast_node->type = AST_RATIONAL;
       mpq_init(ast_node->data.rational);
       mpq_set(ast_node->data.rational, current_token->data.rational);
@@ -856,7 +859,10 @@ lizard_ast_node_t *lizard_parse_datum(lz_list_t *token_list,
   node->span.start_column = tok->column;
   switch (tok->type) {
   case TOKEN_NUMBER:
-    if (tok->is_rational) {
+    if (tok->is_real) {
+      node->type = AST_REAL;
+      node->data.real = tok->data.real;
+    } else if (tok->is_rational) {
       node->type = AST_RATIONAL;
       mpq_init(node->data.rational);
       mpq_set(node->data.rational, tok->data.rational);

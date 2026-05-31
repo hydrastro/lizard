@@ -22,6 +22,7 @@ void lizard_heap_free_wrapper(void *ptr, size_t size);
 lizard_ast_node_t *lizard_make_primitive(lizard_heap_t *heap,
                                          lizard_primitive_func_t func);
 lizard_ast_node_t *lizard_make_bool(lizard_heap_t *heap, bool value);
+lizard_ast_node_t *lizard_make_real(lizard_heap_t *heap, double value);
 lizard_ast_node_t *lizard_make_nil(lizard_heap_t *heap);
 lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,

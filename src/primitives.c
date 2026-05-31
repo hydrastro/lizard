@@ -1,4 +1,6 @@
 #include "primitives.h"
+#include <math.h>
+#include <float.h>
 #include "pvector.h"
 #include "prims_shared.h"
 #include "env.h"
@@ -46,7 +48,8 @@ static lizard_ast_node_t *lizard_make_number_copy(lizard_heap_t *heap,
 /* Numeric tower helpers (exact integers + exact rationals). Canonical form:
  * integers are always AST_NUMBER; AST_RATIONAL always has denominator > 1. */
 static int lizard_num_like(const lizard_ast_node_t *n) {
-  return n && (n->type == AST_NUMBER || n->type == AST_RATIONAL);
+  return n && (n->type == AST_NUMBER || n->type == AST_RATIONAL ||
+               n->type == AST_REAL);
 }
 
 /* Build a canonical numeric node from an mpq, demoting to an integer when the
@@ -75,12 +78,41 @@ static void lizard_num_to_mpq(const lizard_ast_node_t *n, mpq_t out) {
   }
 }
 
+/* Value of a numeric node as a C double (for inexact arithmetic). */
+static double lizard_num_to_double(const lizard_ast_node_t *n) {
+  if (n->type == AST_REAL) {
+    return n->data.real;
+  }
+  if (n->type == AST_RATIONAL) {
+    return mpq_get_d(n->data.rational);
+  }
+  return mpz_get_d(n->data.number);
+}
+
+/* True if any argument in [head, nil) is inexact (forces an inexact result). */
+static int lizard_args_any_real(lz_list_node_t *head, lz_list_node_t *nil) {
+  lz_list_node_t *s;
+  for (s = head; s != nil; s = s->next) {
+    if (((lizard_ast_list_node_t *)s)->ast->type == AST_REAL) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 /* Three-way compare of two numeric nodes (-1/0/1), exact across int/rational. */
 static int lizard_num_cmp(const lizard_ast_node_t *a, const lizard_ast_node_t *b) {
   int c;
   mpq_t qa, qb;
   if (a->type == AST_NUMBER && b->type == AST_NUMBER) {
     return mpz_cmp(a->data.number, b->data.number);
+  }
+  if (a->type == AST_REAL || b->type == AST_REAL) {
+    /* contagion: compare as doubles (uses </> only, never == ) */
+    double da = lizard_num_to_double(a), db = lizard_num_to_double(b);
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
   }
   lizard_num_to_mpq(a, qa);
   lizard_num_to_mpq(b, qb);
@@ -98,6 +130,17 @@ lizard_ast_node_t *lizard_primitive_plus(lz_list_t *args, lizard_env_t *env,
   node = args->head;
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGC);
+  }
+  if (lizard_args_any_real(node, args->nil)) { /* inexact contagion */
+    lz_list_node_t *s;
+    double acc = 0.0;
+    for (s = node; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+      acc += lizard_num_to_double(a);
+    }
+    return lizard_make_real(heap, acc);
   }
   { /* exact-rational path when any operand is a rational */
     lz_list_node_t *s;
@@ -146,6 +189,25 @@ lizard_ast_node_t *lizard_primitive_minus(lz_list_t *args, lizard_env_t *env,
   node = args->head;
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGC);
+  }
+  if (lizard_args_any_real(node, args->nil)) { /* inexact contagion */
+    lz_list_node_t *s = node;
+    double acc;
+    lizard_ast_node_t *a0 = ((lizard_ast_list_node_t *)s)->ast;
+    if (!lizard_num_like(a0))
+      return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT);
+    acc = lizard_num_to_double(a0);
+    s = s->next;
+    if (s == args->nil) {
+      return lizard_make_real(heap, -acc);
+    }
+    for (; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_MINUS_ARGT_2);
+      acc -= lizard_num_to_double(a);
+    }
+    return lizard_make_real(heap, acc);
   }
   { /* exact-rational path when any operand is a rational */
     lz_list_node_t *s;
@@ -225,6 +287,17 @@ lizard_ast_node_t *lizard_primitive_multiply(lz_list_t *args, lizard_env_t *env,
   if (node == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGC);
   }
+  if (lizard_args_any_real(node, args->nil)) { /* inexact contagion */
+    lz_list_node_t *s;
+    double acc = 1.0;
+    for (s = node; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_MUL_ARGT);
+      acc *= lizard_num_to_double(a);
+    }
+    return lizard_make_real(heap, acc);
+  }
   { /* exact-rational path when any operand is a rational */
     lz_list_node_t *s;
     int any_rat = 0;
@@ -292,6 +365,21 @@ lizard_ast_node_t *lizard_primitive_divide(lz_list_t *args, lizard_env_t *env,
   if (node == args->nil || node->next == args->nil) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGC);
   }
+  if (lizard_args_any_real(node, args->nil)) { /* inexact contagion (IEEE) */
+    lz_list_node_t *s = node;
+    double acc;
+    lizard_ast_node_t *a0 = ((lizard_ast_list_node_t *)s)->ast;
+    if (!lizard_num_like(a0))
+      return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT);
+    acc = lizard_num_to_double(a0);
+    for (s = s->next; s != args->nil; s = s->next) {
+      lizard_ast_node_t *a = ((lizard_ast_list_node_t *)s)->ast;
+      if (!lizard_num_like(a))
+        return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT_2);
+      acc /= lizard_num_to_double(a);
+    }
+    return lizard_make_real(heap, acc);
+  }
   arg = ((lizard_ast_list_node_t *)node)->ast;
   if (!lizard_num_like(arg)) {
     return lizard_make_error(heap, LIZARD_ERROR_DIV_ARGT);
@@ -355,6 +443,8 @@ int lizard_ast_equal(lizard_ast_node_t *a, lizard_ast_node_t *b) {
     return (mpz_cmp(a->data.number, b->data.number) == 0);
   case AST_RATIONAL:
     return (mpq_cmp(a->data.rational, b->data.rational) == 0);
+  case AST_REAL:
+    return (memcmp(&a->data.real, &b->data.real, sizeof(double)) == 0);
   case AST_SYMBOL:
     return (strcmp(a->data.variable, b->data.variable) == 0);
   case AST_BOOL:
@@ -465,7 +555,13 @@ lizard_ast_node_t *lizard_primitive_equal(lz_list_t *args, lizard_env_t *env,
   for (node = args->head->next; node != args->nil; node = node->next) {
     lizard_ast_list_node_t *other_node = (lizard_ast_list_node_t *)node;
     lizard_ast_node_t *other = other_node->ast;
-    if (!lizard_ast_equal(first, other)) {
+    int same;
+    if (lizard_num_like(first) && lizard_num_like(other)) {
+      same = (lizard_num_cmp(first, other) == 0); /* numeric, with contagion */
+    } else {
+      same = lizard_ast_equal(first, other);
+    }
+    if (!same) {
       eq = 0;
       break;
     }
@@ -973,34 +1069,264 @@ lizard_ast_node_t *lizard_primitive_numberp(lz_list_t *args, lizard_env_t *env,
   return lizard_make_bool(heap, lizard_num_like(node_arg->ast));
 }
 
-/* (rational? x) / (real? x) — every exact number here is a rational. */
+/* (rational? x) — exact rationals/integers, plus finite inexact reals (R7RS). */
 lizard_ast_node_t *lizard_primitive_rationalp(lz_list_t *args,
                                               lizard_env_t *env,
                                               lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type == AST_NUMBER || a->type == AST_RATIONAL) {
+    return lizard_make_bool(heap, 1);
+  }
+  if (a->type == AST_REAL) {
+    double v = a->data.real;
+    return lizard_make_bool(heap, v >= -DBL_MAX && v <= DBL_MAX); /* finite */
+  }
+  return lizard_make_bool(heap, 0);
+}
+
+/* (real? x) — every number (exact or inexact) is a real. */
+lizard_ast_node_t *lizard_primitive_realp(lz_list_t *args, lizard_env_t *env,
+                                          lizard_heap_t *heap) {
   (void)env;
   if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   return lizard_make_bool(heap,
       lizard_num_like(((lizard_ast_list_node_t *)args->head)->ast));
 }
 
-/* (integer? x) — true only for the canonical integer representation. */
+/* (integer? x) — exact integers, and inexact reals with an integral value. */
 lizard_ast_node_t *lizard_primitive_integerp(lz_list_t *args,
                                              lizard_env_t *env,
                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type == AST_NUMBER) {
+    return lizard_make_bool(heap, 1);
+  }
+  if (a->type == AST_REAL) {
+    double v = a->data.real;
+    return lizard_make_bool(heap,
+        v >= -DBL_MAX && v <= DBL_MAX && !(v > floor(v))); /* finite & integral */
+  }
+  return lizard_make_bool(heap, 0);
+}
+
+/* (exact? x) — exact integers and exact rationals (NOT inexact reals). */
+lizard_ast_node_t *lizard_primitive_exactp(lz_list_t *args,
+                                           lizard_env_t *env,
+                                           lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  return lizard_make_bool(heap,
+      a->type == AST_NUMBER || a->type == AST_RATIONAL);
+}
+
+/* (inexact? x) — an inexact (floating-point) real. */
+lizard_ast_node_t *lizard_primitive_inexactp(lz_list_t *args, lizard_env_t *env,
+                                             lizard_heap_t *heap) {
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  return lizard_make_bool(heap,
+      ((lizard_ast_list_node_t *)args->head)->ast->type == AST_REAL);
+}
+
+/* (exact-integer? x) — an exact integer specifically (R7RS). */
+lizard_ast_node_t *lizard_primitive_exact_integerp(lz_list_t *args,
+                                                   lizard_env_t *env,
+                                                   lizard_heap_t *heap) {
   (void)env;
   if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
   return lizard_make_bool(heap,
       ((lizard_ast_list_node_t *)args->head)->ast->type == AST_NUMBER);
 }
 
-/* (exact? x) — all numbers in lizard's tower are exact. */
-lizard_ast_node_t *lizard_primitive_exactp(lz_list_t *args,
-                                           lizard_env_t *env,
-                                           lizard_heap_t *heap) {
+/* (nan? x), (infinite? x), (finite? x) — predicates on inexact reals. */
+lizard_ast_node_t *lizard_primitive_nanp(lz_list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
   (void)env;
   if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type != AST_REAL) return lizard_make_bool(heap, 0);
   return lizard_make_bool(heap,
-      lizard_num_like(((lizard_ast_list_node_t *)args->head)->ast));
+      !(a->data.real <= 0.0) && !(a->data.real >= 0.0));
+}
+lizard_ast_node_t *lizard_primitive_infinitep(lz_list_t *args, lizard_env_t *env,
+                                              lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type != AST_REAL) return lizard_make_bool(heap, 0);
+  return lizard_make_bool(heap,
+      a->data.real > DBL_MAX || a->data.real < -DBL_MAX);
+}
+lizard_ast_node_t *lizard_primitive_finitep(lz_list_t *args, lizard_env_t *env,
+                                            lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(a)) return lizard_make_bool(heap, 0);
+  if (a->type == AST_REAL) {
+    return lizard_make_bool(heap,
+        a->data.real >= -DBL_MAX && a->data.real <= DBL_MAX);
+  }
+  return lizard_make_bool(heap, 1); /* exact numbers are finite */
+}
+
+/* (exact->inexact x) / (inexact x) — convert any number to a double. */
+lizard_ast_node_t *lizard_primitive_exact_to_inexact(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *a;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(a)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return lizard_make_real(heap, lizard_num_to_double(a));
+}
+
+/* (inexact->exact x) / (exact x) — exact value of a real; exacts pass through. */
+lizard_ast_node_t *lizard_primitive_inexact_to_exact(lz_list_t *args,
+                                                     lizard_env_t *env,
+                                                     lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *r;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type == AST_NUMBER || a->type == AST_RATIONAL) return a;
+  if (a->type == AST_REAL) {
+    double v = a->data.real;
+    mpq_t q;
+    if (!(v >= -DBL_MAX && v <= DBL_MAX)) { /* nan / inf have no exact value */
+      return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+    }
+    mpq_init(q);
+    mpq_set_d(q, v);            /* exact rational equal to the IEEE double */
+    r = lizard_make_rational(heap, q);
+    mpq_clear(q);
+    return r;
+  }
+  return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+}
+
+/* shared: apply a C double->double function, result is inexact. */
+static lizard_ast_node_t *lz_real_unary(lz_list_t *args, lizard_heap_t *heap,
+                                        double (*f)(double)) {
+  lizard_ast_node_t *a;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(a)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  return lizard_make_real(heap, f(lizard_num_to_double(a)));
+}
+
+lizard_ast_node_t *lizard_primitive_exp(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, exp);
+}
+lizard_ast_node_t *lizard_primitive_log(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, log);
+}
+lizard_ast_node_t *lizard_primitive_sin(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, sin);
+}
+lizard_ast_node_t *lizard_primitive_cos(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, cos);
+}
+lizard_ast_node_t *lizard_primitive_tan(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, tan);
+}
+lizard_ast_node_t *lizard_primitive_atan(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_real_unary(a, h, atan);
+}
+
+/* (sqrt x) — exact for a perfect-square exact integer, else inexact. */
+lizard_ast_node_t *lizard_primitive_sqrt(lz_list_t *args, lizard_env_t *env,
+                                         lizard_heap_t *heap) {
+  lizard_ast_node_t *a, *result;
+  (void)env;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (!lizard_num_like(a)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+  if (a->type == AST_NUMBER && mpz_sgn(a->data.number) >= 0 &&
+      mpz_perfect_square_p(a->data.number)) {
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_NUMBER;
+    mpz_init(result->data.number);
+    mpz_sqrt(result->data.number, a->data.number);
+    return result;
+  }
+  return lizard_make_real(heap, sqrt(lizard_num_to_double(a)));
+}
+
+/* floor/ceiling/truncate/round — exactness-preserving.
+ * mode: 0 floor, 1 ceiling, 2 truncate, 3 round (half away from zero). */
+static lizard_ast_node_t *lz_rounder(lz_list_t *args, lizard_heap_t *heap, int mode) {
+  lizard_ast_node_t *a, *result;
+  if (!single_arg(args)) return lizard_make_error(heap, LIZARD_ERROR_PREDICATE_ARGC);
+  a = ((lizard_ast_list_node_t *)args->head)->ast;
+  if (a->type == AST_NUMBER) {
+    return a; /* already an integer */
+  }
+  if (a->type == AST_RATIONAL) {
+    mpz_t z;
+    mpz_init(z);
+    if (mode == 0) {
+      mpz_fdiv_q(z, mpq_numref(a->data.rational), mpq_denref(a->data.rational));
+    } else if (mode == 1) {
+      mpz_cdiv_q(z, mpq_numref(a->data.rational), mpq_denref(a->data.rational));
+    } else if (mode == 2) {
+      mpz_tdiv_q(z, mpq_numref(a->data.rational), mpq_denref(a->data.rational));
+    } else {
+      mpz_t tp, tq;          /* round half up: floor((2p + q) / (2q)) */
+      mpz_init(tp);
+      mpz_init(tq);
+      mpz_mul_ui(tp, mpq_numref(a->data.rational), 2U);
+      mpz_add(tp, tp, mpq_denref(a->data.rational));
+      mpz_mul_ui(tq, mpq_denref(a->data.rational), 2U);
+      mpz_fdiv_q(z, tp, tq);
+      mpz_clear(tp);
+      mpz_clear(tq);
+    }
+    result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
+    result->type = AST_NUMBER;
+    mpz_init(result->data.number);
+    mpz_set(result->data.number, z);
+    mpz_clear(z);
+    return result;
+  }
+  if (a->type == AST_REAL) {
+    double v = a->data.real, r;
+    if (mode == 0) {
+      r = floor(v);
+    } else if (mode == 1) {
+      r = ceil(v);
+    } else if (mode == 2) {
+      r = (v >= 0.0) ? floor(v) : ceil(v);          /* toward zero */
+    } else {
+      r = (v >= 0.0) ? floor(v + 0.5) : ceil(v - 0.5); /* half away from 0 */
+    }
+    return lizard_make_real(heap, r);
+  }
+  return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+}
+lizard_ast_node_t *lizard_primitive_floor(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_rounder(a, h, 0);
+}
+lizard_ast_node_t *lizard_primitive_ceiling(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_rounder(a, h, 1);
+}
+lizard_ast_node_t *lizard_primitive_truncate(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_rounder(a, h, 2);
+}
+lizard_ast_node_t *lizard_primitive_round(lz_list_t *a, lizard_env_t *e, lizard_heap_t *h) {
+  (void)e; return lz_rounder(a, h, 3);
 }
 
 /* (numerator q) — for an integer, itself; for n/d, n (as an integer). */
@@ -1994,6 +2320,12 @@ lizard_ast_node_t *lizard_primitive_expt(lz_list_t *args, lizard_env_t *env,
   if (!two_args(args)) return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   b = ((lizard_ast_list_node_t *)args->head)->ast;
   e = ((lizard_ast_list_node_t *)args->head->next)->ast;
+  if (b->type == AST_REAL || e->type == AST_REAL) { /* inexact contagion */
+    if (!lizard_num_like(b) || !lizard_num_like(e))
+      return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
+    return lizard_make_real(heap,
+                            pow(lizard_num_to_double(b), lizard_num_to_double(e)));
+  }
   if (!lizard_num_like(b) || e->type != AST_NUMBER) {
     return lizard_make_error(heap, LIZARD_ERROR_PLUS_ARGT);
   }
@@ -2085,6 +2417,20 @@ lizard_ast_node_t *lizard_primitive_abs(lz_list_t *args, lizard_env_t *env,
   lizard_ast_node_t *x = NULL, *err;
   lizard_ast_node_t *result;
   (void)env;
+  if (args->head != args->nil && args->head->next == args->nil) {
+    lizard_ast_node_t *a = ((lizard_ast_list_node_t *)args->head)->ast;
+    if (a->type == AST_REAL) {
+      return lizard_make_real(heap, fabs(a->data.real));
+    }
+    if (a->type == AST_RATIONAL) {
+      mpq_t q;
+      mpq_init(q);
+      mpq_abs(q, a->data.rational);
+      result = lizard_make_rational(heap, q);
+      mpq_clear(q);
+      return result;
+    }
+  }
   err = unary_number(args, heap, &x);
   if (err) return err;
   result = lizard_heap_alloc(sizeof(lizard_ast_node_t));
@@ -2953,9 +3299,29 @@ void lizard_install_primitives(lizard_heap_t *heap, lizard_env_t *env) {
   install_one(heap, env, "bool?",   lizard_primitive_boolp);
   install_one(heap, env, "number?", lizard_primitive_numberp);
   install_one(heap, env, "rational?", lizard_primitive_rationalp);
-  install_one(heap, env, "real?",     lizard_primitive_rationalp);
+  install_one(heap, env, "real?",     lizard_primitive_realp);
   install_one(heap, env, "integer?",  lizard_primitive_integerp);
   install_one(heap, env, "exact?",    lizard_primitive_exactp);
+  install_one(heap, env, "inexact?",       lizard_primitive_inexactp);
+  install_one(heap, env, "exact-integer?", lizard_primitive_exact_integerp);
+  install_one(heap, env, "nan?",           lizard_primitive_nanp);
+  install_one(heap, env, "infinite?",      lizard_primitive_infinitep);
+  install_one(heap, env, "finite?",        lizard_primitive_finitep);
+  install_one(heap, env, "exact->inexact", lizard_primitive_exact_to_inexact);
+  install_one(heap, env, "inexact",        lizard_primitive_exact_to_inexact);
+  install_one(heap, env, "inexact->exact", lizard_primitive_inexact_to_exact);
+  install_one(heap, env, "exact",          lizard_primitive_inexact_to_exact);
+  install_one(heap, env, "sqrt",  lizard_primitive_sqrt);
+  install_one(heap, env, "exp",   lizard_primitive_exp);
+  install_one(heap, env, "log",   lizard_primitive_log);
+  install_one(heap, env, "sin",   lizard_primitive_sin);
+  install_one(heap, env, "cos",   lizard_primitive_cos);
+  install_one(heap, env, "tan",   lizard_primitive_tan);
+  install_one(heap, env, "atan",  lizard_primitive_atan);
+  install_one(heap, env, "floor",    lizard_primitive_floor);
+  install_one(heap, env, "ceiling",  lizard_primitive_ceiling);
+  install_one(heap, env, "truncate", lizard_primitive_truncate);
+  install_one(heap, env, "round",    lizard_primitive_round);
   install_one(heap, env, "numerator", lizard_primitive_numerator);
   install_one(heap, env, "denominator", lizard_primitive_denominator);
   install_one(heap, env, "symbol?", lizard_primitive_symbolp);

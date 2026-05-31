@@ -256,6 +256,16 @@ lizard_ast_node_t *lizard_make_nil(lizard_heap_t *heap) {
   return node;
 }
 
+lizard_ast_node_t *lizard_make_real(lizard_heap_t *heap, double value) {
+  lizard_ast_node_t *node;
+  node = lizard_heap_alloc_tagged(sizeof(lizard_ast_node_t),
+                                LIZARD_GC_OBJECT_AST_NODE,
+                                LIZARD_OBJECT_TRACE_AST);
+  node->type = AST_REAL;
+  node->data.real = value;
+  return node;
+}
+
 lizard_ast_node_t *lizard_make_macro_def(lizard_heap_t *heap,
                                          lizard_ast_node_t *name,
                                          lizard_ast_node_t *transformer) {

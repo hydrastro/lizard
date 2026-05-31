@@ -121,6 +121,7 @@ lizard_ast_node_t *lizard_eval(
     case AST_NIL:
     case AST_NUMBER:
     case AST_RATIONAL:
+    case AST_REAL:
     case AST_STRING:
     case AST_PAIR:
     case AST_PRIMITIVE:
@@ -1896,6 +1897,7 @@ lizard_ast_node_t *lizard_expand_quasiquote(lizard_ast_node_t *node,
   switch (node->type) {
   case AST_NUMBER:
   case AST_RATIONAL:
+  case AST_REAL:
   case AST_STRING:
   case AST_SYMBOL:
   case AST_BOOL:

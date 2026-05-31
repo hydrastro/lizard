@@ -35,7 +35,7 @@
     <text class="nm done" x="356" y="242" text-anchor="middle">Elaborator / proof mode</text>
     <rect x="472" y="202" width="236" height="50" rx="9" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.2"/>
     <text class="ph done" x="590" y="225" text-anchor="middle">Phase 8</text>
-    <text class="nm done" x="590" y="242" text-anchor="middle">CAS proof certificates</text>
+    <text class="nm done" x="590" y="242" text-anchor="middle">CAS certificates: d/dx + integral</text>
   </g>
   <text class="tier" x="32" y="284">COMPLETE - RUNTIME</text>
   <g>
@@ -46,7 +46,6 @@
   <text class="tier" x="32" y="384">IN PROGRESS</text>
   <g>
     <rect x="32" y="394" width="676" height="58" rx="9" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
-    <text class="new" x="690" y="412" text-anchor="end">NEW</text>
     <text class="ph prog" x="44" y="418">Phase 6 - Persistent data + concurrency</text>
     <text class="nm prog" x="44" y="438">Immutable half DONE: persistent vector (trie) + HAMT maps &amp; sets, all with structural sharing · threads/STM next</text>
   </g>
@@ -63,6 +62,6 @@
     <text class="lg" x="170" y="11">In progress (1)</text>
     <rect x="300" y="0" width="14" height="14" rx="3" fill="#f1f5f9" stroke="#64748b" stroke-dasharray="5 4"/>
     <text class="lg" x="320" y="11">Planned (1)</text>
-    <text class="lg" x="450" y="11" fill="#64748b">+ exact rationals · object GC · persistent vector trie</text>
+    <text class="lg" x="446" y="11" fill="#64748b">+ exact rationals · object GC · persistent vector · verified integral</text>
   </g>
 </svg>

@@ -65,7 +65,7 @@ CFLAGS += -std=c89 -fPIC $(WARNINGS) -fno-common
 CFLAGS += -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
 
 LDFLAGS ?=
-LDLIBS  ?= -lds -lgmp
+LDLIBS  ?= -lds -lgmp -lm
 
 # Mode-specific tweaks.
 ifeq ($(MODE),debug)

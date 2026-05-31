@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include "tokenizer.h"
 #include "diagnostics.h"
@@ -111,6 +112,11 @@ void lizard_add_token(lz_list_t *list, lizard_token_type_t token_type,
         node->token.is_rational = 1;
       }
       mpq_clear(q);
+    } else if (strchr(data, '.') != NULL || strchr(data, 'e') != NULL ||
+               strchr(data, 'E') != NULL) {
+      /* inexact (floating-point) literal, e.g. 3.14, 1e10, 2.5e-3 */
+      node->token.data.real = strtod(data, NULL);
+      node->token.is_real = 1;
     } else {
       mpz_init(node->token.data.number);
       mpz_set_str(node->token.data.number, data, 10);
@@ -220,6 +226,29 @@ lz_list_t *lizard_tokenize(const char *input) {
         while (lizard_is_digit(input, i)) {
           i++;
         }
+      } else {
+        /* optional inexact (float) part: a fractional ".digits" and/or an
+         * exponent "e[+/-]digits".  The '.' must be adjacent to the digits we
+         * just consumed, so a dotted-pair '.' (which is space-separated) is
+         * never absorbed here. */
+        if (input[i] == '.' && input[i + 1] >= '0' && input[i + 1] <= '9') {
+          i++;
+          while (input[i] >= '0' && input[i] <= '9') {
+            i++;
+          }
+        }
+        if ((input[i] == 'e' || input[i] == 'E') &&
+            ((input[i + 1] >= '0' && input[i + 1] <= '9') ||
+             ((input[i + 1] == '+' || input[i + 1] == '-') &&
+              input[i + 2] >= '0' && input[i + 2] <= '9'))) {
+          i++;
+          if (input[i] == '+' || input[i] == '-') {
+            i++;
+          }
+          while (input[i] >= '0' && input[i] <= '9') {
+            i++;
+          }
+        }
       }
       buffer = lizard_heap_alloc(sizeof(char) * (long unsigned int)(i - j + 1));
       for (k = 0; j < i; j++, k++) {
@@ -312,7 +341,9 @@ static void lizard_destroy_token(lz_list_node_t *node) {
     lizard_heap_free(token->data.string);
     break;
   case TOKEN_NUMBER:
-    if (token->is_rational) {
+    if (token->is_real) {
+      /* data.real is a plain double; nothing to clear */
+    } else if (token->is_rational) {
       mpq_clear(token->data.rational);
     } else {
       mpz_clear(token->data.number);

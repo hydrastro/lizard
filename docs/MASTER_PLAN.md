@@ -958,6 +958,34 @@ party.  `lib/macros.lisp`, `lib/macro-stepper.lisp`, `lib/contract.lisp`, and
   (self-checking) verifies the base table and several sums and shows three wrong
   claims rejected.
 
+### Numeric tower — inexact (floating-point) reals
+- **What landed.**  An inexact real type (`AST_REAL`, an IEEE `double`) joins the
+  exact integers (`mpz`) and exact rationals (`mpq`), giving R7RS-style
+  exact/inexact behaviour.  Float literals (`3.14`, `1e10`, `2.5e-3`) read and
+  print (with a decimal point, plus `+inf.0`/`-inf.0`/`+nan.0`); the dotted-pair
+  `.` is never mistaken for a float because a float `.` must be adjacent to its
+  digits.
+- **Contagion.**  `+ - * / expt abs` and the comparators take an inexact path
+  when any operand is inexact (the result is inexact); all-exact computations
+  stay exact (`(+ 1 2 3)` → `6`, `(/ 1 4)` → `1/4`).  `=` is numeric across the
+  whole tower (`(= 1 1.0)` → `#t`), while `equal?` stays structural
+  (`(equal? 1 1.0)` → `#f`, distinguishing exact from inexact).
+- **Predicates & conversions.**  `inexact?`, a corrected `exact?` (false for
+  reals), `exact-integer?`, an R7RS `integer?`/`rational?`/`real?`, `nan?`,
+  `infinite?`, `finite?`; and `exact->inexact`/`inexact` plus
+  `inexact->exact`/`exact` (the latter returns the exact rational equal to the
+  IEEE double, e.g. `0.25` → `1/4`).
+- **Math.**  `sqrt` (exact for perfect-square integers, inexact otherwise),
+  `exp`, `log`, `sin`, `cos`, `tan`, `atan`, and exactness-preserving `floor`,
+  `ceiling`, `truncate`, `round` (rationals round to an exact integer; reals
+  round to a real).  Uses libm (`-lm`); the C99-only `trunc`/`round`/`rint` are
+  avoided for C89, built from `floor`/`ceil` instead.  Float equality and the
+  NaN/inf checks avoid `==`/`!=` on doubles to satisfy `-Wfloat-equal`.
+- **Tests.**  `tests/reals_test.c` (C tests 99→100) and the self-checking
+  `examples/148-inexact-reals.lisp`, which also evaluates a definite integral
+  numerically (∫₀^{π/2} cos = 1) on top of the certified ∫cos = sin from the
+  integration drop — connecting the new floats to the verified CAS.
+
 ## Current milestone: Lizard 0.2 — "Recoverable Core"
 
 Do **not** start with the exciting features (native compiler,

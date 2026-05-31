@@ -507,6 +507,7 @@ lizard_value_type_t lizard_value_type(const lizard_value_t *value) {
     return LIZARD_VALUE_STRING;
   case AST_NUMBER:
   case AST_RATIONAL:
+  case AST_REAL:
     return LIZARD_VALUE_NUMBER;
   case AST_SYMBOL:
     return LIZARD_VALUE_SYMBOL;

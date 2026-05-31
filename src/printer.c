@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 
 void lizard_print_indent(int depth) {
   int i;
@@ -32,6 +33,9 @@ void lizard_fprint_ast(FILE *fp, lizard_ast_node_t *node, int depth) {
     fprintf(fp, "Rational: ");
     gmp_printf("%Qd", node->data.rational);
     fprintf(fp, "\n");
+    break;
+  case AST_REAL:
+    fprintf(fp, "Real: %.12g\n", node->data.real);
     break;
   case AST_SYMBOL:
     fprintf(fp, "Symbol: %s\n", node->data.variable);
@@ -259,6 +263,25 @@ void lizard_fprint_value(FILE *fp, lizard_ast_node_t *node) {
   case AST_RATIONAL:
     gmp_fprintf(fp, "%Qd", node->data.rational);
     return;
+  case AST_REAL: {
+    double v = node->data.real;
+    if (!(v <= 0.0) && !(v >= 0.0)) {   /* NaN: fails both comparisons */
+      fprintf(fp, "+nan.0");
+    } else if (v > DBL_MAX) {
+      fprintf(fp, "+inf.0");
+    } else if (v < -DBL_MAX) {
+      fprintf(fp, "-inf.0");
+    } else {
+      char buf[64];
+      sprintf(buf, "%.12g", v);
+      /* ensure the printed form reads back as inexact (has '.', 'e', or 'E') */
+      if (strpbrk(buf, ".eE") == NULL) {
+        strcat(buf, ".0");
+      }
+      fprintf(fp, "%s", buf);
+    }
+    return;
+  }
   case AST_BOOL:
     fprintf(fp, "%s", node->data.boolean ? "#t" : "#f");
     return;
