@@ -1,0 +1,8 @@
+(import "cas/intrel.lisp")
+(define x1 (list (/ 1 2) (/ 1 3) (/ 1 6)))
+(display (ir-relation x1)) (newline)
+(display (vdot (ir-relation x1) x1)) (newline)
+(display (ir-relation (list 1 (/ 3 7)))) (newline)
+(display (ir-relation (list 3 5 7))) (newline)
+(display (ir-relation (list 1 2 4 8))) (newline)
+(display (list (ir-relation-ok? (list (/ 2 3) (/ 4 5) (/ 6 7) (/ 8 9))) (ir-verify (list 2 -3) (list 3 2)) (ir-verify (list 1 1) (list 3 2)))) (newline)

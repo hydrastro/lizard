@@ -1356,3 +1356,212 @@ and decoding must return the original message. So a [10,4] code over F_11 (dista
 t = 3) recovers its message from any one, two, or three symbol errors and reports failure
 at four; and [12,6] over F_13 and [8,2] over F_29 behave likewise. See
 `examples/208-reed-solomon.lisp` and the `cas_reedsolomon` golden test.
+
+## Tier 3: elliptic-curve cryptography (ECDH and ECDSA)
+
+`lib/cas/eccrypto.lisp` runs the two classic elliptic-curve protocols on the group law from
+ec.lisp, given a base point G of known prime order ell. ECDH key exchange: each party
+multiplies G by a private scalar to publish a point and multiplies the partner's point by
+its own scalar, both reaching the shared secret (d_A d_B) G. ECDSA: a message z is signed
+under private key d (public Q = dG) by choosing a nonce k, setting R = kG, r = x(R) mod ell,
+s = k^{-1}(z + r d) mod ell; verification checks x(u1 G + u2 Q) = r with u1 = z s^{-1},
+u2 = r s^{-1}.
+
+Certified four ways: ECDH agreement holds for every key pair, valid signatures verify, a
+signature for one message fails to verify for another, and a tampered signature is rejected.
+On y^2 = x^3 + 2x + 2 over F_17 with G = (5,1) of order 19, the exchange agrees across all
+18x18 key pairs and signatures verify or are correctly rejected. See
+`examples/209-elliptic-curve-crypto.lisp` and the `cas_eccrypto` golden test.
+
+## Tier 3: the Number-Theoretic Transform
+
+`lib/cas/ntt.lisp` implements the NTT, the finite-field discrete Fourier transform: with a
+primitive n-th root of unity it maps a vector to X_k = sum_j a_j w^{jk}, computed by the
+recursive radix-2 Cooley-Tukey splitting in O(n log n), with the inverse using w^{-1} and a
+final scaling by n^{-1}. Because convolution becomes pointwise multiplication under the
+transform, it gives fast cyclic convolution and fast polynomial multiplication.
+
+Three facts certify it: the inverse transform recovers the input, the inverse of the
+pointwise product equals the direct cyclic convolution, and NTT polynomial multiplication
+matches the schoolbook product. So over F_17 with the 8th root w = 9 the transform round
+trips and (1+2x+3x^2)(4+5x+6x^2) reduces to the same coefficients both ways; over F_97 with
+n = 16 the same holds. See `examples/210-number-theoretic-transform.lisp` and `cas_ntt`.
+
+## Tier 3: Hamming codes
+
+`lib/cas/hamming.lisp` builds the order-r binary Hamming code, a [2^r-1, 2^r-1-r, 3] code
+correcting one error. Data bits occupy the non-power-of-two positions, parity bits the
+powers of two, and on receipt the syndrome read bit by bit is exactly the binary index of
+the flipped position (zero meaning none), so a single error anywhere is located and
+corrected.
+
+Two facts certify it: a clean codeword has zero syndrome, and a single error in any of the
+n positions is corrected. For the [7,4] code this is verified exhaustively over all sixteen
+messages, and the [15,11] code corrects every single error likewise. See
+`examples/211-hamming-codes.lisp` and the `cas_hamming` golden test.
+
+## Tier 3: Hensel lifting
+
+`lib/cas/hensel.lisp` lifts a coprime factorization f = g h modulo a prime p to a
+factorization modulo every power p^k -- the bridge from factoring over a small field to
+factoring over the integers. Each step corrects g and h with fixed mod-p Bezout cofactors
+so the product matches f to one higher power of p while g stays monic; the finite-field
+polynomial arithmetic is reused from ffactor (whose add/subtract/multiply reduce modulo any
+modulus) with an extended Euclid supplying the cofactors.
+
+Two facts certify each lift: the lifted product reconstructs f mod p^k, and it reduces to
+the original factor mod p. So x^2 + 1 = (x+2)(x+3) mod 5 lifts to (x+7)(x+18) mod 25 and on
+to mod 5^6; x^3 - 1 keeps its split (x-1)(x^2+x+1); and x^2 - 10 mod 3 lifts cleanly to mod
+3^8. See `examples/212-hensel-lifting.lisp` and the `cas_hensel` golden test.
+
+## Tier 3: Reed-Solomon via syndromes and Berlekamp-Massey
+
+`lib/cas/rsbm.lisp` decodes Reed-Solomon codes in the spectral (BCH-like) form, complementing
+the Berlekamp-Welch decoder of `reedsolomon.lisp`. For a primitive root alpha of F_p the
+length n = p-1 code with k = n - 2t uses generator g(x) = prod_{j=1}^{2t} (x - alpha^j), and a
+message is encoded as m*g. The received word's syndromes S_j = r(alpha^j) vanish exactly when
+r is a codeword; otherwise Berlekamp-Massey over F_p finds the shortest linear recurrence
+generating the syndrome sequence, whose reciprocal roots -- located by a Chien search -- are
+the error positions. Forney's formula, here a small Vandermonde solve, gives the error
+magnitudes. Four certificates gate it: the round trip recovers the message through up to t
+errors, a clean codeword has all-zero syndromes, the located positions equal the injected
+ones, and three errors on a t=2 code report failure. Verified on a [10,6] code over F_11
+(generator (1 8 5 3 1)) and a [12,6] code over F_13. See `examples/215-reed-solomon-berlekamp-massey.lisp`.
+
+## Tier 3: Reed-Muller codes
+
+`lib/cas/reedmuller.lisp` implements the first-order Reed-Muller code RM(1,m), a
+[2^m, m+1, 2^{m-1}] code correcting t = 2^{m-2}-1 errors, self-contained over GF(2). A
+message (a0,...,am) encodes the affine Boolean function a0 + a1 x1 + ... + am xm as its
+length-2^m truth table. Decoding is the fast Walsh-Hadamard transform: mapping bits b to
+signs 1-2b and transforming, the largest-magnitude coefficient identifies the linear part by
+its index and the constant term by its sign -- maximum-likelihood decoding in O(m 2^m)
+without any matrix. The certificate is the round trip: RM(1,4) = [16,5,8] recovers its
+message from any three bit errors, RM(1,5) = [32,6,16] from seven, and RM(1,3) = [8,4,4]
+from one. See `examples/216-reed-muller-codes.lisp` and the `cas_reedmuller` golden test.
+
+## Tier 3: binary BCH codes
+
+`lib/cas/bch.lisp` implements binary BCH codes over GF(2^m), the cyclic generalization of the
+Hamming codes. For a primitive alpha of GF(2^m) the length n = 2^m-1 code designed to correct
+t errors has generator g = lcm(M_1, ..., M_{2t}), where M_i is the minimal polynomial of
+alpha^i over GF(2) -- the product over the cyclotomic coset {i, 2i, 4i, ...} (mod n) of
+(x - alpha^j). Distinct cosets give coprime minimal polynomials, so g is their product over
+GF(2); a k = n - deg g bit message is encoded as m*g. Decoding mirrors the Reed-Solomon
+spectral route: syndromes S_j = r(alpha^j) in GF(2^m), Berlekamp-Massey over GF(2^m) for the
+error locator, and a Chien search for the positions -- but because the errors are binary,
+decoding simply flips those bits with no Forney step. The construction is pinned by an
+independent constant: over GF(16) with primitive polynomial x^4+x+1 the t=2 generator is
+exactly the textbook x^8+x^7+x^6+x^4+1, giving the [15,7] code. The round trip then corrects
+up to t errors there, a t=3 design gives a [15,5] code correcting three errors, and over
+GF(8) the t=1 code reproduces the [7,4] Hamming generator x^3+x+1. See
+`examples/217-bch-codes.lisp` and the `cas_bch` golden test.
+
+## Tier 3: permutation groups
+
+`lib/cas/permgroup.lisp` works with finite permutation groups on {0,...,n-1}, a permutation
+being its list of images so that the identity is (0 1 ... n-1) and composition is function
+composition. Given generators, the whole subgroup of S_n is enumerated by breadth-first
+search over its Cayley graph -- from the identity, repeatedly left-multiplying by each
+generator visits every element exactly once -- so the group order is just the count. That
+count is cross-checked against the orbit-stabilizer theorem |G| = |orbit(x)| * |stabilizer(x)|,
+computed independently, and the group axioms (identity present, closure under generators,
+closure under inverses) are verified on the enumerated set, with Lagrange's theorem checked
+for point stabilizers. Element order, cycle decomposition, orbits and stabilizers are all
+available. Known orders pin it down: S_3 = 6, S_4 = 24, A_4 = 12 (a proper subgroup of S_4),
+D_4 = 8, and a cyclic generator's order equals its length. See
+`examples/218-permutation-groups.lisp` and the `cas_permgroup` golden test.
+
+## Tier 3: LLL lattice basis reduction
+
+`lib/cas/lll.lisp` implements Lenstra-Lenstra-Lovasz reduction over the rationals. A lattice is
+the set of integer combinations of its basis vectors; LLL rewrites a long, skewed basis into a
+short, nearly orthogonal one spanning the same lattice, interleaving size reduction (every
+Gram-Schmidt coefficient |mu_ij| <= 1/2) with swaps whenever the Lovasz condition
+|b*_k|^2 >= (3/4 - mu_{k,k-1}^2)|b*_{k-1}|^2 fails. Because all Gram-Schmidt arithmetic is exact
+rational, the result is exact. A correct reduction is characterized completely by its
+certificates, which is what is checked: the output is size-reduced, satisfies Lovasz, and spans
+the same lattice -- the change of basis U with reduced = U * original is verified to be an
+integer matrix of determinant +-1 (computed from an exact rational matrix inverse and
+determinant), and the lattice determinant is preserved. The skewed basis (1,0,0),(10,1,0),
+(100,10,1) reduces all the way to the standard basis of Z^3, and (1,2),(3,4) becomes the
+orthogonal (1,0),(0,2). See `examples/219-lll-lattice-reduction.lisp` and the `cas_lll` golden.
+
+## Tier 3: integer relation detection
+
+`lib/cas/intrel.lisp` finds, for rationals x_1,...,x_n, a nonzero integer vector a with
+a.x = 0 -- the classic application of lattice reduction. The problem is embedded as the lattice
+spanned by the rows (e_i | C*x_i): a lattice vector is (a, C*(a.x)), so making it short forces
+a.x toward zero and the identity block exposes the relation. Because the LLL change of basis is
+integer-unimodular and the identity block is integer, the first n coordinates of any reduced
+vector are integers, so a is recovered as an integer vector directly. The routine is
+self-certifying: it scans the reduced basis and returns only an a with a.x = 0 exactly (raising
+the weight C and retrying if none is found at the current scale). It recovers small relations --
+(1/2, 1/3, 1/6) yields (-1, 1, 1), and (1, 3/7) yields (-3, 7), recognizing the rational 3/7 --
+and includes a checker that validates a supplied relation. Builds on lll.lisp. See
+`examples/220-integer-relations.lisp` and the `cas_intrel` golden test.
+
+## Tier 3: cyclic codes
+
+`lib/cas/cyclic.lisp` provides the framework beneath the Hamming and BCH codes: a binary cyclic
+code of length n is generated by a polynomial g dividing x^n - 1 (= x^n + 1 over GF(2)), with
+codewords the multiples of g, so a word is a codeword exactly when g divides it (the syndrome
+r mod g is zero). The module checks that a proposed generator divides x^n + 1, encodes
+k = n - deg g bit messages as m*g, computes syndromes, and -- the defining property -- verifies
+cyclic closure, that rotating a codeword's coefficients (multiplication by x modulo x^n - 1)
+yields another codeword, for every rotation. It also confirms that corrupting a codeword makes
+the syndrome nonzero (error detection). Concretely x^3 + x + 1 generates the [7,4] Hamming code
+and x + 1 the even-weight parity-check code, both verified cyclic. Builds on ffactor.lisp. See
+`examples/221-cyclic-codes.lisp` and the `cas_cyclic` golden test.
+
+## Tier 3: the integer partition function
+
+`lib/cas/partition.lisp` computes p(n), the number of partitions of n, by Euler's pentagonal
+number theorem: p(n) = sum_{k>=1} (-1)^{k-1} [p(n - k(3k-1)/2) + p(n - k(3k+1)/2)], with p(0)=1
+and p(m)=0 for m<0. Only O(sqrt n) terms contribute at each step, so the table p(0..n) is built
+in roughly O(n sqrt n) exact-integer operations. Two independent checks gate it: a direct
+counting recurrence (partitions of n into parts at most k, with no pentagonal numbers) must
+agree for small n, and the classical value p(100) = 190569292 must come out exactly. Self-
+contained. See `examples/222-integer-partitions.lisp` and the `cas_partition` golden test.
+
+## Tier 3: Rothstein-Trager logarithmic integration
+
+`lib/cas/rothstein.lisp` computes the logarithmic part of a rational integral. For a proper
+a/b with b squarefree, INT a/b dx = sum_i c_i log(v_i), and Rothstein and Trager showed how to
+find it without factoring b: the constants c_i are the roots of the resultant
+R(y) = res_x(a - y b', b) -- exactly the residues of a/b at the roots of b -- and the matching
+argument is v_c = gcd(a - c b', b). The module assembles the answer over the rational roots of
+R (found by the rational root theorem) and certifies it by differentiation, checking that
+sum c_i v_i'/v_i equals a/b as an exact identity. When R has only rational roots the
+logarithmic part is complete; an irreducible denominator such as x^2+1 has algebraic residues
+(here +-i/2, the arctangent case), which is reported honestly rather than faked. This is
+genuinely factorization-free, unlike the partial-fraction route, and rests on the parametric
+resultant rt-resultant; that resultant is sampled away from the node where the integrand's
+x-degree drops, so the interpolation stays consistent. See `examples/223-rothstein-trager.lisp`
+and the `cas_rothstein` golden test.
+
+## Tier 3: Hermite reduction
+
+`lib/cas/hermite.lisp` extracts the rational part of a rational integral. For a proper A/D it
+produces INT A/D dx = (rational part) + INT (numerator)/(radical of D) dx, where the radical
+(squarefree part) has only simple roots so the remaining integral is purely logarithmic. No
+factorization into irreducibles is needed: D is squarefree-factorized by Yun's algorithm, split
+into pieces by the polynomial CRT, and each piece is reduced one power at a time by integration
+by parts using the Bezout relation S V + T V' = 1 (V squarefree, so gcd(V,V') = 1). Everything
+is exact rational arithmetic and the result is certified by differentiation:
+d/dx(rational part) + residual/radical = A/D. The computed rational part can differ from a
+minimal one by an additive constant, which the differentiation certificate correctly tolerates.
+See `examples/224-hermite-reduction.lisp` and the `cas_hermite` golden test.
+
+## Tier 3: complete rational integration (the Risch way)
+
+`lib/cas/rischrat.lisp` composes the two halves of the rational case of the Risch algorithm:
+Hermite reduction for the rational part, then Rothstein-Trager for the squarefree remainder,
+giving INT A/D dx = ratnum/ratden + sum_i c_i log(v_i) with no irreducible factorization at any
+step. The answer is returned together with a completeness flag and is certified by
+differentiating it back to A/D. It is complete exactly when the denominator splits over Q
+(rational residues); an irreducible quadratic factor contributes an arctangent whose residues
+are algebraic, reported honestly while the Hermite rational part remains exact. This is the
+honest summit of the rational case -- proof-carrying rational integration -- with the full
+transcendental and algebraic Risch algorithm remaining beyond a single sitting. See
+`examples/225-rational-integration-complete.lisp` and the `cas_rischrat` golden test.

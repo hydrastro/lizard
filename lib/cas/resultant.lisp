@@ -92,5 +92,18 @@
   (if (= z count) '()
     (cons (cons z (resultant (poly-sub p (poly-scale z qp)) q))
           (rt-points p qp q (+ z 1) count))))
+; The leading x-coefficient of (p - z q') is (coeff_x^{deg q'} p) - z*lead(q'); at the z where
+; this vanishes the x-degree drops and the (adaptive) resultant value is inconsistent with the
+; interpolating polynomial.  Avoid that one node so all samples share the full formal degree.
+(define (rt-badz p qp)
+  (let ((d (poly-deg qp)))
+    (if (< (poly-deg p) d) 0 (/ (poly-coeff p d) (poly-lead qp)))))
+(define (rt-points-safe p qp q z badz count acc)
+  (if (= count 0) (reverse acc)
+      (if (= z badz)
+          (rt-points-safe p qp q (+ z 1) badz count acc)
+          (rt-points-safe p qp q (+ z 1) badz (- count 1)
+                          (cons (cons z (resultant (poly-sub p (poly-scale z qp)) q)) acc)))))
 (define (rt-resultant p q)
-  (lagrange (rt-points p (poly-deriv q) q 0 (+ (poly-deg q) 1))))
+  (let ((qp (poly-deriv q)))
+    (lagrange (rt-points-safe p qp q 1 (rt-badz p qp) (+ (poly-deg q) 1) '()))))

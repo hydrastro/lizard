@@ -1,0 +1,6 @@
+(import "cas/hensel.lisp")
+(display (lift->string (list 1 0 1) (list 2 1) (list 3 1) 5 2)) (newline)
+(display (lift->string (list 1 0 1) (list 2 1) (list 3 1) 5 3)) (newline)
+(display (lift->string (list -1 0 0 1) (list -1 1) (list 1 1 1) 5 2)) (newline)
+(display (lift->string (list -10 0 1) (list -1 1) (list 1 1) 3 4)) (newline)
+(display (list (bezout-ok? (list 2 1) (list 3 1) 5) (hensel-ok? (list 1 0 1) (list 2 1) (list 3 1) 5 6) (hensel-ok? (list -1 0 0 1) (list -1 1) (list 1 1 1) 5 4) (hensel-ok? (list -10 0 1) (list -1 1) (list 1 1) 3 8))) (newline)
