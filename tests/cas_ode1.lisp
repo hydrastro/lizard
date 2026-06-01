@@ -1,0 +1,8 @@
+(import "cas/ode1.lisp")
+(display (ode1-result->string (solve-autonomous (list 0 1) (list 1)))) (newline)
+(display (ode1-result->string (solve-autonomous (list 0 0 1) (list 1)))) (newline)
+(display (ode1-result->string (solve-autonomous (list 1 0 1) (list 1)))) (newline)
+(display (ode1-result->string (solve-separable (list 0 1) (list 1) (list 0 1) (list 1)))) (newline)
+(display (ode1-result->string (solve-separable (list 0 1) (list 1) (list 1) (list 0 1)))) (newline)
+(display (ode1-result->string (solve-separable (list 1) (list 0 1) (list 1 0 1) (list 1)))) (newline)
+(display (ode1-certified? (solve-separable (list 0 1) (list 1) (list 1) (list 0 1)))) (newline)

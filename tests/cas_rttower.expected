@@ -1,0 +1,5 @@
+1/2 * log(log(x) - 1) + -1/2 * log(log(x) + 1) + C
+arctan(log(x)) + C
+RootSum(c: c^2 - 1/8 = 0,  c*log((1)*log(x) + (-4*sqrt(1/8)))) + C
+log(x) + RootSum(c: c^2 - 1/2 = 0,  c*log((1)*log(x) + (-2*sqrt(1/2)))) + C
+#t

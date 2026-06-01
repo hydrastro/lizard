@@ -1,0 +1,8 @@
+(import "cas/ratlimit.lisp")
+(display (limit->string (ratfun-limit (list -1 0 1) (list -1 1) 1))) (newline)
+(display (limit->string (ratfun-limit (list -9 0 1) (list 6 -5 1) 3))) (newline)
+(display (limit->string (ratfun-limit (list -1 1) (list 1 -2 1) 1))) (newline)
+(display (limit->string (ratfun-limit (list 1 0 1) (list 1 1) 2))) (newline)
+(display (limit->string (ratfun-limit-inf (list 1 0 2) (list 0 1 1)))) (newline)
+(display (limit->string (ratfun-limit-inf (list 0 -1 3) (list 5 0 2)))) (newline)
+(display (taylor-at (list -1 0 1) 1)) (newline)

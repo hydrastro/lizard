@@ -97,3 +97,10 @@
 (define (rt-cert-sum terms q)
   (if (null? terms) '() (poly-add (rt-cert-contrib (car terms) q) (rt-cert-sum (cdr terms) q))))
 (define (rt-certificate p q terms) (equal? (poly-norm p) (poly-norm (rt-cert-sum terms q))))
+
+; parameterized display: same as rt-log->string but with a caller-chosen variable name
+(define (rt-term->string-v t var)
+  (cond ((equal? (car t) 'rlog) (coeff-log (car (cdr t)) (poly->string (car (cdr (cdr t))) var)))
+        (else (string-append "RootSum(c: " (poly->string (car (cdr t)) "c") " = 0,  c*log(" (apoly->string (car (cdr (cdr t))) var) "))"))))
+(define (rt-join-v terms var) (if (null? (cdr terms)) (rt-term->string-v (car terms) var) (string-append (rt-term->string-v (car terms) var) "  +  " (rt-join-v (cdr terms) var))))
+(define (rt-log->string-v terms var) (if (null? terms) "0" (rt-join-v terms var)))

@@ -89,25 +89,23 @@
 <text x="582.0" y="874.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Trager–Bronstein — integrands with algebraic</text>
 <text x="582.0" y="890.0" font-size="12" fill="#713f12" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >functions; FriCAS-only territory</text>
 <rect x="28.0" y="926.0" width="1064.0" height="46.0" rx="9" fill="#fffbeb" stroke="#b45309" stroke-width="1.4" />
-<text x="42.0" y="945.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Begun: exact ℚ(x) derivation; exp/log integration (PROVES ∫e^(x²)dx non-elementary); general Hermite reduction; and</text>
-<text x="42.0" y="961.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >multi-log + arctan over a monomial by substitution to the certified rational integrator</text>
-<text x="42.0" y="977.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >(∫1/(x((logx)²+1))=arctan(logx)) — all checked, non-elementary inputs declined.</text>
+<text x="42.0" y="945.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Begun: exact derivation over ℚ(x); single-monomial exp &amp; log integration; PROVES ∫e^(x²)dx non-elementary; new logs</text>
+<text x="42.0" y="961.0" font-size="12.5" fill="#7c2d12" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >(∫1/(x·logx)=loglogx) + Hermite rational part — all differentiated back to check, non-elementary inputs declined.</text>
 <rect x="28.0" y="984.0" width="1064.0" height="46.0" rx="10" fill="#4338ca" stroke="none" stroke-width="0" />
 <text x="44.0" y="1014.0" font-size="18" fill="#ffffff" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >TIER 3 — a broad CAS beyond integration</text>
 <rect x="46.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
 <text x="60.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Limits (Gruntz) + series</text>
 <text x="60.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Taylor / Laurent / Puiseux</text>
 <rect x="394.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
-<text x="408.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation ✓ Gosper</text>
-<text x="408.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Gosper&#x27;s algorithm shipped &amp; certified; next:</text>
-<text x="408.0" y="1102.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Zeilberger / WZ</text>
+<text x="408.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation</text>
+<text x="408.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Gosper, Zeilberger / WZ</text>
 <rect x="742.0" y="1042.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
 <text x="756.0" y="1067.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODE solving</text>
 <text x="756.0" y="1086.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >first-order, linear, series</text>
 <rect x="46.0" y="1124.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
-<text x="60.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra ✓</text>
-<text x="60.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >det, charpoly, EXACT eigenvalues (golden</text>
-<text x="60.0" y="1184.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ratio, i) via solver; inverse, systems</text>
+<text x="60.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra</text>
+<text x="60.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Bareiss det, charpoly, eigen, Smith/Hermite</text>
+<text x="60.0" y="1184.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >normal form</text>
 <rect x="394.0" y="1124.0" width="332.0" height="70.0" rx="9" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.6" />
 <text x="408.0" y="1149.0" font-size="14.5" fill="#312e81" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Multivariate</text>
 <text x="408.0" y="1168.0" font-size="12" fill="#312e81" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >GCD, factorization, Gröbner bases (Buchberger</text>

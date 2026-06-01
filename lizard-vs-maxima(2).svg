@@ -108,8 +108,8 @@
 <text x="40.0" y="614.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation (Gosper / Zeilberger)</text>
 <rect x="548.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
 <text x="618.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
-<rect x="738.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
-<text x="808.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="738.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
+<text x="808.0" y="614.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
 <rect x="928.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
 <text x="998.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
 <text x="40.0" y="648.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODE solving</text>
@@ -123,8 +123,8 @@
 <text x="40.0" y="682.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra (eigen, normal forms)</text>
 <rect x="548.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
-<text x="808.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="738.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
+<text x="808.0" y="682.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
 <rect x="928.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
 <text x="998.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
 <text x="40.0" y="716.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Multivariate factorization / Gröbner</text>
