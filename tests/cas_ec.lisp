@@ -1,0 +1,7 @@
+(import "cas/ec.lisp")
+(display (list (ec-count 2 2 17) (ec-count 1 1 5) (ec-count 1 6 11) (ec-count 2 2 23))) (newline)
+(display (list (pt->string (ec-double (cons 5 1) 2 17)) (pt->string (ec-mul 3 (cons 5 1) 2 17)) (ec-order (cons 5 1) 2 17))) (newline)
+(display (pt->string (ec-mul 19 (cons 5 1) 2 17))) (newline)
+(display (list (nonsingular? 2 2 17) (on-curve? (cons 5 1) 2 2 17) (hasse-ok? 2 2 17) (ec-lagrange-ok? 2 2 17))) (newline)
+(display (list (ec-closure-ok? 2 2 17) (ec-inverse-ok? 2 2 17))) (newline)
+(display (list (ec-assoc-ok? 1 1 5) (ec-closure-ok? 1 6 11) (hasse-ok? 2 2 23))) (newline)

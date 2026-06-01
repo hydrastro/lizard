@@ -216,3 +216,6 @@
 (example "203-pollard-rho.lisp" :expect pass)
 (example "204-finite-field-factorization.lisp" :expect pass)
 (example "205-extension-fields.lisp" :expect pass)
+(example "206-elliptic-curves.lisp" :expect pass)
+(example "207-secret-sharing.lisp" :expect pass)
+(example "208-reed-solomon.lisp" :expect pass)

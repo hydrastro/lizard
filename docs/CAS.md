@@ -1303,3 +1303,56 @@ all p^n - 1 nonzero elements exactly once. So GF(8) = F_2[x]/(x^3+x+1), GF(16), 
 GF(25), and GF(27) are all built and pass every law; in GF(8), x is primitive of order 7,
 x*(x+1) = x^2 + x, and x^(-1) = x^2 + 1. See `examples/205-extension-fields.lisp` and the
 `cas_gfp` golden test.
+
+## Tier 3: elliptic curves over F_p
+
+`lib/cas/ec.lisp` implements the group of points on y^2 = x^3 + a x + b over a prime field
+F_p (with 4a^3 + 27b^2 /= 0). Points are the affine solutions together with a point at
+infinity O. Addition uses the chord slope (y2-y1)/(x2-x1) for distinct points and the
+tangent slope (3x1^2+a)/(2y1) for doubling, with P + (-P) = O; scalar multiplication is
+double-and-add. The group order is p + 1 + sum over x of the Legendre symbol of
+x^3 + a x + b, and a point's order is the least k with kP = O.
+
+The implementation is held to the defining structure, every clause an independent check:
+the curve is nonsingular, the sum of two points is again on the curve (closure verified
+over every pair), the law is associative (verified over every triple), O and -P are
+identity and inverse, the count obeys the Hasse bound |#E - (p+1)| <= 2 sqrt p, and the
+order of every point divides #E (Lagrange). So y^2 = x^3 + 2x + 2 over F_17 has 19 points
+(a prime, so the group is cyclic) with P = (5,1) a generator of order 19; and the curves
+over F_5, F_11, F_23 (orders 9, 13, 20) obey all the same laws. See
+`examples/206-elliptic-curves.lisp` and the `cas_ec` golden test.
+
+## Tier 3: Shamir threshold secret sharing
+
+`lib/cas/shamir.lisp` implements (t, n) threshold secret sharing over F_p. A secret is
+placed as the constant term of a degree t-1 polynomial; the n shares are its evaluations
+at x = 1..n. Any t shares determine the polynomial by Lagrange interpolation and recover
+the secret as the value at 0, while any t-1 shares leave it completely undetermined.
+
+Two independent facts certify the scheme: reconstruction from any t of the n shares returns
+the original secret (checked over several different t-subsets), and the security property
+holds -- given only t-1 shares, two distinct secrets each admit a degree t-1 polynomial
+reproducing exactly those shares, so t-1 shares carry no information. So a (3,5) sharing of
+1234 over F_2003 is recovered by any three shares but two shares give an unrelated value;
+and (4,7) and (2,4) sharings behave likewise. See `examples/207-secret-sharing.lisp` and
+the `cas_shamir` golden test.
+
+## Tier 3: Reed-Solomon error-correcting codes
+
+`lib/cas/reedsolomon.lisp` implements Reed-Solomon codes over F_p in evaluation form. A
+k-symbol message is the coefficient list of a polynomial of degree < k, and its codeword is
+the evaluations at n distinct points; this is a maximum-distance-separable [n, k] code with
+minimum distance n - k + 1, correcting up to t = floor((n - k) / 2) symbol errors.
+
+Decoding is the Berlekamp-Welch method. If the received word differs from a codeword in at
+most t places, there is an error-locator E (monic of degree t, vanishing at the error
+positions) and a numerator N of degree < t + k with N(x_i) = r_i E(x_i) at every point.
+These relations are linear in the coefficients of E and N, so a Gaussian elimination over
+F_p (with a particular-solution extractor for the rank-deficient case of fewer errors)
+recovers them, and the message is the exact quotient N / E.
+
+The whole scheme is gated by the round trip: encode a message, corrupt up to t positions,
+and decoding must return the original message. So a [10,4] code over F_11 (distance 7,
+t = 3) recovers its message from any one, two, or three symbol errors and reports failure
+at four; and [12,6] over F_13 and [8,2] over F_29 behave likewise. See
+`examples/208-reed-solomon.lisp` and the `cas_reedsolomon` golden test.

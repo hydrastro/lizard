@@ -1,0 +1,8 @@
+(import "cas/shamir.lisp")
+(define p 2003)
+(define shares (make-shares 1234 (list 166 94) 5 p))
+(display (shares->string shares)) (newline)
+(display (list (reconstruct (take-n shares 3) p) (reconstruct (drop-n shares 2) p))) (newline)
+(display (reconstruct (take-n shares 2) p)) (newline)
+(display (list (reconstruct-ok? 1234 (list 166 94) 5 p) (security-ok? 1234 (list 166 94) 5 p 1234 999) (security-ok? 1234 (list 166 94) 5 p 1234 7))) (newline)
+(display (list (reconstruct-ok? 777777 (list 11 222 3333) 7 1000003) (security-ok? 777777 (list 11 222 3333) 7 1000003 777777 12345) (reconstruct-ok? 42 (list 17) 4 101))) (newline)
