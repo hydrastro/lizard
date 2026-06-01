@@ -1,0 +1,7 @@
+(import "cas/perfect.lisp")
+(display (perfects-upto 1000)) (newline)
+(display (list (perfect? 6) (perfect? 28) (perfect? 496) (perfect? 8128) (perfect? 12))) (newline)
+(display (list (aliquot 12) (classify 12) (classify 8) (classify 6))) (newline)
+(display (list (amicable? 220 284) (amicable? 1184 1210) (amicable? 220 285))) (newline)
+(display (list (euclid-euler 2) (euclid-euler 3) (euclid-euler 5) (euclid-euler 7) (euclid-euler 13))) (newline)
+(display (list (mersenne-prime? 7) (mersenne-prime? 11) (mersenne-prime? 13) (perfect? (euclid-euler 13)))) (newline)

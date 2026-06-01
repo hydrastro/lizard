@@ -1,0 +1,6 @@
+(6 28 496)
+(#t #t #t #t #f)
+(16 "abundant" "deficient" "perfect")
+(#t #t #f)
+(6 28 496 8128 33550336)
+(#t #f #t #t)

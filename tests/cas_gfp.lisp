@@ -1,0 +1,8 @@
+(import "cas/gfp.lisp")
+(display (list (gf-modulus->string 2 3) (gf-modulus->string 2 4) (gf-modulus->string 3 2) (gf-modulus->string 5 2) (gf-modulus->string 3 3))) (newline)
+(display (list (gf-field-ok? 2 3) (gf-field-ok? 2 4) (gf-field-ok? 3 2) (gf-field-ok? 5 2) (gf-field-ok? 3 3))) (newline)
+(display (list (gf-inverses-ok? 2 3) (gf-inverses-ok? 2 4) (gf-inverses-ok? 3 2) (gf-inverses-ok? 5 2) (gf-inverses-ok? 3 3))) (newline)
+(display (list (gf-frobenius-ok? 2 3) (gf-frobenius-ok? 2 4) (gf-frobenius-ok? 3 2) (gf-frobenius-ok? 5 2))) (newline)
+(display (list (gf-primitive-generates? 2 3) (gf-primitive-generates? 2 4) (gf-primitive-generates? 3 3))) (newline)
+(define m (gf-modulus 2 3))
+(display (list (gf->string (gf-mul (list 0 1) (list 1 1) m 2)) (gf-order (list 0 1) m 2) (gf->string (gf-inv (list 0 1) m 2)))) (newline)

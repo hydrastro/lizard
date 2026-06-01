@@ -1,0 +1,6 @@
+(import "cas/partitions.lisp")
+(display (partition-list 15)) (newline)
+(display (partition 50)) (newline)
+(display (partition 100)) (newline)
+(display (list (partition 5) (partition 10) (partition 20))) (newline)
+(display (list (partitions-ok? 20) (partitions-ok? 40) (partitions-ok? 60))) (newline)

@@ -46,11 +46,11 @@
   (let ((fp (xy-deriv-x f)))
     (if (xy-zero? fp) (list (cons (xy-normalize f) 1))
         (let ((c (mgcd f fp)))
-          (yun-loop (xy-quotient f c) (xy-quotient fp c) 1 '())))))
-(define (yun-loop w y i acc)
+          (xy-yun-loop (xy-quotient f c) (xy-quotient fp c) 1 '())))))
+(define (xy-yun-loop w y i acc)
   (let ((g (mgcd w (xy-sub y (xy-deriv-x w)))))
     (let ((w2 (xy-quotient w g)) (acc2 (if (xy-const? g) acc (append acc (list (cons (xy-normalize g) i))))))
-      (if (xy-const? w2) acc2 (yun-loop w2 (xy-quotient (xy-sub y (xy-deriv-x w)) g) (+ i 1) acc2)))))
+      (if (xy-const? w2) acc2 (xy-yun-loop w2 (xy-quotient (xy-sub y (xy-deriv-x w)) g) (+ i 1) acc2)))))
 
 ; ---------- reconstruction and certificate ----------
 (define (xy-pow f k) (if (= k 0) (list (list 1)) (xy-mul f (xy-pow f (- k 1)))))

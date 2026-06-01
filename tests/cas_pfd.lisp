@@ -1,0 +1,7 @@
+(import "cas/pfd.lisp")
+(display (pfd->string (partial-fractions (list 1) (list -1 0 1)) "x")) (newline)
+(display (pfd->string (partial-fractions (list 0 1) (list -1 0 1)) "x")) (newline)
+(display (pfd->string (partial-fractions (list 1) (list 0 1 0 1)) "x")) (newline)
+(display (pfd->string (partial-fractions (list 0 0 0 1) (list -1 0 1)) "x")) (newline)
+(display (pfd->string (partial-fractions (list 1) (list 1 -1 -1 1)) "x")) (newline)
+(display (pfd-ok? (list 1) (list 1 -1 -1 1) (partial-fractions (list 1) (list 1 -1 -1 1)))) (newline)

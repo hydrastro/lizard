@@ -87,6 +87,14 @@
   (der-rule-type (fn (kapp 'f (kapp 'g 'x)))
                  (fn (k2 'mul (kapp 'f1 (kapp 'g 'x)) (kapp 'g1 'x)))))
 
+; Linearity through negation: d/dx (- g x) = - g' x.  A unary rule (neg is the
+; ring's additive inverse), letting higher derivatives of sin and cos close up
+; (cos' = -sin introduces neg, so the second derivative needs this).
+;     der_neg_lin : Der g g' -> Der (\x. neg (g x)) (\x. neg (g' x))
+(kernel-assume 'der_neg_lin
+  (kpi 'g RR (kpi 'g1 RR (kpi 'pg (Der 'g 'g1)
+    (Der (fn (kapp 'neg (kapp 'g 'x))) (fn (kapp 'neg (kapp 'g1 'x))))))))
+
 ; ---- the differentiator: emits (list derivative-term kernel-proof) ------------
 (define (mentions-x? e)
   (cond ((symbol? e) (equal? e 'x))
@@ -128,10 +136,15 @@
            (let ((arg (car (cdr (cdr e)))))
              (let ((d (diff arg)))
                (let ((a1 (car d)) (pa (car (cdr d))))
-                 (list (k2 'mul (fapplied head arg) a1)
-                       (kapp (kapp (k6 'der_comp head (ffn head)
-                                          (fn arg) (fn a1))
-                                   (frule head)) pa)))))
+                 (if (equal? head 'neg)
+                     ; linearity:  (neg (g x))' = neg (g' x)
+                     (list (kapp 'neg a1)
+                           (kapp (kapp (kapp 'der_neg_lin (fn arg)) (fn a1)) pa))
+                     ; chain rule:  (f (g x))' = f'(g x) * g' x
+                     (list (k2 'mul (fapplied head arg) a1)
+                           (kapp (kapp (k6 'der_comp head (ffn head)
+                                            (fn arg) (fn a1))
+                                       (frule head)) pa))))))
            ; binary application (a OP b), OP in {add, mul}
            (let ((op (car (cdr head)))
                  (ea (car (cdr (cdr head))))

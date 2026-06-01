@@ -1,0 +1,8 @@
+(import "cas/quadforms.lisp")
+(display (form->string (reduce-form (list 3 4 5)))) (newline)
+(display (form->string (reduce-form (list 10 34 29)))) (newline)
+(display (reduce-matrix (list 10 34 29))) (newline)
+(display (form->string (reduce-form (list 31 24 8)))) (newline)
+(display (list (disc (list 3 4 5)) (disc (list 10 34 29)) (disc (list 31 24 8)))) (newline)
+(display (list (reduce-ok? (list 3 4 5)) (reduce-ok? (list 10 34 29)) (reduce-ok? (list 31 24 8)) (reduce-ok? (list 5 0 1)))) (newline)
+(display (list (class-number -3) (class-number -4) (class-number -15) (class-number -23) (class-number -47) (class-number -71) (class-number -163))) (newline)

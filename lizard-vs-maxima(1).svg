@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="926" viewBox="0 0 1120 926">
-<rect x="0.0" y="0.0" width="1120.0" height="926.0" rx="0" fill="#f1f5f9" stroke="none" stroke-width="0" />
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1028" viewBox="0 0 1120 1028">
+<rect x="0.0" y="0.0" width="1120.0" height="1028.0" rx="0" fill="#f1f5f9" stroke="none" stroke-width="0" />
 <rect x="0.0" y="0.0" width="1120.0" height="120.0" rx="0" fill="#0b1220" stroke="none" stroke-width="0" />
 <text x="40.0" y="50.0" font-size="26" fill="#f8fafc" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Lizard CAS  vs  Maxima — capability comparison</text>
 <text x="40.0" y="80.0" font-size="14" fill="#cbd5e1" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Honest snapshot. Maxima: a mature general CAS (decades, ~hundreds of kloc). Lizard CAS: ~1.3 kloc, weeks old — exact and proof-carrying.</text>
@@ -90,29 +90,29 @@
 <rect x="928.0" y="495.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="998.0" y="512.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
 <rect x="30.0" y="522.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
-<text x="40.0" y="546.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Limits</text>
+<text x="40.0" y="546.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Limits (rational: any pt + inf; series at 0)</text>
 <rect x="548.0" y="529.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="546.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="529.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="808.0" y="546.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="928.0" y="529.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="546.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
-<text x="40.0" y="580.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Series (Taylor / Laurent / Puiseux)</text>
+<rect x="738.0" y="529.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
+<text x="808.0" y="546.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="928.0" y="529.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="546.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<text x="40.0" y="580.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Power series (Taylor, certified)</text>
 <rect x="548.0" y="563.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="580.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="563.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="808.0" y="580.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="928.0" y="563.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="580.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
+<rect x="738.0" y="563.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="808.0" y="580.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="928.0" y="563.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="580.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
 <rect x="30.0" y="590.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
-<text x="40.0" y="614.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation (Gosper / Zeilberger)</text>
-<rect x="548.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
-<text x="618.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
-<rect x="738.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="808.0" y="614.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="928.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
-<text x="40.0" y="648.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODE solving</text>
+<text x="40.0" y="614.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODEs (linear, series method)</text>
+<rect x="548.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="618.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="738.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
+<text x="808.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="928.0" y="597.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="614.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<text x="40.0" y="648.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Series (Taylor / Laurent / Puiseux)</text>
 <rect x="548.0" y="631.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="648.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
 <rect x="738.0" y="631.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
@@ -120,14 +120,14 @@
 <rect x="928.0" y="631.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
 <text x="998.0" y="648.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
 <rect x="30.0" y="658.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
-<text x="40.0" y="682.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra (eigen, normal forms)</text>
+<text x="40.0" y="682.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic summation (Gosper / Zeilberger)</text>
 <rect x="548.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="808.0" y="682.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="928.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
-<text x="40.0" y="716.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Multivariate factorization / Gröbner</text>
+<rect x="738.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="808.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="928.0" y="665.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="682.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<text x="40.0" y="716.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >ODE solving</text>
 <rect x="548.0" y="699.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="716.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
 <rect x="738.0" y="699.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
@@ -135,29 +135,52 @@
 <rect x="928.0" y="699.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
 <text x="998.0" y="716.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
 <rect x="30.0" y="726.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
-<text x="40.0" y="750.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Simplification (trig/exp/log, assumptions)</text>
+<text x="40.0" y="750.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Symbolic linear algebra (eigen, normal forms)</text>
 <rect x="548.0" y="733.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="750.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="733.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
-<text x="808.0" y="750.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
-<rect x="928.0" y="733.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="750.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
-<text x="40.0" y="784.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Special functions</text>
+<rect x="738.0" y="733.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="808.0" y="750.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="928.0" y="733.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="750.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<text x="40.0" y="784.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Multivariate Gröbner / ideal ops</text>
 <rect x="548.0" y="767.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="618.0" y="784.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="738.0" y="767.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="808.0" y="784.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="928.0" y="767.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
-<text x="998.0" y="784.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
-<rect x="30.0" y="794.0" width="1060.0" height="30.0" rx="8" fill="#fffbeb" stroke="#b45309" stroke-width="1.6" />
-<text x="40.0" y="818.0" font-size="13.2" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Machine-checked certificates for results</text>
-<rect x="548.0" y="801.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
-<text x="618.0" y="818.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
-<rect x="738.0" y="801.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
-<text x="808.0" y="818.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="738.0" y="767.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
+<text x="808.0" y="784.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="928.0" y="767.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="784.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="30.0" y="794.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="40.0" y="818.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Polynomial system solving (elimination)</text>
+<rect x="548.0" y="801.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="618.0" y="818.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="738.0" y="801.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
+<text x="808.0" y="818.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
 <rect x="928.0" y="801.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
 <text x="998.0" y="818.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
-<rect x="30.0" y="848.0" width="1060.0" height="58.0" rx="10" fill="#0b1220" stroke="none" stroke-width="0" />
-<text x="44.0" y="872.0" font-size="13.2" fill="#e2e8f0" font-weight="600" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Verdict: on its current univariate core, lizard is genuinely competitive with Maxima — and adds a checkable proof to every result, which Maxima does not.</text>
-<text x="44.0" y="892.0" font-size="13.2" fill="#cbd5e1" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Maxima wins decisively on breadth (limits, series, ODEs, multivariate, special functions, decades of coverage). The bet is trust + a coherent verified core, not breadth.</text>
+<text x="40.0" y="852.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Simplification (trig/exp/log, assumptions)</text>
+<rect x="548.0" y="835.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="618.0" y="852.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="738.0" y="835.0" width="140.0" height="20.0" rx="7" fill="#d97706" stroke="none" stroke-width="0" />
+<text x="808.0" y="852.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >partial</text>
+<rect x="928.0" y="835.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
+<text x="998.0" y="852.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
+<rect x="30.0" y="862.0" width="1060.0" height="30.0" rx="6" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="40.0" y="886.0" font-size="13.2" fill="#0f172a" font-weight="500" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Special functions</text>
+<rect x="548.0" y="869.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="618.0" y="886.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="738.0" y="869.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
+<text x="808.0" y="886.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
+<rect x="928.0" y="869.0" width="140.0" height="20.0" rx="7" fill="#3b82f6" stroke="none" stroke-width="0" />
+<text x="998.0" y="886.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >planned</text>
+<rect x="30.0" y="896.0" width="1060.0" height="30.0" rx="8" fill="#fffbeb" stroke="#b45309" stroke-width="1.6" />
+<text x="40.0" y="920.0" font-size="13.2" fill="#0f172a" font-weight="700" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Machine-checked certificates for results</text>
+<rect x="548.0" y="903.0" width="140.0" height="20.0" rx="7" fill="#e2e8f0" stroke="none" stroke-width="0" />
+<text x="618.0" y="920.0" font-size="12.5" fill="#475569" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >—</text>
+<rect x="738.0" y="903.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="808.0" y="920.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="928.0" y="903.0" width="140.0" height="20.0" rx="7" fill="#16a34a" stroke="none" stroke-width="0" />
+<text x="998.0" y="920.0" font-size="12.5" fill="#ffffff" font-weight="700" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" >full</text>
+<rect x="30.0" y="950.0" width="1060.0" height="58.0" rx="10" fill="#0b1220" stroke="none" stroke-width="0" />
+<text x="44.0" y="974.0" font-size="13.2" fill="#e2e8f0" font-weight="600" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Verdict: on its current univariate core, lizard is genuinely competitive with Maxima — and adds a checkable proof to every result, which Maxima does not.</text>
+<text x="44.0" y="994.0" font-size="13.2" fill="#cbd5e1" font-weight="400" text-anchor="start" font-family="Helvetica,Arial,sans-serif" >Maxima wins decisively on breadth (limits, series, ODEs, multivariate, special functions, decades of coverage). The bet is trust + a coherent verified core, not breadth.</text>
 </svg>

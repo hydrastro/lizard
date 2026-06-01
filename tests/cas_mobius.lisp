@@ -1,0 +1,7 @@
+(import "cas/mobius.lisp")
+(display (mobius-list 13)) (newline)
+(display (list (mobius 30) (mobius 105) (mobius 12) (mobius 49))) (newline)
+(display (mertens-list 13)) (newline)
+(display (list (mu-1-is-epsilon? 40) (phi-1-is-N? 40))) (newline)
+(display (list (dirichlet totient one 12) (dirichlet id mobius 36) (totient 36))) (newline)
+(display (list (inversion-ok? (lambda (n) (* n n)) 25) (inversion-ok? totient 25))) (newline)
