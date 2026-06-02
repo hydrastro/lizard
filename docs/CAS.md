@@ -2129,3 +2129,41 @@ primitive case this gives both kinds of second monomial their derivation and a f
 the full exponential height-two integrator -- exponential Hermite reduction and an exponential
 Rothstein-Trager -- builds on these foundations. See `examples/248-exp-second-monomial.lisp` and the
 `cas_tower2exp` golden test.
+
+## Tier 4: an x-dependent argument for the algebraic-residue certificate
+
+The trace certificate of `lib/cas/tower2alg.lisp` was first exercised on the arctan integral, where the
+gcd argument rho = 1/(2 alpha) is a constant of the tower. The same machinery certifies residues whose
+argument depends on x, because the height-two derivation t2a-deriv differentiates the K1(alpha)
+coefficients of v_alpha coefficientwise and so computes a nonzero D2(rho) automatically. Differentiating
+the RootSum (i/2) log(theta2 - i theta1) + (-i/2) log(theta2 + i theta1), with theta1 = e^x and
+theta2 = log(e^x + 1), gives the integral of (theta1 theta2 - theta1 D theta2) over theta2 squared plus
+theta1 squared. The residues are still plus and minus i/2 -- the residue polynomial 4 z^2 + 1 is again
+irreducible over Q -- but now the argument rho = i theta1 depends on x, so v_alpha = theta2 - i theta1
+has a nonconstant coefficient and D2(v_alpha) carries a theta1 term in addition to D theta2. The
+certificate Tr[alpha D2(v_alpha) v_albar] = A* over K1[theta2] holds unchanged, confirming the integral.
+This is the first algebraic-residue height-two case whose logarithm arguments are genuinely
+x-dependent; higher-degree algebraic residues remain the further continuation. See
+`examples/249-height-two-arctan-xdep.lisp` and the `cas_tower2algx` golden test.
+
+## Tier 4: the exponential Risch differential equation at height two
+
+`lib/cas/tower2exprde.lisp` is the next rung of the exponential branch. Integrating a power sum
+Sum a_k theta2^k against the exponential derivation reduces, in each degree k, to solving the coefficient
+equation b' + k u' b = a_k for b in K1 = Q(x)(theta1); the antiderivative coefficient is then b. The
+exact-power case of tower2exp.lisp solved only the sub-case where b is a constant of the tower; this
+module solves the full equation for b a polynomial in theta1. With theta1 = e^x, so D theta1 = theta1,
+the two-level operator acts on b = Sum b_j theta1^j as (b' + k u' b)_j = b_j' + j b_j + k (u' * b)_j,
+where the term j b_j comes from differentiating theta1^j and (u' * b) is the convolution of the
+theta1-coefficient sequences. Writing P for the theta1-degree of u', a polynomial solution has degree
+deg(a) - P, and the coefficient of theta1^j in the equation expresses b_{j-P} in terms of strictly
+higher coefficients already found; so b_{deg(a)-P} down to b_0 fall out by successive division by
+k u'_P, with the lowest P equations becoming consistency conditions. The solver assembles the candidate
+b and certifies it by differentiating with the exponential derivation and checking b' + k u' b = a in
+K1, reporting no solution on failure -- including the case of a genuine theta1 denominator, which this
+polynomial solver does not treat and which is the further rung. The headline equation
+b' + theta1 b = theta1 + theta1^2 has the nonconstant solution b = theta1, and the integrator built on
+the solver produces antiderivatives whose theta2-coefficients are themselves nonconstant: the integral
+of (theta1 + theta1^2) theta2 + 6 theta1 theta2 squared is theta1 theta2 + 3 theta2 squared, generalizing
+the exact-power case that the same expression's second term illustrates. See
+`examples/250-exp-rde.lisp` and the `cas_tower2exprde` golden test.
