@@ -2081,3 +2081,51 @@ is algebraic at height two and is reported as such rather than forced into ratio
 case, together with an exponential second monomial whose derivative leaves the coefficient field, are
 the remaining rungs before the algebraic-function summit. See
 `examples/246-height-two-rootsum.lisp` and the `cas_tower2rt` golden test.
+
+## Tier 4: an irreducible-quadratic residue at height two (algebraic residues by trace)
+
+`lib/cas/tower2alg.lisp` handles the height-two logarithmic part when the Rothstein-Trager residue
+polynomial is an irreducible quadratic over Q. In that case the two residues are a conjugate pair of
+algebraic numbers and the antiderivative is a RootSum of two logarithms whose arguments lie in the
+quadratic extension K1(alpha), where alpha is a root of the monic residue polynomial z^2 + c1 z + c0.
+Rather than carry the algebraic closure, the module uses that the RootSum's logarithmic derivative is a
+trace over the conjugate pair and therefore descends back to the rational coefficient field K1. For a
+squarefree denominator of degree two in theta2 the second Rothstein-Trager argument A* - z D2(D*) is
+linear, so the gcd argument is v_alpha = theta2 - rho with rho the root of A* - alpha D2(D*) in
+K1(alpha); its conjugate v_albar is obtained by conjugating coefficients, and the two multiply back to
+D* = v_alpha v_albar. The derivative of alpha log(v_alpha) + albar log(v_albar) is the trace of
+alpha D2(v_alpha) v_albar over the denominator v_alpha v_albar, a quotient whose numerator is a
+polynomial over K1; the integral is certified by checking that this numerator equals A* over
+K1[theta2]. The extension arithmetic is the degree-two algebra of pairs over K1 reduced by
+alpha^2 = -c1 alpha - c0, with conjugation, trace, norm, and inverse, and a derivation that acts
+coefficientwise because the residue is a constant of the tower. The residue polynomial itself is
+recovered as an element of Q[z] by the same ratio trick used for rational residues, and it is confirmed
+to be an irreducible quadratic by having degree two and no rational roots. With theta1 = e^x and
+theta2 = log(e^x + 1) the integrator certifies that the integral of (D theta2) over theta2 squared plus
+one is arctan(theta2) -- concretely arctan(log(e^x + 1)) -- whose residue polynomial 4 z^2 + 1 is
+irreducible over Q with residues plus and minus i/2. Higher-degree algebraic residues and residues that
+depend on x are the natural continuations; the trace-descent certificate generalizes to them. See
+`examples/247-height-two-arctan.lisp` and the `cas_tower2alg` golden test.
+
+## Tier 4: the exponential second monomial (a different derivation)
+
+`lib/cas/tower2exp.lisp` opens the second branch of the height-two climb, in which the second monomial
+theta2 is an exponential rather than a primitive: theta2 = exp(u) with u in K1 = Q(x)(theta1), so its
+derivative D theta2 = u' theta2 carries a factor of theta2 itself and is not an element of K1. The
+two-level derivation is therefore structurally different from the primitive case: differentiating
+b_k theta2^k gives (D b_k + k u' b_k) theta2^k, so every monomial keeps its degree instead of dropping
+by one, and D2(Sum b_k theta2^k) = Sum (D b_k + k u' b_k) theta2^k with the height-one derivation acting
+on each coefficient and u' supplied as an element of K1. The first integration case this exposes is the
+exponential exact-power case: a power sum Sum a_k theta2^k with no constant term is an exact derivative
+exactly when each a_k is k u' times a constant of the tower, in which case the antiderivative is
+Sum (a_k/(k u')) theta2^k; the integrator forms each coefficient quotient over K1 and accepts when every
+one is a constant. The general coefficient equation, in which the antiderivative coefficient is itself a
+nonconstant function of x, is the exponential Risch differential equation and is the next rung. Every
+answer is certified by differentiating it with the exponential derivation and checking equality with the
+integrand over K1[theta2]. With theta1 = e^x and theta2 = exp(e^x), so u' = theta1, the module certifies
+that the exponential derivative of theta2 squared is twice theta1 times theta2 squared, and that the
+integral of 5 theta1 theta2 + 6 theta1 theta2 squared is 5 theta2 + 3 theta2 squared. Together with the
+primitive case this gives both kinds of second monomial their derivation and a first integration law;
+the full exponential height-two integrator -- exponential Hermite reduction and an exponential
+Rothstein-Trager -- builds on these foundations. See `examples/248-exp-second-monomial.lisp` and the
+`cas_tower2exp` golden test.

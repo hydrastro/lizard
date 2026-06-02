@@ -257,3 +257,5 @@
 (example "244-height-two-hermite.lisp" :expect pass)
 (example "245-height-two-integral.lisp" :expect pass)
 (example "246-height-two-rootsum.lisp" :expect pass)
+(example "247-height-two-arctan.lisp" :expect pass)
+(example "248-exp-second-monomial.lisp" :expect pass)
