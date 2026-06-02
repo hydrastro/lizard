@@ -1565,3 +1565,46 @@ are algebraic, reported honestly while the Hermite rational part remains exact. 
 honest summit of the rational case -- proof-carrying rational integration -- with the full
 transcendental and algebraic Risch algorithm remaining beyond a single sitting. See
 `examples/225-rational-integration-complete.lisp` and the `cas_rischrat` golden test.
+
+## Tier 3: the Risch differential equation over Q(x), and INT R(x) e^{p(x)}
+
+`lib/cas/rischde.lisp` extends the Risch differential equation y' + f y = g from the
+polynomial-coefficient case (risch.lisp) to a polynomial f with a rational g in Q(x). That is
+exactly what integrating R(x) e^{p(x)} for rational R requires: the integral is h(x) e^{p(x)}
+with h' + p' h = R, where p' is a polynomial but R is rational. Since p' has no poles, a pole of
+R of order m forces a pole of h of order m-1, so the denominator of any solution divides
+gcd(E, E') where E is the denominator of R. Writing h = U/gcd(E,E') turns the equation into a
+single first-order linear equation P1 U' + P0 U = RHS for an unknown polynomial U, which is
+solved by undetermined coefficients (a linear system over Q, via an exact Gaussian solver). For
+this class deg P0 >= deg P1, so the leading term never cancels and the degree bound is tight;
+together with the differentiation certificate (every returned h is checked to satisfy
+h' + p' h = R) this makes the procedure both sound and complete, so a reported "non-elementary"
+is a genuine impossibility proof. It recovers the elementary cases, e.g.
+INT (x-1)/x^2 e^x dx = e^x/x and INT x/(x+1)^2 e^x dx = e^x/(x+1), and proves the classic
+non-elementary ones, INT e^(x^2) dx and INT e^x/x dx. The remaining steps toward the full
+transcendental Risch algorithm -- a rational (not just polynomial) f via weak normalization, and
+the logarithmic-extension RDE -- build directly on this. See
+`examples/226-risch-de-rational.lisp` and the `cas_rischde` golden test.
+
+## Tier 3: the Risch DE with rational f, and INT R(x) e^{u(x)} for rational u
+
+`lib/cas/rderat.lisp` extends the Risch differential equation y' + f y = g to a rational
+coefficient f, in the weakly-normalized case -- no simple pole of f has a positive-integer
+residue. That is exactly what is needed to integrate R(x) e^{u(x)} when u itself is rational
+(rischde.lisp required a polynomial u): the integral is h e^u with h' + u' h = R, and f = u' is
+automatically weakly normalized, because the derivative of a rational function has every residue
+zero (the antiderivative of 1/(x-a) is a logarithm, never rational). The denominator of any
+solution is bounded by the product over the squarefree factors p^l of denom(R) of
+p^{max(0, l - max(k,1))}, where k is the pole order of u' at p: where u' has a pole of order
+k >= 2 the term u' h dominates and forces order l-k, while where u' is regular or has a simple
+pole the y' term dominates and forces order l-1. For a polynomial u every k is 0 and this is
+exactly the gcd(E,E') bound of rischde.lisp, so the new module is a clean generalization.
+Writing h = U/denominator reduces the problem to one linear equation P1 U' + P0 U = RHS for a
+polynomial U, solved by undetermined coefficients (reusing rischde.lisp). Every returned answer
+is differentiation-certified, so the method is sound; the denominator bound makes it complete on
+this class, validated against integrals with known answers (for rational g and u, setting
+R = g' + u' g recovers an h that certifies). It gives, e.g., INT -1/x^2 e^{1/x} dx = e^{1/x},
+INT (x-1)/x e^{1/x} dx = x e^{1/x}, INT 2/x^3 e^{-1/x^2} dx = e^{-1/x^2}, and proves
+INT e^{1/x} dx non-elementary. The remaining step toward the full Risch DE is the general weak
+normalizer for an f whose simple poles do have positive-integer residues. See
+`examples/227-risch-de-rational-f.lisp` and the `cas_rderat` golden test.

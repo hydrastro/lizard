@@ -1,0 +1,6 @@
+((0 0 0 1) 1)
+(elementary ((1) 0 1))
+(elementary ((1) 1))
+(elementary ((1) 1 1))
+(#t #t)
+(non-elementary non-elementary)

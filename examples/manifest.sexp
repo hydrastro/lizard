@@ -236,3 +236,5 @@
 (example "223-rothstein-trager.lisp" :expect pass)
 (example "224-hermite-reduction.lisp" :expect pass)
 (example "225-rational-integration-complete.lisp" :expect pass)
+(example "226-risch-de-rational.lisp" :expect pass)
+(example "227-risch-de-rational-f.lisp" :expect pass)
