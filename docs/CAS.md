@@ -2047,3 +2047,37 @@ single-logarithm case, in which the squarefree remainder's denominator is itself
 logarithm. The general height-two Rothstein-Trager, where several constant residues are found from a
 resultant over K1 and combined into a RootSum, and the exponential second monomial, are the next rungs
 of the climb. See `examples/245-height-two-integral.lisp` and the `cas_tower2int` golden test.
+
+## Tier 4: the general height-two Rothstein-Trager logarithmic part
+
+`lib/cas/tower2rt.lisp` completes the logarithmic part of height-two integration, moving beyond the
+single logarithm to the general case in which the squarefree remainder integrates to several
+logarithms with distinct constant residues. After Hermite reduces A/D to a rational part g and a
+remainder A*/D* squarefree in theta2, the logarithmic part is a sum over residues c of c times
+log(v_c), where v_c is the greatest common divisor in theta2, taken over the coefficient field
+K1 = Q(x)(theta1), of D* and A* - c D2(D*). The residues are the roots of the Rothstein-Trager
+resultant R(z) = Res_theta2(D*, A* - z D2(D*)), an element of K1[z]; for the integral to be
+elementary with constant residues those roots must lie in the constant field Q. The resultant is
+obtained by evaluation and interpolation rather than by symbolic elimination over K1[z]: at each
+integer z the resultant is the determinant of the Sylvester matrix whose entries lie in K1, computed
+by cofactor expansion using the cancel-before-multiply K1 arithmetic, with a direct formula
+lc(g) raised to deg(f) times f at the root of g taken whenever the second argument is linear, which
+avoids forming the matrix in the common case. The interpolation is kept over the rationals by a ratio
+trick: dividing every evaluated resultant by a fixed nonzero one cancels the K1 content that the
+resultant carries as an overall factor, so the resulting ratios are constants of the tower exactly
+when the residues are rational. Those ratios, read off as rationals, interpolate by Lagrange to a
+polynomial over Q whose roots are the residues; for each rational residue the gcd over K1[theta2]
+supplies the argument of its logarithm, and the residue degrees summing to the degree of D* confirms
+that the rational residues account for the whole logarithmic part rather than leaving an algebraic
+remainder. The complete answer, the rational part together with the RootSum, is certified by
+differentiating with the two-level derivation D2 -- the quotient rule on the rational part and the
+logarithmic-derivative rule on each term -- and checking equality with A/D by cross-multiplication
+over K1[theta2]. With theta1 = e^x and theta2 = log(e^x + 1), the integrator certifies that the
+integral of (D theta2)(3 theta2 - 1) over (theta2 squared minus theta2) is log(theta2) plus twice
+log(theta2 - 1) -- concretely log(log(e^x + 1)) plus twice log(log(e^x + 1) - 1) -- a height-two
+antiderivative with two distinct rational residues found from the resultant over K1. When the ratios
+fail to be constant, or the rational residues do not account for the full degree, the logarithmic part
+is algebraic at height two and is reported as such rather than forced into rational residues; that
+case, together with an exponential second monomial whose derivative leaves the coefficient field, are
+the remaining rungs before the algebraic-function summit. See
+`examples/246-height-two-rootsum.lisp` and the `cas_tower2rt` golden test.

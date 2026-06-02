@@ -18,13 +18,20 @@
 
 (import "cas/tower2.lisp")
 
-; ----- K1 = Q(x)(theta1) field operations (reduced fractions to control size) -----
+; ----- K1 = Q(x)(theta1) field operations: reduced fractions, cancel-before-multiply -----
+(define (k1-normalize a)                     ; assume gcd(num,den)=1; make denominator monic
+  (if (rfpoly-zero? (car a)) (tr-zero)
+      (let ((lc (rat-inv (rfpoly-lead (car (cdr a)))))) (list (rfpoly-cscale lc (car a)) (rfpoly-cscale lc (car (cdr a)))))))
 (define (k1-add a b) (tr-reduce (tr-add a b)))
 (define (k1-neg a) (list (rfpoly-neg (car a)) (car (cdr a))))
-(define (k1-sub a b) (k1-add a (k1-neg b)))
-(define (k1-mul a b) (tr-reduce (t2-trmul a b)))
-(define (k1-inv a) (tr-reduce (t2-trinv a)))
-(define (k1-div a b) (tr-reduce (t2-trdiv a b)))
+(define (k1-sub a b) (tr-reduce (tr-add a (k1-neg b))))
+(define (k1-mul a b)                         ; a,b reduced: cancel cross factors, then multiply
+  (if (if (rfpoly-zero? (car a)) #t (rfpoly-zero? (car b))) (tr-zero)
+    (let ((g1 (rfpoly-gcd (car a) (car (cdr b)))) (g2 (rfpoly-gcd (car b) (car (cdr a)))))
+      (k1-normalize (list (rfpoly-mul (rfpoly-div (car a) g1) (rfpoly-div (car b) g2))
+                          (rfpoly-mul (rfpoly-div (car (cdr a)) g2) (rfpoly-div (car (cdr b)) g1)))))))
+(define (k1-inv a) (k1-normalize (t2-trinv a)))
+(define (k1-div a b) (k1-mul a (k1-inv b)))
 (define (k1-zero) (tr-zero))
 (define (k1-one) (t2-trone))
 (define (k1-zero? a) (rfpoly-zero? (car a)))
