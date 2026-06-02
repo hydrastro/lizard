@@ -1738,3 +1738,109 @@ correctly declining INT log x/(x^2+1) dx and INT log x/(x-1) dx. With this the p
 part is complete over Q(x); the proper (fractional) case in log x and the analogous rational
 coefficients for the exponential proper case remain. See
 `examples/233-primitive-rational-coefficients.lisp` and the `cas_primint` golden test.
+
+## Tier 3: Rothstein-Trager in the tower -- the proper logarithmic case
+
+`lib/cas/towerrt.lisp` completes the proper (fractional) case of integration over a primitive
+monomial theta = log x with x-dependent coefficients, and with it the logarithmic direction acquires
+genuine non-elementarity decisions rather than reductions. tower.lisp already reduces A/D by Hermite
+to a rational part plus a squarefree remainder a/d, but it resolves only the single-new-logarithm
+case and otherwise reports "partial". This module resolves the general logarithmic part by lifting
+Rothstein-Trager into the tower. With D the tower derivation (so D log x = 1/x and D acts on a
+polynomial in theta with rational-function coefficients by the product rule), the primitive-case
+residue criterion states that INT a/d is elementary over Q(x)(theta) if and only if the polynomial
+R(z) = Res_theta(d, a - z Dd) has constant roots, in which case INT a/d = sum_i c_i log of
+gcd_theta(d, a - c_i Dd), the c_i being exactly those roots. The resultant is taken with respect to
+theta over the coefficient field Q(x); it is computed by a fraction-free Euclidean recurrence over
+Q(x) evaluated at z = 0, 1, ..., deg_theta(d) and interpolated in z over Q(x), which yields R(z) as
+a polynomial in z with rational-function coefficients. Making R(z) monic in z, the integral is
+elementary precisely when every coefficient is a constant; the constant coefficients form an
+ordinary polynomial over Q whose rational roots are the residues. A non-constant coefficient is a
+genuine obstruction and the integral is reported non-elementary, while constant-but-irrational roots
+are an algebraic RootSum, which is deferred rather than guessed. Combined with Hermite reduction
+this is a complete, certified integrator for rational functions of log x whose residues are rational.
+It finds, for instance, INT ((3/x + 1) log x - (3x + 1)) / ((log x)^2 - x^2) dx =
+2 log(log x + x) + log(log x - x), a proper integrand with two distinct rational residues that the
+single-logarithm reducer cannot handle; it recovers INT 1/(x log x) dx = log(log x) through the same
+path; it reports INT (log x)/((log x)^2 + x) dx non-elementary because the residues depend on x; and
+it defers INT (1/x)/((log x)^2 - 2) dx as an algebraic RootSum. Every returned answer is checked by
+differentiating it in the tower and comparing to the integrand. With this the primitive (logarithmic)
+case over Q(x) is essentially complete up to algebraic residues; the analogous exponential proper
+case, the algebraic RootSum closure for logarithmic residues, and height-two towers remain. See
+`examples/234-tower-rothstein-trager.lisp` and the `cas_towerrt` golden test.
+
+## Tier 3: the exponential proper case -- Rothstein-Trager with a base-field correction
+
+`lib/cas/expnrt.lisp` is the exponential mirror of towerrt.lisp: it integrates a proper rational
+function of theta = e^x whose denominator is coprime to theta. The residue criterion is the same one
+-- INT a/d is elementary over Q(x)(theta) if and only if R(z) = Res_theta(d, a - z Dd) has constant
+roots, with INT a/d = sum_i c_i log of gcd_theta(d, a - c_i Dd) -- and the resultant-over-Q(x)
+machinery is shared. What changes is the derivation. In a logarithmic tower D log x = 1/x lowers the
+theta-degree of d under differentiation; in an exponential tower D(theta^i) = i theta^i, so Dd has
+the same theta-degree as d, and a logarithm argument v_i, which grows like theta to the power
+deg_theta(v_i), behaves at infinity like deg_theta(v_i) times x, because log theta = x. The
+consequence is a base-field correction in the answer: an integral whose logarithmic part is
+sum_i c_i log(v_i) actually equals sum_i c_i log(v_i) minus (sum_i c_i deg_theta v_i) x, the
+subtracted multiple of x cancelling the spurious constant the logarithms introduce upon
+differentiation. The integrator runs Hermite reduction over the exponential monomial for the
+rational part, reuses the residue reduction for the logarithms, reads the correction off the
+residues and argument degrees, and certifies the whole answer by differentiating it in the tower. It
+finds, for instance, INT (-5 e^x - 6)/(e^(2x) + 3 e^x + 2) dx = log(e^x+1) + 2 log(e^x+2) - 3x with
+its integer correction, the proper part INT -1/(e^x+1) dx = log(e^x+1) - x, fractional cases with
+residues 2 and -1/2 and correction 3/2, balanced quotients of logarithms with zero correction, and
+it reports INT 1/(e^x + x) dx non-elementary because the residue depends on x. Together with the
+logarithmic proper case this completes, up to algebraic residues, the proper case of single-extension
+integration in both directions; the algebraic RootSum closure and height-two towers remain. See
+`examples/235-exponential-proper-case.lisp` and the `cas_expnrt` golden test.
+
+## Tier 3: complete integration of rational functions of log x
+
+`lib/cas/intlog.lisp` is the capstone of the logarithmic direction: it integrates an arbitrary
+rational function A/D of theta = log x over Q(x), with rational residues, in a single call, and
+certifies the result. It works by the classical separation of a rational function into a polynomial
+part and a proper part. Polynomial division in theta over Q(x) writes A = Q D + Rem with the degree
+of Rem below that of D, so INT A/D = INT Q + INT Rem/D. The polynomial part INT Q is exactly the
+primitive-case polynomial integration of primint.lisp, which handles rational coefficients and the
+absorption of logarithms into higher powers; the proper part INT Rem/D is the Hermite reduction
+followed by the tower Rothstein-Trager of towerrt.lisp, which produces the logarithmic terms and
+decides non-elementarity. What makes the composition clean is that no cross-module reasoning is
+needed for correctness: the split A = Q D + Rem is an exact polynomial identity, verified directly,
+and differentiation is linear, so once each of INT Q and INT Rem/D has been certified inside its own
+module the derivative of their sum is necessarily Q + Rem/D = A/D. The whole integral is elementary
+exactly when both parts are, and a non-elementary polynomial part (a logarithm that cannot be
+absorbed) or proper part (residues that depend on x, or are algebraic) is reported rather than
+forced. In one call it integrates a mixed integrand such as A/D whose quotient is (log x)^2 and whose
+proper part is the two-residue ((3/x+1) log x - (3x+1))/((log x)^2 - x^2), recovering the polynomial
+part and the logarithms together; it handles logarithm-absorbing proper parts like
+((log x)^3 + 1/x)/log x; and it propagates the non-elementarity of (log x)/((log x)^2 + x). With this
+the single logarithmic extension over Q(x) is integrated completely up to algebraic residues. The
+exponential analogue (combining expoly.lisp and expnrt.lisp through the Laurent split), the algebraic
+RootSum closure, and height-two towers remain. See `examples/236-complete-log-integration.lisp` and
+the `cas_intlog` golden test.
+
+## Tier 3: complete integration of rational functions of e^x
+
+`lib/cas/intexp.lisp` is the exponential capstone, the mirror of intlog.lisp: it integrates an
+arbitrary rational function A/D of theta = e^x over Q(x), with rational residues, in a single call,
+and certifies the result. The decomposition differs from the logarithmic one because theta is a
+unit, so a rational function of theta has a Laurent polynomial part carrying both positive and
+negative powers as well as a proper part whose denominator is coprime to theta. Factoring out the
+theta-content as D = theta^j D0 and choosing S theta^j + T D0 = 1 by the extended Euclidean algorithm
+over Q(x), one has A/D = A T/theta^j + A S/D0; dividing A S = Q' D0 + R produces the proper part R/D0
+with the degree of R below that of D0, while the entire Laurent part is (A T + Q' theta^j)/theta^j, a
+single polynomial in theta shifted down by j. Reading that polynomial's coefficient of theta^{k+j}
+off as the Laurent coefficient at theta^k avoids any overlap between the positive-power contributions
+of the two pieces. The Laurent part is then integrated by expoly.lisp, which solves one differential
+equation per power, and the proper part by expnrt.lisp, the exponential Hermite-and-Rothstein-Trager
+with its base-field correction. As in the logarithmic capstone the composition is certified by
+linearity: the decomposition A = Lnum D0 + R theta^j is an exact identity, verified directly, so once
+each part is certified inside its own module the derivative of their sum is A/D. The integral is
+elementary exactly when both parts are, and non-elementarity of either propagates. It integrates, in
+one call, a genuinely Laurent integrand such as 1/(e^x (e^x + 1)) =
+-e^(-x) - x + log(e^x + 1), a mixed integrand whose polynomial part is e^(2x) and whose proper part
+has two residues, pure Laurent polynomials like e^x + 2 e^(-x), and it reports 1/(e^x (e^x + x))
+non-elementary. With both intlog.lisp and intexp.lisp the single transcendental extension over Q(x)
+-- logarithmic or exponential -- is now integrated completely, up to algebraic residues. The
+remaining frontier is the algebraic RootSum closure for irrational residues, height-two towers, and
+the algebraic-function case. See `examples/237-complete-exp-integration.lisp` and the `cas_intexp`
+golden test.

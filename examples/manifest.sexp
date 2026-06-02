@@ -244,3 +244,7 @@
 (example "231-exponential-polynomial.lisp" :expect pass)
 (example "232-logarithmic-polynomial.lisp" :expect pass)
 (example "233-primitive-rational-coefficients.lisp" :expect pass)
+(example "234-tower-rothstein-trager.lisp" :expect pass)
+(example "235-exponential-proper-case.lisp" :expect pass)
+(example "236-complete-log-integration.lisp" :expect pass)
+(example "237-complete-exp-integration.lisp" :expect pass)
