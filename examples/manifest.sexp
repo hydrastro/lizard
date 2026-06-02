@@ -267,3 +267,4 @@
 (example "254-exp-powersum.lisp" :expect pass)
 (example "255-exp-hermite.lisp" :expect pass)
 (example "256-prim-rational-integral.lisp" :expect pass)
+(example "257-prim-arctan-integral.lisp" :expect pass)

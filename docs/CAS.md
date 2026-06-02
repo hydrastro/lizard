@@ -2267,3 +2267,25 @@ D2 certificate. The class is precisely the height-two primitive integrals whose 
 residues are rational and whose denominator is constant in x. The fully general K1-coefficient case --
 x-dependent arguments, algebraic residues -- still routes through the Sylvester resultant and remains
 memory-bound. See `examples/256-prim-rational-integral.lisp` and the `cas_tower2primrat` golden test.
+
+## Tier 4: height-two primitive arctangents, by substitution
+
+`lib/cas/tower2primfull.lisp` closes the algebraic-residue (arctangent) case of the substitution
+introduced for `tower2primrat.lisp`. The same pullback applies -- for a primitive theta2 and Abar, Dbar
+in Q[theta2], INT Dtheta2 Abar/Dbar dx = [ INT Abar/Dbar d(theta2) ] with theta2 as the variable -- but
+the rational-function integral in theta2 is now routed through the complete integrator integrate.lisp
+(`integrate-rational`), so that an irreducible-quadratic denominator factor of negative discriminant
+produces a genuine arctangent rather than being reported non-elementary. The headline case is
+INT (Dtheta2)/(theta2^2 + 1) dx = arctan(theta2) = arctan(log(e^x + 1)); a mixed numerator gives
+INT (Dtheta2)(theta2^2 + theta2 + 1)/(theta2^3 + theta2) dx = log(theta2) + arctan(theta2). Both are
+obtained with NO Sylvester resultant over K1 and none of its memory blow-up, since integrate-rational
+works over Q by partial fractions and the arctangent branch is the irreducible-quadratic case. The
+reduction is gated exactly as before (A_i = Dtheta2 * Abar_i reconstructed in K1, non-rational
+coefficients rejected), so the substitution is certified to apply, and integrate-verify supplies the
+differentiation certificate over Q; together they give the height-two D2 certificate. This complements
+`tower2primrat.lisp` -- rational residues there, arctangents here -- so the height-two primitive
+logarithmic/arctangent part is now complete for integrands whose arguments and residues are rational or
+irreducible-quadratic and whose denominator is constant in x. The fully general K1-coefficient case
+(x-dependent arguments, higher algebraic residues over K1) still routes through the Sylvester resultant
+and remains memory-bound. See `examples/257-prim-arctan-integral.lisp` and the `cas_tower2primfull`
+golden test.
