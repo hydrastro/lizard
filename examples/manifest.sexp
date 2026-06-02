@@ -253,3 +253,5 @@
 (example "240-height-two-tower.lisp" :expect pass)
 (example "241-reducible-rootsum-closure.lisp" :expect pass)
 (example "242-nonsquarefree-rootsum.lisp" :expect pass)
+(example "243-irrational-repeated-residue.lisp" :expect pass)
+(example "244-height-two-hermite.lisp" :expect pass)

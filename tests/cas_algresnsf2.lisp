@@ -1,0 +1,7 @@
+(import "cas/algresnsf2.lisp")
+(define LOG (list 'log))
+(define d4 (list (rat-from-poly (list 1)) (rat-zero) (rat-from-poly (list (/ -17 8))) (rat-zero) (rat-one)))
+(define a4 (list (rat-make (list (/ -1 4)) (list 0 1)) (rat-zero) (rat-make (list (/ -1 4)) (list 0 1))))
+(define r4 (int-prim-rational-complete a4 d4 LOG))
+(display (car r4)) (newline)
+(display (int-prim-rational-complete-verify a4 d4 LOG)) (newline)

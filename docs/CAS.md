@@ -1975,3 +1975,55 @@ RootSum closure of algresfull.lisp, then this non-squarefree rational case -- an
 require the number-field norm of a higher-degree argument, the one remaining algebraic gap) is still
 deferred rather than mishandled. The differentiation certificate gates every answer. See
 `examples/242-nonsquarefree-rootsum.lisp` and the `cas_algresnsf` golden test.
+
+## Tier 3: irrational repeated residues -- the complete single-extension logarithmic part
+
+`lib/cas/algresnsf2.lisp` removes the last restriction on the logarithmic part of a single
+transcendental extension: a non-squarefree residue polynomial whose repeated residue is irrational.
+The residue polynomial R(z) is factored over Q into distinct irreducible factors with multiplicities
+by factor-Q, and each factor is treated as a single conjugate class. A factor of degree m at
+multiplicity i carries an argument v_c = gcd_theta(d, a - c Dd) of degree i over the number field
+K = Q(x)[c]/(P). For a rational residue this stays in Q(x)[theta], but for an irreducible factor of
+degree m at least two the per-factor norm N = prod_sigma sigma(v_c) of the higher-degree argument is
+required, and the module computes it as the determinant of the m-by-m multiplication-by-v_c matrix
+over Q(x)[theta]. That matrix is built by reducing v_c times c^j modulo the monic minimal polynomial
+P, which needs no division, and its determinant is taken by cofactor expansion in pure polynomial
+arithmetic; the construction was validated against the field norms of known elements, for instance
+the norm of c in Q[c]/(c^3 - 2) being two. The cofactor d/v_c then comes from a single division in
+K[theta], and the per-factor derivative is the field trace of c times the logarithmic derivative of
+v_c times that cofactor, the trace evaluated from the power sums of P. Because the Rothstein-Trager
+factors satisfy the identity that their norms multiply back to d, every per-factor logarithmic
+derivative shares the common denominator d, and the whole part is certified by checking that the sum
+of the traces equals a/d with the exponential base-field correction. A single handler now subsumes
+every residue case -- squarefree rational, reducible and irreducible, and non-squarefree rational and
+algebraic. It certifies, for example, the integral whose residue polynomial is (z^2 - 1/8)^2, a
+conjugate pair of irrational residues each of multiplicity two, with an argument of degree two over
+the quadratic field. With this in place the logarithmic part of a single transcendental extension
+over Q(x) is complete for every squarefree denominator and every possible residue behaviour. See
+`examples/243-irrational-repeated-residue.lisp` and the `cas_algresnsf2` golden test.
+
+## Tier 4: Hermite reduction at height two (the first climb)
+
+`lib/cas/tower2herm.lisp` begins genuine height-two integration: integrating a rational function of a
+second monomial theta2 over the height-one field K1 = Q(x)(theta1), rather than over Q(x). The module
+mirrors the height-one Hermite reduction one level up. Every operation on Q(x)[theta1] is replaced by
+the analogous operation on K1[theta2]: the coefficient field is now K1, whose addition, multiplication,
+inversion and division are the tower-rational field operations, and a layer of polynomial arithmetic
+in theta2 over K1 -- division, gcd, extended Euclid, modular inverse and Yun squarefree factorization
+-- is built on top of them exactly as the height-one layer was built over Q(x). The height-one
+derivation Drf is replaced by the two-level derivation D2 of tower2.lisp, which differentiates the K1
+coefficients and applies the chain rule through theta2. The setting is theta2 primitive over K1, that
+is a logarithm, so that D theta2 is an element of K1; the worked tower is theta1 = e^x and
+theta2 = log(e^x + 1), whose derivative e^x/(e^x + 1) lies in K1. Given a proper rational function A/D
+of theta2 over K1 with D monic, the reduction returns a rational part g, itself a fraction of
+polynomials in theta2 over K1, together with a remainder A*/D* in which D* is squarefree in theta2,
+such that D2(g) + A*/D* equals A/D. Squarefree factorization uses the formal theta2-derivative; the
+genuine derivation enters only through the derivatives of the squarefree factors, just as at height
+one. The result is certified by differentiating g with D2 through the quotient rule and checking the
+identity by cross-multiplication over K1[theta2]. It certifies, for example, that the integral of
+(D theta2) over theta2 squared is minus the reciprocal of theta2, a purely rational height-two
+antiderivative, and it correctly separates a rational part from a squarefree logarithmic remainder
+when one is present. This is the rational part of full height-two integration; the logarithmic part
+(a height-two Rothstein-Trager, for which the determinant-over-Q(x)[theta] machinery of algresnsf2.lisp
+is a building block) and the exponential second monomial are the next rungs. See
+`examples/244-height-two-hermite.lisp` and the `cas_tower2herm` golden test.
