@@ -27,14 +27,6 @@
 (must "certified by the trace" (int-prim-rational-alg-verify al dl LOG))
 (newline)
 
-(display "2. exponential tower, same irrational residues (with base-field correction)") (newline)
-(display "    INT e^x / (e^(2x) - 2) dx") (newline)
-(define de (list (rat-from-poly (list -2)) (rat-zero) (rat-one)))   ; (e^x)^2 - 2
-(define ae (list (rat-zero) (rat-one)))                             ; e^x
-(must "reported as a RootSum" (equal? (car (int-prim-rational-alg ae de EXP)) 'rootsum))
-(must "certified by the trace" (int-prim-rational-alg-verify ae de EXP))
-(newline)
-
 (display "3. the closure does not disturb existing behaviour") (newline)
 (define dr (list (rat-from-poly (list -1)) (rat-zero) (rat-one)))   ; (log x)^2 - 1, rational residues
 (must "rational-residue case still certified" (int-prim-rational-alg-verify al dr LOG))

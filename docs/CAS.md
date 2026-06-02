@@ -2027,3 +2027,23 @@ when one is present. This is the rational part of full height-two integration; t
 (a height-two Rothstein-Trager, for which the determinant-over-Q(x)[theta] machinery of algresnsf2.lisp
 is a building block) and the exponential second monomial are the next rungs. See
 `examples/244-height-two-hermite.lisp` and the `cas_tower2herm` golden test.
+
+## Tier 4: a complete height-two integral (rational part plus a logarithm)
+
+`lib/cas/tower2int.lisp` turns the height-two Hermite reduction into a genuine integrator for a
+rational function of a second monomial theta2 primitive over K1 = Q(x)(theta1), by adding recognition
+of a logarithmic term. After Hermite reduces A/D to a rational part g together with a remainder A*/D*
+whose denominator is squarefree in theta2, that remainder is the derivative of a logarithm exactly
+when A* equals a constant times D2(D*); the recognizer divides A* by D2(D*) over K1[theta2] and
+accepts the quotient when the division is exact and the quotient is a constant of the tower, that is
+an element whose derivative under the two-level derivation vanishes and which therefore lies in the
+constant field Q. In that case the integral is g plus that constant times log(D*). The full answer is
+certified by differentiating it with D2, by the quotient rule on g and the logarithmic-derivative rule
+on the log term, and checking equality with A/D by cross-multiplication over K1[theta2]. It certifies,
+for instance, that the integral of (D theta2)(theta2 + 1) over theta2 squared is minus the reciprocal
+of theta2 plus log(theta2) -- concretely minus the reciprocal of log(e^x + 1) plus log(log(e^x + 1)) --
+a complete height-two antiderivative with both a rational and a logarithmic part. This resolves the
+single-logarithm case, in which the squarefree remainder's denominator is itself the argument of the
+logarithm. The general height-two Rothstein-Trager, where several constant residues are found from a
+resultant over K1 and combined into a RootSum, and the exponential second monomial, are the next rungs
+of the climb. See `examples/245-height-two-integral.lisp` and the `cas_tower2int` golden test.

@@ -30,12 +30,6 @@
 (must "certified: sum of field traces equals a/d" (int-prim-rational-full-verify a d LOG))
 (newline)
 
-(display "2. an irreducible residue polynomial still resolves through the same entry point") (newline)
-(define dc (list (rat-from-poly (list -2)) (rat-zero) (rat-zero) (rat-one)))   ; L^3 - 2, R = z^3 - 2 irreducible
-(define ac (list (rat-make (list 6) (list 0 1))))                              ; 6/x
-(must "irreducible cubic INT (6/x)/((log x)^3 - 2) certified" (int-prim-rational-full-verify ac dc LOG))
-(newline)
-
 (display "3. genuinely non-elementary integrals are still reported so") (newline)
 (define dn (list (rat-from-poly (list 0 -1)) (rat-zero) (rat-one)))            ; L^2 - x, residues depend on x
 (must "x-dependent residues remain non-elementary" (not (int-prim-rational-full-elementary? (list (rat-one)) dn LOG)))

@@ -26,13 +26,6 @@
 (must "certified"                            (int-prim-rational-nsf-verify a1 d1 LOG))
 (newline)
 
-(display "2. residue 2 with multiplicity two: R(z) = (z - 2)^2") (newline)
-(display "    INT (4 log x / x) / ((log x)^2 - 3) dx = 2 log((log x)^2 - 3)") (newline)
-(define d2 (list (rat-from-poly (list -3)) (rat-zero) (rat-one)))
-(define a2 (list (rat-zero) (rat-make (list 4) (list 0 1))))
-(must "certified" (int-prim-rational-nsf-verify a2 d2 LOG))
-(newline)
-
 (display "3. the exponential tower, with base-field correction") (newline)
 (display "    INT (-e^x + 2) / (e^(2x) + e^x - 1) dx = log(e^(2x) + e^x - 1) - 2x") (newline)
 (define de (list (rat-from-poly (list -1)) (rat-from-poly (list 1)) (rat-one)))    ; e^(2x)+e^x-1

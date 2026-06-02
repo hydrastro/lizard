@@ -1,0 +1,8 @@
+(import "cas/tower2int.lisp")
+(define EXP1 (list 'exp (list 0 1)))
+(define Dth2 (list (list (rat-zero) (rat-one)) (list (rat-one) (rat-one))))
+(define A (list Dth2 Dth2)) (define D (list (tr-zero) (tr-zero) (t2-trone)))
+(define res (int-h2 A D Dth2 EXP1))
+(display (car res)) (newline)
+(display (car (car (cdr (cdr res))))) (newline)
+(display (h2tr-equal? (int-h2-deriv res Dth2 EXP1) (list A D))) (newline)

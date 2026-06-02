@@ -255,3 +255,4 @@
 (example "242-nonsquarefree-rootsum.lisp" :expect pass)
 (example "243-irrational-repeated-residue.lisp" :expect pass)
 (example "244-height-two-hermite.lisp" :expect pass)
+(example "245-height-two-integral.lisp" :expect pass)

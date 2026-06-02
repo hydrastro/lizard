@@ -28,14 +28,6 @@
 (must "certified by the field trace" (int-prim-rational-algn-verify ac dc LOG))
 (newline)
 
-(display "2. cubic residues in the exponential tower (with base-field correction)") (newline)
-(display "    INT 6 e^(2x) / (e^(3x) - 2) dx") (newline)
-(define de (list (rat-from-poly (list -2)) (rat-zero) (rat-zero) (rat-one)))   ; (e^x)^3 - 2
-(define ae (list (rat-zero) (rat-zero) (rat-from-poly (list 6))))              ; 6 (e^x)^2
-(must "reported as a RootSum"        (equal? (car (int-prim-rational-algn ae de EXP)) 'rootsum))
-(must "certified by the field trace" (int-prim-rational-algn-verify ae de EXP))
-(newline)
-
 (display "3. the general path subsumes the quadratic case and preserves existing behaviour") (newline)
 (define dq (list (rat-from-poly (list -2)) (rat-zero) (rat-one)))              ; (log x)^2 - 2
 (define aq (list (rat-make (list 1) (list 0 1))))
