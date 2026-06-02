@@ -1688,3 +1688,53 @@ non-elementary. Together with the rational and logarithmic cases this fills in t
 direction of single-extension integration; the remaining work toward the full algorithm is the
 exponential proper part by Hermite reduction in the tower and height-two extensions. See
 `examples/231-exponential-polynomial.lisp` and the `cas_expoly` golden test.
+
+## Tier 3: the logarithmic polynomial part of a tower
+
+`lib/cas/logpoly.lisp` is the primitive-case counterpart of expoly.lisp: it integrates a polynomial
+sum over k of a_k(x) theta^k in theta = log x, where the a_k are polynomials in x. Whereas the
+exponential case decoupled into an independent differential equation per power, the logarithmic case
+is a single triangular recurrence, and it collapses to closed form. The derivation sends log x to
+1/x, so the coefficient of theta^k in the derivative of sum b_k theta^k is b_k' + (k+1) b_{k+1}/x.
+Writing b_k = x c_k -- the antiderivative of a polynomial in log x with polynomial coefficients has
+coefficients that vanish at the origin -- turns the matching condition into a_k = c_k + x c_k' +
+(k+1) c_{k+1}. The key simplification is that (x c)' = c + x c', so solving c + x c' = R for a
+polynomial c is immediate: matching the coefficient of x^j gives (j+1) times the j-th coefficient of
+c equal to the j-th coefficient of R, that is, c is R with its j-th coefficient divided by j+1.
+Processing k from the top down with c_{n+1} = 0 therefore produces every coefficient directly, with
+no linear system, and the answer is exact because this class is always elementary. Each result is
+certified by forming the tower derivative and comparing it coefficient by coefficient to the input.
+It gives, for instance, INT (log x)^2 dx = x (log x)^2 - 2x log x + 2x, INT log x dx = x log x - x,
+INT x log x dx = (x^2/2) log x - x^2/4, and the general INT (log x)^n dx, as well as mixed cases
+like INT (3x^2 + 1)(log x)^3 dx. Together with elem.lisp, which already handles rational functions
+of log x of the form (1/x) R(log x) by substitution, this fills the logarithmic direction of
+single-extension integration alongside the exponential direction of expoly.lisp; rational (rather
+than polynomial) coefficients, where intermediate logarithms must be absorbed, and the full proper
+case remain. See `examples/232-logarithmic-polynomial.lisp` and the `cas_logpoly` golden test.
+
+## Tier 3: the primitive polynomial case with rational coefficients
+
+`lib/cas/primint.lisp` generalizes logpoly.lisp from polynomial to rational coefficients: it
+integrates a polynomial sum over k of a_k(x) (log x)^k with the a_k in Q(x). This is where the
+primitive case acquires its characteristic subtlety -- intermediate logarithms that must be absorbed
+into higher coefficients -- and where the first genuine non-elementarity obstructions of the
+logarithmic direction appear. The antiderivative is sum b_k (log x)^k with b_k in Q(x), and matching
+the coefficient of (log x)^k in the derivative gives a_k = b_k' + (k+1) b_{k+1}/x. Working from the
+top down, b_k is the rational antiderivative of R_k = a_k - (k+1) b_{k+1}/x. That antiderivative
+lies in Q(x) precisely when R_k integrates to a rational function plus lambda_k log x and nothing
+else; the integrator computes this with the complete rational integrator of ratfull.lisp and reads
+off lambda_k as the coefficient of log x in the result. The free additive constant in b_{k+1} is
+then determined one level higher by C_{k+1} = lambda_k/(k+1), which is exactly the amount needed to
+cancel the log x that level k would otherwise produce -- so the logarithm generated at one level is
+absorbed as the next-higher power of log x. If at any level the rational integral requires a
+logarithm whose argument is not x, or has an algebraic (non-rational) residue, then that logarithm
+cannot be absorbed and the integral is not elementary as a polynomial in log x; the procedure
+reports this rather than guessing. Each answer is certified by forming the tower derivative and
+comparing coefficient by coefficient to the input. It recovers the absorption cases such as
+INT (1/x) log x dx = (1/2)(log x)^2 and INT (log x)^2/x dx = (1/3)(log x)^3, the genuinely rational
+ones such as INT log x / x^2 dx = -1/x - (log x)/x, the polynomial-coefficient cases of logpoly.lisp,
+and even the base-field logarithmic integrals INT 1/x dx = log x as the degree-zero instance, while
+correctly declining INT log x/(x^2+1) dx and INT log x/(x-1) dx. With this the primitive polynomial
+part is complete over Q(x); the proper (fractional) case in log x and the analogous rational
+coefficients for the exponential proper case remain. See
+`examples/233-primitive-rational-coefficients.lisp` and the `cas_primint` golden test.

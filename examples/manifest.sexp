@@ -242,3 +242,5 @@
 (example "229-improper-rational-integration.lisp" :expect pass)
 (example "230-integration-fuzz.lisp" :expect pass)
 (example "231-exponential-polynomial.lisp" :expect pass)
+(example "232-logarithmic-polynomial.lisp" :expect pass)
+(example "233-primitive-rational-coefficients.lisp" :expect pass)
