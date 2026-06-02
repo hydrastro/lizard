@@ -248,3 +248,4 @@
 (example "235-exponential-proper-case.lisp" :expect pass)
 (example "236-complete-log-integration.lisp" :expect pass)
 (example "237-complete-exp-integration.lisp" :expect pass)
+(example "238-algebraic-rootsum-closure.lisp" :expect pass)

@@ -1844,3 +1844,30 @@ non-elementary. With both intlog.lisp and intexp.lisp the single transcendental 
 remaining frontier is the algebraic RootSum closure for irrational residues, height-two towers, and
 the algebraic-function case. See `examples/237-complete-exp-integration.lisp` and the `cas_intexp`
 golden test.
+
+## Tier 3: algebraic-residue RootSum closure (irreducible quadratic)
+
+`lib/cas/algres.lisp` removes the "up to algebraic residues" qualifier from the single transcendental
+extension in the most common case. When the Rothstein-Trager residue polynomial R(z) for an integral
+INT a/d -- d squarefree in the monomial theta -- is monic over Q with constant but irrational roots,
+the integral is still elementary but its logarithmic part is a RootSum, the sum over the roots c of
+R(z) of c log(v_c), where v_c = gcd_theta(d, a - c Dd). The module closes the case in which R(z) is an
+irreducible quadratic z^2 + p z + q over Q, whose two roots are a conjugate pair. Rather than extract
+the radical, it computes the argument v_c symbolically over the field Q(x)(c) obtained by adjoining a
+root of the quadratic, with c^2 = -p c - q, running the Euclidean algorithm in Q(x)(c)[theta] with
+exact two-component arithmetic. The result is then certified without any reference to the value of the
+radical: the derivative of the RootSum is the trace, the sum over the conjugate residues of
+c Dv_c/v_c, and that trace is a rational function over Q(x) because the conjugate of alpha + beta c is
+alpha - p beta - beta c, so a quantity and its conjugate add to 2 alpha - p beta in Q(x); the
+algebraic parts cancel. For the exponential tower the elementary answer carries the same base-field
+correction as expnrt, an extra -p deg(v_c) x term, so the certified identity is trace + p deg(v_c) =
+a/d. Crucially the entire computation is gated by this differentiation certificate: if it does not
+hold the case is left reported as 'algebraic exactly as before, so the closure can only tighten the
+verdicts of towerrt.lisp and expnrt.lisp, never weaken them. It certifies, for instance,
+INT (1/x)/((log x)^2 - 2) dx, whose residues are the irrational numbers plus or minus the square root
+of one eighth and whose argument is log x - sqrt 2, and the exponential analogue
+INT e^x/(e^(2x) - 2) dx with the same residues; rational-residue integrals continue to be handled by
+delegation, and integrals with x-dependent residues are still correctly reported non-elementary. The
+remaining algebraic cases -- residue polynomials of degree three or higher, requiring the full
+Lazard-Rioboo-Trager subresultant construction -- are the next increment. See
+`examples/238-algebraic-rootsum-closure.lisp` and the `cas_algres` golden test.
