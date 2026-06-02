@@ -2167,3 +2167,103 @@ the solver produces antiderivatives whose theta2-coefficients are themselves non
 of (theta1 + theta1^2) theta2 + 6 theta1 theta2 squared is theta1 theta2 + 3 theta2 squared, generalizing
 the exact-power case that the same expression's second term illustrates. See
 `examples/250-exp-rde.lisp` and the `cas_tower2exprde` golden test.
+
+## Tier 4: the exponential Risch differential equation with a degree-two logarithmic derivative
+
+The solver of `lib/cas/tower2exprde.lisp` is not limited to deg(u') = 1. With theta1 = e^x and
+theta2 = exp(e^{2x}/2), the second monomial has u' = theta1^2, of degree two in theta1, and the operator
+coefficient (b' + k u' b)_j = b_j' + j b_j + k (u' * b)_j drives the same top-down recursion, now
+dividing by k u'_2 so that a polynomial solution has degree deg(a) - 2. The equation
+b' + theta1^2 b = theta1 + theta1^3 has the nonconstant solution b = theta1, and the integrator built on
+the solver certifies INT (theta1 + theta1^3) theta2 dx = theta1 theta2 against the exponential derivation
+D2. This confirms the RDE solver handles the nested-exponential case where the inner exponent grows faster
+than x. See `examples/251-exp-rde-deg2.lisp` and the `cas_tower2rde2` golden test.
+
+## Tier 4: the n>=2 Sylvester-resultant determinant path over K1
+
+For squarefree D* of degree three or more, the Rothstein-Trager resultant Res_theta2(D*, A* - z D2(D*))
+is a determinant of size five by five or larger over the field K1 = Q(x)(theta1). The cofactor expansion
+that first implemented this is factorial in both time and allocation and exhausted memory even at size
+five; it is now replaced by Gaussian elimination over K1 with partial pivoting, cubic in the matrix size,
+with each entry reduced to lowest terms after every elimination step. The arithmetic is validated against
+the trusted Sylvester resultant over Q: two degree-(3,2) pairs with constant K1 coefficients, each a five
+by five determinant, agree exactly with the field-division resultant of resultant.lisp. A single resultant
+with genuine fractional coefficients (D theta2 = e^x/(e^x + 1)) also computes, returning a result of low
+degree in theta1. The full degree-three-or-more height-two integral, however, evaluates the resultant at
+several interpolation nodes inside one logarithmic-part computation, and holding several such fractional
+determinants at once exceeds the interpreter's working memory regardless of the elimination method --
+plain Gaussian, normalized Gaussian, and one-step fraction-free Bareiss were all tried; making that
+end-to-end path feasible needs a more memory-frugal multi-resultant strategy, which is the next step. The
+determinant-path arithmetic itself is certified here. See
+`examples/252-resultant-determinant-path.lisp` and the `cas_tower2det` golden test.
+
+## Tier 4: the exponential Risch differential equation with a theta1 denominator
+
+The RDE solver of `lib/cas/tower2exprde.lisp` is not restricted to polynomial b. A denominator theta1^l
+is handled by writing b = bbar * theta1^(-l): substituting into b' + k u' b = a and using
+(theta1^(-l))' = -l theta1^(-l) for theta1 = e^x turns the equation into bbar' + (k u' - l) bbar = num,
+the same top-down recursion with the diagonal term j replaced by j - l. Only pure-power denominators
+theta1^l arise for an exponential monomial -- this is the special part of the second monomial -- and the
+polynomial solver is precisely the l = 0 instance, so it still routes through unchanged. With
+theta2 = exp(e^x) the equation b' + theta1 b = 1 - theta1^(-1) has the solution b = theta1^(-1) = e^{-x},
+a negative power of theta1 that the polynomial recursion cannot represent; the solution is certified
+against the exponential derivation D2. See `examples/253-exp-rde-laurent.lisp` and the `cas_tower2rdel`
+golden test.
+
+## Tier 4: the complete exponential power-sum integrator at height two
+
+`lib/cas/tower2expint.lisp` closes the exponential power-sum case. For theta2 = exp(u) an integrand
+P = a_0 + Sum_{k>=1} a_k theta2^k integrates degree by degree, because the exponential derivation
+preserves the theta2-grading: D2 of b theta2^k stays in degree k, and D2 of a K1 element stays in degree
+zero. The positive degrees are handled by the exponential RDE solver (b_k' + k u' b_k = a_k), and the
+constant term a_0, an element of K1 = Q(x)(theta1), is integrated by the complete single-exponential
+integrator of intexp.lisp -- the height-two coefficient representation, a ratio of polynomials in
+theta1 = e^x over Q(x), is exactly the input that integrator consumes, so no translation is needed.
+Correctness factors along the grading: the power part is certified by differentiating with D2 and matching
+P above degree zero, while the constant term carries the single-extension integrator's own certificate.
+With theta2 = exp(e^x), INT [ 1/(e^x+1) + (theta1+theta1^2) theta2 + 6 theta1 theta2^2 ] dx
+= (x - log(e^x+1)) + theta1 theta2 + 3 theta2^2, the theta2^0 term being a genuine logarithmic integral
+supplied by the capstone. This composes the height-two RDE solver with the single-extension exponential
+integrator into a complete integrator for polynomial power sums in an exponential second monomial. A
+resolved subtlety: intexp and the height-two tower both define a function named hermite (with three and
+two arguments respectively, for different uses), so the modules are imported in the order that keeps the
+three-argument tower version live, after which both lineages coexist. See `examples/254-exp-powersum.lisp`
+and the `cas_tower2expint` golden test.
+
+## Tier 4: Hermite reduction for an exponential second monomial
+
+`lib/cas/tower2exphermite.lisp` is the exponential mirror of the primitive Hermite reduction. For
+theta2 = exp(u) an integrand A/D whose denominator is coprime to theta2 but not squarefree in theta2 is
+reduced to a rational part plus a remainder with squarefree denominator, by the same squarefree-factor-
+and-peel algorithm as the primitive case (h2-yun, h2-invmod, division over K1[theta2]) with the exponential
+derivation t2e-deriv in place of the primitive t2-deriv. Correctness rests on the normality of exponential
+monomials: a squarefree V coprime to theta2 satisfies gcd(V, D2 V) = 1, so the Bezout step is valid. The
+reduction is purely rational and does not invoke the Rothstein-Trager resultant, so it is free of the
+resultant memory wall. With theta1 = e^x and theta2 = exp(e^x), INT -theta1 theta2/(theta2-1)^2 dx
+= 1/(theta2-1) up to a constant; the squarefree remainder vanishes, so the antiderivative is purely
+rational, certified by differentiating with D2 and matching A/D. A note on the interpreter: combining the
+reduction with the full cross-multiplying remainder check in one process exhausts working memory (the
+height-two K1 arithmetic is allocation-heavy), so the reduction is computed once and, the remainder being
+zero here, certified by the leaner identity D2(rational part) = A/D. See `examples/255-exp-hermite.lisp`
+and the `cas_tower2eh` golden test.
+
+## Tier 4: height-two primitive integrals with rational coefficients, by substitution
+
+`lib/cas/tower2primrat.lisp` sidesteps the Sylvester-resultant memory wall for an important class. When
+the second monomial theta2 is primitive (D2 theta2 = Dtheta2 in K1) and the integrand has the form
+Dtheta2 * Abar(theta2)/Dbar(theta2) with Abar, Dbar in Q[theta2] (rational-number coefficients, constant
+in x and theta1), the chain rule d/dx F(theta2) = F'(theta2) Dtheta2 makes it the exact pullback of a
+rational-function integral: INT Dtheta2 Abar/Dbar dx = [ INT Abar/Dbar d(theta2) ] with theta2 as the
+variable. The whole logarithmic part is therefore computed by the trusted rational-function integrator
+rat-integrate (rischrat.lisp) over Q, with no resultant over K1 and none of the K1-fraction memory growth
+that defeated the determinant path across several earlier attempts. This integrates a cubic denominator
+with three rational residues -- INT (Dtheta2)(6 theta2^2 - 10 theta2 + 2)/(theta2^3 - 3 theta2^2 +
+2 theta2) dx = log(theta2) + 2 log(theta2 - 1) + 3 log(theta2 - 2), exactly the case the K1-coefficient
+resultant could not evaluate -- and a quartic INT (Dtheta2) D*'/D* dx = log(D*), confirming the method has
+no degree limit. The reduction is gated by reconstructing each coefficient (A_i = Dtheta2 * Abar_i exactly
+in K1, with non-rational coefficients rejected), so the substitution is certified to apply, after which
+rat-integrate carries its own differentiation certificate over Q; together these give the height-two
+D2 certificate. The class is precisely the height-two primitive integrals whose logarithm arguments and
+residues are rational and whose denominator is constant in x. The fully general K1-coefficient case --
+x-dependent arguments, algebraic residues -- still routes through the Sylvester resultant and remains
+memory-bound. See `examples/256-prim-rational-integral.lisp` and the `cas_tower2primrat` golden test.

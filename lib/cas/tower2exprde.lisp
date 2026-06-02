@@ -24,26 +24,26 @@
 (define (k1-poly-coeffs x)                     ; theta1-coefficients of a polynomial K1 element; 'notpoly otherwise
   (let ((xn (k1-normalize x)))
     (if (> (rfpoly-deg (car (cdr xn))) 0) 'notpoly (car xn))))
-(define (rde-nth lst i) (if (= i 0) (car lst) (rde-nth (cdr lst) (- i 1))))
-(define (rde-int-assoc lst key) (if (null? lst) #f (if (= (car (car lst)) key) (car lst) (rde-int-assoc (cdr lst) key))))
-(define (rde-lookup solved i) (let ((p (rde-int-assoc solved i))) (if p (cdr p) (rat-zero))))
-(define (rde-up-nth uc p) (if (< p 0) (rat-zero) (if (>= p (length uc)) (rat-zero) (rde-nth uc p))))
-(define (rde-a-nth ac j) (if (< j 0) (rat-zero) (if (>= j (length ac)) (rat-zero) (rde-nth ac j))))
+(define (xrde-nth lst i) (if (= i 0) (car lst) (xrde-nth (cdr lst) (- i 1))))
+(define (xrde-int-assoc lst key) (if (null? lst) #f (if (= (car (car lst)) key) (car lst) (xrde-int-assoc (cdr lst) key))))
+(define (xrde-lookup solved i) (let ((p (xrde-int-assoc solved i))) (if p (cdr p) (rat-zero))))
+(define (xrde-up-nth uc p) (if (< p 0) (rat-zero) (if (>= p (length uc)) (rat-zero) (xrde-nth uc p))))
+(define (xrde-a-nth ac j) (if (< j 0) (rat-zero) (if (>= j (length ac)) (rat-zero) (xrde-nth ac j))))
 
 ; ----- the top-down recursion -----
-(define (rde-lowconv uc solved j cap p acc)    ; Sum_{p=0}^{cap-1} u'_p b_{j-p}
+(define (xrde-lowconv uc solved j cap p acc)    ; Sum_{p=0}^{cap-1} u'_p b_{j-p}
   (if (>= p cap) acc
-      (rde-lowconv uc solved j cap (+ p 1)
-                   (rat-add acc (rat-mul (rde-up-nth uc p) (rde-lookup solved (- j p)))))))
-(define (rde-bm ac uc k P j solved)            ; b_{j-P} = [ a_j - b_j' - j b_j - k Sum_{p<P} u'_p b_{j-p} ] / (k u'_P)
-  (let ((bj (rde-lookup solved j)))
-    (let ((rhs (rat-sub (rat-sub (rat-sub (rde-a-nth ac j) (rat-deriv bj)) (rat-scale j bj))
-                        (rat-scale k (rde-lowconv uc solved j P 0 (rat-zero))))))
-      (rat-div rhs (rat-scale k (rde-up-nth uc P))))))
-(define (rde-solve ac uc k P m solved)         ; solve b_m for m = E down to 0
+      (xrde-lowconv uc solved j cap (+ p 1)
+                   (rat-add acc (rat-mul (xrde-up-nth uc p) (xrde-lookup solved (- j p)))))))
+(define (xrde-bm ac uc k P j solved)            ; b_{j-P} = [ a_j - b_j' - j b_j - k Sum_{p<P} u'_p b_{j-p} ] / (k u'_P)
+  (let ((bj (xrde-lookup solved j)))
+    (let ((rhs (rat-sub (rat-sub (rat-sub (xrde-a-nth ac j) (rat-deriv bj)) (rat-scale j bj))
+                        (rat-scale k (xrde-lowconv uc solved j P 0 (rat-zero))))))
+      (rat-div rhs (rat-scale k (xrde-up-nth uc P))))))
+(define (xrde-solve ac uc k P m solved)         ; solve b_m for m = E down to 0
   (if (< m 0) solved
-      (rde-solve ac uc k P (- m 1) (cons (cons m (rde-bm ac uc k P (+ m P) solved)) solved))))
-(define (rde-assemble solved m E) (if (> m E) '() (cons (rde-lookup solved m) (rde-assemble solved (+ m 1) E))))
+      (xrde-solve ac uc k P (- m 1) (cons (cons m (xrde-bm ac uc k P (+ m P) solved)) solved))))
+(define (xrde-assemble solved m E) (if (> m E) '() (cons (xrde-lookup solved m) (xrde-assemble solved (+ m 1) E))))
 
 ; ----- the exponential RDE solver (b' + k u' b = a, b in Q(x)[theta1]) -----
 (define (exp-rde-check a k uprime b mono1)
@@ -55,9 +55,39 @@
             (let ((D (rfpoly-deg ac)) (P (rfpoly-deg uc)))
               (if (< D 0) (k1-zero)
                   (if (< (- D P) 0) 'nosolution
-                      (let ((b (list (rde-assemble (rde-solve ac uc k P (- D P) '()) 0 (- D P)) (rf-const (rat-one)))))
+                      (let ((b (list (xrde-assemble (xrde-solve ac uc k P (- D P) '()) 0 (- D P)) (rf-const (rat-one)))))
                         (if (exp-rde-check a k uprime b mono1) b 'nosolution)))))))))
 (define (exp-rde-solvable? a k uprime mono1) (if (equal? (exp-rde a k uprime mono1) 'nosolution) #f #t))
+
+; ----- Laurent extension: b may carry a theta1 denominator (b = bbar * theta1^(-l)) -----
+; A theta1^(-l) denominator reduces b' + k u' b = a to bbar' + (k u' - l) bbar = num, the same recursion
+; with the diagonal term j shifted to j - l.  This finds solutions like b = e^{-x} that the polynomial
+; solver misses.  Only pure-power denominators theta1^l are treated (the special part for an exponential
+; monomial); any other denominator is reported as no solution.
+(define (xrde-zeros n) (if (= n 0) (quote ()) (cons (rat-zero) (xrde-zeros (- n 1)))))
+(define (rf-theta1-pow l) (if (= l 0) (list (rat-one)) (append (xrde-zeros l) (list (rat-one)))))
+(define (rf-zeros-upto P j i) (if (>= j i) #t (if (rat-zero? (xrde-a-nth P j)) (rf-zeros-upto P (+ j 1) i) #f)))
+(define (xrde-bm-l ac uc k P j l solved)
+  (let ((bj (xrde-lookup solved j)))
+    (let ((rhs (rat-sub (rat-sub (rat-sub (xrde-a-nth ac j) (rat-deriv bj)) (rat-scale (- j l) bj))
+                        (rat-scale k (xrde-lowconv uc solved j P 0 (rat-zero))))))
+      (rat-div rhs (rat-scale k (xrde-up-nth uc P))))))
+(define (xrde-solve-l ac uc k P l m solved)
+  (if (< m 0) solved
+      (xrde-solve-l ac uc k P l (- m 1) (cons (cons m (xrde-bm-l ac uc k P (+ m P) l solved)) solved))))
+(define (exp-rde-laurent a k uprime mono1)
+  (let ((an (k1-normalize a)))
+    (let ((den (car (cdr an))) (num (car an)) (uc (k1-poly-coeffs uprime)))
+      (let ((l (rfpoly-deg den)))
+        (if (equal? uc (quote notpoly)) (quote nosolution)
+            (if (not (rf-zeros-upto den 0 l)) (quote nosolution)
+                (let ((D (rfpoly-deg num)) (P (rfpoly-deg uc)))
+                  (if (< D 0) (k1-zero)
+                      (if (< (- D P) 0) (quote nosolution)
+                          (let ((bbar (xrde-assemble (xrde-solve-l num uc k P l (- D P) (quote ())) 0 (- D P))))
+                            (let ((b (k1-normalize (list bbar (rf-theta1-pow l)))))
+                              (if (exp-rde-check a k uprime b mono1) b (quote nosolution))))))))))))) 
+(define (exp-rde-laurent-solvable? a k uprime mono1) (if (equal? (exp-rde-laurent a k uprime mono1) (quote nosolution)) #f #t))
 
 ; ----- height-two exponential integrator using the RDE solver (generalizes the exact-power case) -----
 (define (t2e-int-rde-go p uprime mono1 k)
