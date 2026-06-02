@@ -249,3 +249,7 @@
 (example "236-complete-log-integration.lisp" :expect pass)
 (example "237-complete-exp-integration.lisp" :expect pass)
 (example "238-algebraic-rootsum-closure.lisp" :expect pass)
+(example "239-higher-degree-rootsum.lisp" :expect pass)
+(example "240-height-two-tower.lisp" :expect pass)
+(example "241-reducible-rootsum-closure.lisp" :expect pass)
+(example "242-nonsquarefree-rootsum.lisp" :expect pass)

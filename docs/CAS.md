@@ -1871,3 +1871,107 @@ delegation, and integrals with x-dependent residues are still correctly reported
 remaining algebraic cases -- residue polynomials of degree three or higher, requiring the full
 Lazard-Rioboo-Trager subresultant construction -- are the next increment. See
 `examples/238-algebraic-rootsum-closure.lisp` and the `cas_algres` golden test.
+
+## Tier 3: higher-degree algebraic-residue RootSum closure (irreducible R of any degree)
+
+`lib/cas/algresn.lisp` generalizes the quadratic closure of `algres.lisp` to a Rothstein-Trager
+residue polynomial R(z) that is monic over Q and irreducible of any degree m. The roots of such an R
+form a single conjugate class, and the logarithmic part of INT a/d -- d squarefree in the monomial
+theta -- is the RootSum over those roots of c log(v_c), with v_c = gcd_theta(d, a - c Dd). The
+argument is computed over the number field K = Q(x)[c]/(R(c)). The representation makes this cheap:
+an element of K is just a polynomial in c with coefficients in Q(x), so it reuses the ordinary
+polynomial arithmetic already in the tower, reduced modulo R; multiplication, inversion by the
+extended Euclidean algorithm, and the derivation all follow. The answer is certified without ever
+extracting a radical or naming a conjugate. The Rothstein-Trager factors satisfy the identity that
+their product over all roots of R equals d, so the norm of v_c is d itself and the cofactor d/v_c is
+obtained by a single polynomial division in K[theta]; the derivative of the RootSum is then the
+trace, over the conjugate class, of c times the logarithmic derivative of v_c, which equals the trace
+of c (Dv_c) (d/v_c) divided by d. That trace down to Q(x) is evaluated coefficient by coefficient
+using the power sums of the roots of R, and the power sums come from Newton's identities applied to
+the coefficients of R, so the symmetric functions of the conjugates are obtained directly from R
+without factoring it over any extension. For the exponential tower the elementary answer carries the
+same base-field correction as expnrt, an extra term proportional to the degree of v_c times the sum
+of the roots, and the certificate folds that correction in. As always the differentiation certificate
+is the gate: a residue polynomial that is reducible, or any case whose trace identity fails to hold,
+is left reported 'algebraic exactly as before, so the closure strictly tightens the verdicts of
+towerrt.lisp and expnrt.lisp. It certifies, for example, the cubic INT (6/x)/((log x)^3 - 2) dx,
+whose residues are the three cube roots of two and whose argument is log x - c with the trace
+numerator collapsing to 6/x, together with its exponential analogue; the quadratic case is subsumed,
+and integrals with x-dependent residues remain correctly non-elementary. The remaining algebraic
+cases -- a reducible residue polynomial, handled by splitting into its irreducible factors, and
+arguments v_c of degree above one -- are the next increment. See
+`examples/239-higher-degree-rootsum.lisp` and the `cas_algresn` golden test.
+
+## Tier 3: first rung of the height-two tower
+
+`lib/cas/tower2.lisp` takes the first step beyond a single transcendental extension. A height-two
+tower stacks a second monomial theta2 on top of a height-one field K1 = Q(x)(theta1), so that the
+derivative of theta2 is an element of K1 rather than of Q(x): for instance theta1 = e^x and
+theta2 = log(e^x + 1), whose derivative e^x/(e^x + 1) lives in Q(x, e^x). The module builds the
+differential structure at that level. A height-two object is a polynomial in theta2 whose
+coefficients are tower-rationals over theta1, and the derivation applies the product and chain rules
+through both levels at once: the derivative of a sum of b_k theta2^k is the sum of the height-one
+derivatives of the coefficients times theta2^k, plus the chain-rule contribution in which each
+b_k theta2^k yields k b_k (D theta2) theta2^{k-1}, with D theta2 supplied as a K1 element. On top of
+this it certifies the simplest genuinely height-two integrals, the exact powers
+INT theta2^k (D theta2) dx = theta2^{k+1}/(k+1), by differentiating the proposed antiderivative with
+the two-level derivation and checking equality coefficient by coefficient; it does so on two
+unrelated towers, log(e^x + 1) over e^x and log(log x + 1) over log x, and rejects an incorrect
+antiderivative. This is explicitly a first rung: it demonstrates that the chain rule composes
+correctly across two transcendental levels and that the height-one field arithmetic carries the
+weight of being a coefficient field. The larger remaining lift is full height-two integration --
+Hermite reduction, Rothstein-Trager, and the Risch differential equation with the coefficient field
+itself a tower -- which recurses the entire single-extension machinery one level up. See
+`examples/240-height-two-tower.lisp` and the `cas_tower2` golden test.
+
+## Tier 3: reducible algebraic-residue RootSum closure (full squarefree logarithmic part)
+
+`lib/cas/algresfull.lisp` finishes the algebraic-residue logarithmic part of the single transcendental
+extension for a squarefree denominator. The Rothstein-Trager residue polynomial R(z) for INT a/d need
+not be irreducible; in general it factors over Q into pieces of mixed degree. This module factors
+R = prod_j P_j with factor-Q and treats each factor separately. A linear factor contributes an
+ordinary logarithm c0 log(v_c) with rational residue c0, exactly as the base rational path already
+does. An irreducible factor P_j of degree m at least two contributes the RootSum over its conjugate
+class, sum_{P_j(c)=0} c log(v_c), computed in the number field K_j = Q(x)[c]/(P_j) by the same
+machinery as the irreducible case. The new ingredient is the per-factor norm. In the generic
+situation each argument v_c = theta - r is linear in theta, and then the norm
+N_j = prod_sigma sigma(v_c) is precisely the characteristic polynomial of the element r in K_j. That
+characteristic polynomial is recovered from the power sums tr(r^k) of the conjugates of r -- each a
+field trace computed from the power sums of P_j -- by running Newton's identities backward to get the
+elementary symmetric functions, so neither a resultant nor an explicit splitting of P_j is required.
+Because the Rothstein-Trager factors satisfy the identity that their norms multiply back to d, the
+per-factor logarithmic derivatives share the common denominator d, and the entire logarithmic part is
+certified by adding up the field traces and checking that the sum equals a/d, with the same
+exponential base-field correction as before summed across the factors. The differentiation
+certificate remains the sole gate: a residue polynomial that is not squarefree, or any factor whose
+argument fails to be linear or whose trace identity does not hold, leaves the case reported
+'algebraic, so the closure can only strengthen the verdicts of towerrt.lisp, expnrt.lisp and
+algresn.lisp. It certifies, for example, the mixed integral whose residue polynomial is
+(z - 1)(z^2 - 1/8): a rational residue at one logarithm together with a conjugate pair of irrational
+residues, the two contributions summing exactly to the integrand. With this in place the logarithmic
+part of a single transcendental extension over Q(x) is complete for any squarefree denominator and
+any residue behaviour, rational or algebraic. The remaining algebraic gap is the degenerate case of a
+non-squarefree residue polynomial (repeated residues, where the argument is no longer linear over a
+factor). See `examples/241-reducible-rootsum-closure.lisp` and the `cas_algresfull` golden test.
+
+## Tier 3: non-squarefree residue polynomial (repeated rational residues)
+
+`lib/cas/algresnsf.lisp` handles the case in which the Rothstein-Trager residue polynomial R(z) is
+not squarefree, which happens when several roots of d share a residue. The squarefree factorization
+R = prod_i R_i^i, computed with yun-square-free, records the multiplicities: a residue that is a root
+of R_i carries an argument v_c = gcd_theta(d, a - c Dd) of degree i in theta, not the linear argument
+of the squarefree case. This module closes the common branch in which every residue is rational. For
+each rational residue c0 it forms the degree-i argument directly in Q(x)[theta] -- no number field is
+involved, since the residue is rational -- and contributes the term c0 log(v_c); when a - c0 Dd
+vanishes the gcd with d returns d itself, recovering the full denominator as the argument. Because the
+Rothstein-Trager factors multiply back to d, the per-residue logarithmic derivatives share the common
+denominator d, and the whole logarithmic part is certified by checking that the sum of c0 (Dv_c)/v_c
+over all rational residues equals a/d, with the exponential base-field correction summed across the
+residues. It certifies, for example, INT (2 log x / x)/((log x)^2 - 2) dx = log((log x)^2 - 2), whose
+residue polynomial is (z - 1)^2, and its exponential counterpart with the correction. The entry point
+int-prim-rational-nsf layers the handlers in order -- the rational base case, then the reducible
+RootSum closure of algresfull.lisp, then this non-squarefree rational case -- and otherwise reports
+'algebraic, so a non-squarefree residue polynomial whose repeated residue is irrational (which would
+require the number-field norm of a higher-degree argument, the one remaining algebraic gap) is still
+deferred rather than mishandled. The differentiation certificate gates every answer. See
+`examples/242-nonsquarefree-rootsum.lisp` and the `cas_algresnsf` golden test.
