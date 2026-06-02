@@ -238,3 +238,7 @@
 (example "225-rational-integration-complete.lisp" :expect pass)
 (example "226-risch-de-rational.lisp" :expect pass)
 (example "227-risch-de-rational-f.lisp" :expect pass)
+(example "228-weak-normalization.lisp" :expect pass)
+(example "229-improper-rational-integration.lisp" :expect pass)
+(example "230-integration-fuzz.lisp" :expect pass)
+(example "231-exponential-polynomial.lisp" :expect pass)

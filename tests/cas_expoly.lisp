@@ -1,0 +1,8 @@
+(import "cas/expoly.lisp")
+(define X (list 0 1)) (define X2 (list 0 0 1)) (define ONE (list 1))
+(display (int-exp-poly (list (list 1 X ONE)) X)) (newline)
+(display (int-exp-poly-verify (list (list 1 X ONE)) X)) (newline)
+(display (int-exp-poly-verify (list (list 1 ONE ONE) (list -1 ONE ONE)) X)) (newline)
+(display (int-exp-poly-verify (list (list 1 X ONE) (list 0 ONE X)) X)) (newline)
+(display (int-exp-poly-elementary? (list (list 1 ONE X)) X)) (newline)
+(display (int-exp-poly-elementary? (list (list 1 ONE ONE)) X2)) (newline)

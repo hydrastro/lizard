@@ -1608,3 +1608,83 @@ INT (x-1)/x e^{1/x} dx = x e^{1/x}, INT 2/x^3 e^{-1/x^2} dx = e^{-1/x^2}, and pr
 INT e^{1/x} dx non-elementary. The remaining step toward the full Risch DE is the general weak
 normalizer for an f whose simple poles do have positive-integer residues. See
 `examples/227-risch-de-rational-f.lisp` and the `cas_rderat` golden test.
+
+## Tier 3: weak normalization and the full base-case Risch DE over Q(x)
+
+`lib/cas/weaknorm.lisp` removes the weak-normalization hypothesis, completing the Risch
+differential equation y' + f y = g for an arbitrary rational coefficient f over Q(x). The
+obstruction is a simple pole of f at some alpha whose residue n is a positive integer: there a
+solution may carry a pole of order n that the rderat.lisp denominator bound, derived under weak
+normalization, does not see. The fix is the classical WeakNormalizer. It builds the monic
+polynomial q = product (x - alpha)^n over exactly those poles and substitutes y = z/q, turning the
+problem into z' + (f - q'/q) z = q g whose coefficient f - q'/q is weakly normalized, so rderat.lisp
+solves for z and y = z/q is recovered. The poles and residues are found without factoring: the
+residues at the simple poles of f -- the roots of d1, the multiplicity-one part of the denominator
+of f -- are the roots of the resultant R(y) = res_x(a - y d', d1) where f = a/d, and for each
+positive integer n among those roots the corresponding factor is gcd(d1, a - n d'), contributed to
+q with multiplicity n.
+
+This step is not cosmetic. It is essential precisely when exp(-INT f) is not rational, so the
+forced pole cannot be shifted away by adding a rational homogeneous solution. The worked example is
+f = (5/2 x - 6)/(x^2 - 3x), which has residue 2 at x = 0 (an integer) and residue 1/2 at x = 3 (not),
+with g = 1/(2 x^2 (x - 3)). Its only rational solution is y = 1/x^2, and the weakly-normalized solver
+alone returns "none" -- it genuinely cannot represent that pole -- whereas with q = x^2 the weak
+normalizer reduces the equation to z' + (1/(2(x-3))) z = 1/(2(x-3)) with solution z = 1, giving back
+y = 1/x^2. As always every returned solution is differentiation-certified, and the construction is
+validated by round trips that choose y and an f with an integer-residue pole, form g = y' + f y, and
+recover a certifying solution. The remaining steps toward the full transcendental Risch algorithm
+are the logarithmic-extension differential equation and height-two towers; the base case over Q(x)
+is now complete. See `examples/228-weak-normalization.lisp` and the `cas_weaknorm` golden test.
+
+## Tier 3: complete rational integration including improper fractions, and randomized hardening
+
+`lib/cas/ratfull.lisp` finishes rational-function integration for an arbitrary A/D. rischrat.lisp
+assumes a proper fraction, and on an improper one (degree of A at least that of D) Hermite reduction
+silently drops the polynomial part: for x^3/(x^2 - 1) it kept the proper piece x/(x^2 - 1) but lost
+the quotient x, and so the answer omitted x^2/2. rat-integrate-full divides A = Q D + Rem first, so
+INT A/D = INT Q + INT Rem/D, where INT Q is the elementary polynomial antiderivative and Rem/D is
+proper and handled by the Hermite plus Rothstein-Trager pipeline. Degenerate denominators are guarded
+explicitly: a constant denominator makes A/D a polynomial integrated directly, and an exact division
+leaves no proper part. The whole answer -- polynomial part, rational part, and logarithmic terms --
+is differentiated back to A/D and checked against the integrand whenever the residues are rational;
+the polynomial division and the Hermite rational part are exact regardless. It gives, for instance,
+INT x^3/(x^2 - 1) dx = x^2/2 + (1/2) log(x^2 - 1) and handles (5x^4 + 3)/(x^2 - 1), x^5/(x^3 - x), and
+constant or exactly-dividing denominators.
+
+Both of those defects were not found by inspection but by `lib/cas/fuzzcheck.lisp`, a deterministic
+randomized validator that hardens the whole integration stack. A linear-congruential generator
+produces reproducible pseudo-random polynomials, and three families of checks run against them. The
+first checks invariants of rational integration: for any A/D the Hermite rational part must be exact,
+and when the residues are all rational the complete answer must differentiate back. The second and
+third check completeness, the property a differentiation certificate cannot establish on its own,
+by constructing solvable instances on purpose: for random polynomial f and rational h it sets
+g = h' + f h and demands the Risch DE solver find a certifying solution rather than report "none",
+and for random p and h it sets R = h' + p' h and demands INT R e^p come back elementary and certify.
+A certificate only catches a wrong answer; a constructed-solvable instance catches a missed one, and
+it was exactly such instances -- an improper fraction and a constant denominator -- that exposed the
+two bugs now fixed. The validator runs as part of continuous integration over fixed seeds. See
+`examples/229-improper-rational-integration.lisp`, `examples/230-integration-fuzz.lisp`, and the
+`cas_ratfull` and `cas_fuzzcheck` golden tests.
+
+## Tier 3: the exponential polynomial part of a tower
+
+`lib/cas/expoly.lisp` integrates the part of a height-one exponential tower that Hermite reduction
+cannot touch: a Laurent polynomial sum over k of a_k(x) theta^k in theta = e^p, where p is a
+polynomial and the a_k are rational in x. The mechanism is the base-case Risch differential equation
+made concrete. Because the derivation sends b theta^k to (b' + k p' b) theta^k, integrating a single
+term a_k theta^k is the same as solving b' + (k p') b = a_k over Q(x) -- which is exactly the
+integral INT a_k e^{k p} that rischde.lisp computes -- and then the antiderivative of the term is
+b theta^k. The exponentials e^{k p} for distinct k are linearly independent over the rational
+functions, so by Liouville's theorem the whole sum has an elementary antiderivative if and only if
+every term does; the integrator therefore proceeds term by term and reports the sum non-elementary
+the moment any single term fails. The k = 0 term carries no exponential and is an ordinary
+base-field integral, handled by ratfull.lisp, so its antiderivative may contribute a rational part
+and logarithms. Every coefficient produced is checked by re-deriving its defining equation
+b' + k p' b = a_k, and the k = 0 part by differentiation, so a reported answer is certified and a
+reported impossibility is a genuine Liouville obstruction. It recovers, for instance,
+INT x e^x dx = (x-1) e^x, INT e^(2x) dx = (1/2) e^(2x), INT 2x e^(x^2) dx = e^(x^2), and
+INT (x e^x + 1/x) dx = (x-1) e^x + log x, while proving INT e^x/x dx and INT e^(x^2) dx
+non-elementary. Together with the rational and logarithmic cases this fills in the exponential
+direction of single-extension integration; the remaining work toward the full algorithm is the
+exponential proper part by Hermite reduction in the tower and height-two extensions. See
+`examples/231-exponential-polynomial.lisp` and the `cas_expoly` golden test.
