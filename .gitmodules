@@ -1,3 +1,0 @@
-[submodule "modules/pwdm"]
-	path = modules/pwdm
-	url = http://github.com/hydrastro/pwdman
