@@ -271,3 +271,6 @@
 (example "258-exp-substitution-integral.lisp" :expect pass)
 (example "259-height-two-xdependent-rootsum.lisp" :expect pass)
 (example "260-height-two-xdependent-deg3-fraction-free.lisp" :expect pass)
+(example "261-height-two-exponential-xdependent-rootsum.lisp" :expect pass)
+(example "262-algebraic-functions-quadratic-radical.lisp" :expect pass)
+(example "263-height-two-cubic-algebraic-residue.lisp" :expect pass)

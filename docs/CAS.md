@@ -2374,3 +2374,35 @@ logarithmic part for x-dependent integrands, and algebraic functions (radicals, 
 ahead -- and the fraction-free infrastructure here (Bareiss resultant, primitive-PRS gcd, gcd-free ratios
 over Q(x)[theta1]) is exactly what those will build on.  See
 `examples/260-height-two-xdependent-deg3-fraction-free.lisp` and the `cas_tower2ff` golden.
+
+## Tier 4: closing the three height-two / algebraic frontiers
+
+Three capabilities that had stood open are now built and certified, each reusing the fraction-free
+apparatus of tower2ff (the derivation-indifferent Bareiss resultant and the rational ratio trick).
+
+EXPONENTIAL x-dependent logarithmic part (`tower2expff.lisp`).  The substitution integrator only reached
+constant-in-x arguments for theta2 = exp(u); the x-dependent case needs the resultant over K1.  Because the
+fraction-free apparatus only ever consumes D, A and D2(D), it transfers to the exponential derivation
+D2(theta2) = u' theta2 unchanged.  The degree-three integral
+    INT A/D dx = log(exp(e^x) - e^x) + 2 log(exp(e^x) - 2 e^x) + 3 log(exp(e^x) + e^x)
+certifies via the exponential logarithmic derivative (example 261).
+
+ALGEBRAIC FUNCTIONS (`algfunc.lisp`).  The first move out of transcendental towers: the algebraic function
+field K = Q(x)[y]/(y^2 - p), y = sqrt(p), a field carrying the derivation y' = p'/(2y).  The standard
+quadratic-radical antiderivatives -- INT dx/sqrt(p) = arcsinh-type log, INT x/sqrt(p) dx = sqrt(p),
+INT sqrt(p) dx -- are produced in closed form and certified by differentiation INSIDE K (example 262).
+This is the rationalizable / standard-radical slice; Trager's general algebraic-function integration
+(arbitrary curves, the elliptic and higher-genus non-elementary integrals) is the genuine summit beyond it.
+
+DEGREE >= 3 ALGEBRAIC RESIDUES at height two (`tower2algn.lisp`).  tower2alg handled an irreducible-
+quadratic residue; this lifts it to any degree.  When the Rothstein-Trager residue polynomial q(z) is
+irreducible of degree d over Q, the d residues are a full conjugate set and the antiderivative is the
+RootSum sum_{q(alpha)=0} alpha log(v_alpha) in K1(alpha)[theta2].  K1(alpha) = K1[alpha]/(q) is realised as
+h2polys over K1 reduced modulo q, so its arithmetic reuses h2-rem/h2-invmod; the log argument is taken by
+Euclid over K1(alpha)[theta2]; and the RootSum's derivative is the TRACE over the conjugates, which descends
+to K1.  The certificate checks Tr_{K1(alpha)/K1}(alpha D2(v_alpha)(D*/v_alpha)) = A* in K1[theta2], the
+trace computed from the power sums of q's roots by Newton's identities.  The cubic
+    INT 6 (D theta2)/(theta2^3 - 2) dx = sum_{r^3 = 2} r log(theta2 - r)
+-- residues the three cube roots of 2 -- certifies (example 263).  Honest scope: this covers an irreducible
+residue polynomial; a reducible mix of factors of degree >= 3 over K1, and residues whose extension is not
+separable-by-Euclid here, would extend it further.
