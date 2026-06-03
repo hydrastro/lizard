@@ -2339,3 +2339,38 @@ bounds what is feasible. Degree-two x-dependent cases fit; a degree-three x-depe
 evaluations, coefficients like e^(2x)) still exceeds memory, because the K1 fraction arithmetic for such
 coefficients is allocation-heavy. Cracking that needs leaner (fraction-free) K1 resultant arithmetic, not
 just gc timing. See `examples/259-height-two-xdependent-rootsum.lisp` and the `cas_tower2xdep` golden.
+
+## Tier 4: fraction-free Rothstein-Trager -- x-dependent degree-three RootSums
+
+Example 259 reached x-dependent logarithm arguments at degree two by calling towerrt's field resultant with
+an explicit (gc).  Degree three with x-dependent coefficients (four resultant evaluations, coefficients
+like e^(2x)) defeated even that: the field elimination's per-step k1-mul performs two Euclidean rfpoly-gcd
+cross-cancellations, and four such evaluations -- plus the K1 Euclidean gcd that extracts each logarithm
+argument -- exhaust the heap.  `tower2ff.lisp` removes every one of those allocators by working
+fraction-free over the integral domain Q(x)[theta1].
+
+The resultant R(z) = Res_theta2(D, A - z D2(D)) is computed by clearing the coefficient denominators by
+their minimal common multiple (the LCM, not the product -- the product inflates theta1-degrees until the
+recursive polynomial division overflows the stack) and then taking the Sylvester determinant by the
+Bareiss one-step fraction-free elimination: only rfpoly multiply, subtract and EXACT division, with no
+rfpoly-gcd anywhere in the determinant.  This was validated against towerrt's field resultant on a 5x5
+case and on the integer resultant Res(t^2-1, t-2) = 3; its high-water memory stays flat across evaluations.
+Because the clearing factor is identical for every z it cancels in the ratios R(z_k)/R(z_0), which the
+residue interpolation needs; the constancy of those ratios is tested gcd-free, by comparing a leading-
+coefficient ratio against an rfpoly equality, so the degree-eleven resultant values never go through a gcd.
+Finally each logarithm argument v_c = gcd(D, A - c D2(D)) is found by a fraction-free primitive PRS over
+Q(x)[theta1] (pseudo-remainders with the rfpoly content divided out each step) and made monic over K1,
+replacing the K1 Euclidean gcd whose intermediates blew up.  An explicit (gc) between the heavy steps
+reclaims transients.
+
+With this, the degree-three x-dependent integral certifies end to end:
+    INT A/D dx = log(theta2 - e^x) + 2 log(theta2) + 3 log(theta2 + e^x),   theta2 = log(e^x + 1),
+where D = theta2^3 - e^(2x) theta2 carries an x-dependent K1 coefficient and the three logarithm arguments
+depend on x; the residues 1, 2, 3 are recovered and the RootSum is certified by differentiation (sum of
+c_i D2(v_i)/v_i equals A/D exactly in K1[theta2]).  This is the case that exhausted memory in every earlier
+attempt.  Scope, stated honestly: this conquers the x-dependent primitive RootSum with rational residues at
+degree three.  Residues genuinely algebraic of degree >= 3 over K1, the exponential Rothstein-Trager
+logarithmic part for x-dependent integrands, and algebraic functions (radicals, elliptic integrals) remain
+ahead -- and the fraction-free infrastructure here (Bareiss resultant, primitive-PRS gcd, gcd-free ratios
+over Q(x)[theta1]) is exactly what those will build on.  See
+`examples/260-height-two-xdependent-deg3-fraction-free.lisp` and the `cas_tower2ff` golden.

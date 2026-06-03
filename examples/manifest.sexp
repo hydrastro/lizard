@@ -270,3 +270,4 @@
 (example "257-prim-arctan-integral.lisp" :expect pass)
 (example "258-exp-substitution-integral.lisp" :expect pass)
 (example "259-height-two-xdependent-rootsum.lisp" :expect pass)
+(example "260-height-two-xdependent-deg3-fraction-free.lisp" :expect pass)
