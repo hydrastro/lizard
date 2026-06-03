@@ -2289,3 +2289,53 @@ irreducible-quadratic and whose denominator is constant in x. The fully general 
 (x-dependent arguments, higher algebraic residues over K1) still routes through the Sylvester resultant
 and remains memory-bound. See `examples/257-prim-arctan-integral.lisp` and the `cas_tower2primfull`
 golden test.
+
+## Tier 4: height-two substitution integrals for ANY monomial (the exponential case included)
+
+`lib/cas/tower2sub.lisp` unifies the substitution method across both second-monomial kinds. The chain rule
+d/dx F(theta2) = F'(theta2) D2(theta2) holds whether theta2 is primitive or exponential, so for any
+g in Q(theta2), INT D2(theta2) g(theta2) dx = [ INT g(t) dt ] with t = theta2. Concretely, an integrand
+A(theta2)/D(theta2) over K1 is of this type exactly when the reduced rational function
+g = A / (D * D2theta2) lies in Q(theta2); the integral is then the trusted integrate.lisp over Q --
+logarithms for linear factors, arctangents for irreducible quadratics -- with no Sylvester resultant over
+K1. This subsumes `tower2primrat.lisp` and `tower2primfull.lisp` (where D2theta2 is a scalar in K1) and,
+importantly, also covers the EXPONENTIAL second monomial, where D2theta2 = u' theta2 is degree one in
+theta2 so the reduction needs a genuine polynomial gcd in K1[theta2] rather than a coefficient-wise
+division. For theta2 = exp(e^x) (so D2theta2 = e^x theta2),
+    INT e^x exp(e^x) / (exp(2 e^x) + 1) dx = arctan(exp(e^x)),
+    INT e^x exp(e^x) / (exp(e^x) - 1)   dx = log(exp(e^x) - 1),
+both certified. The reduction g = A/(D D2theta2) is an exact polynomial gcd (h2-gcd/h2-div, cheap -- no
+resultant), normalized by the leading coefficient of its denominator and read off as Q-polynomials. The
+certificate has two light halves: the reduction A * Dbar = D * D2theta2 * Abar is exact in K1[theta2]
+(cross-multiplication), certifying that the integrand really is D2theta2 * Abar/Dbar, and integrate-verify
+certifies d/dtheta2 of the answer equals Abar/Dbar over Q; by the chain rule these give the height-two
+certificate D2(answer) = A/D with no heavy K1 derivation. (To stay within the interpreter's memory the
+result is computed once per integrand and certified from it.) This corrects an earlier expectation that
+the substitution did not transfer to the exponential case: it does, because the chain rule is indifferent
+to the monomial kind. As always only integrands whose g is constant in x are of this type; x-dependent
+arguments and residues algebraic over K1 still require the resultant. See
+`examples/258-exp-substitution-integral.lisp` and the `cas_tower2sub` golden test.
+
+## Tier 4: x-dependent height-two RootSums via a gc-managed K1 resultant
+
+The substitution integrators (`tower2primrat.lisp`, `tower2primfull.lisp`, `tower2sub.lisp`) cover height-
+two integrands whose logarithm arguments are constant in x. When the arguments genuinely depend on x there
+is no substitution shortcut and the logarithmic part must come from the Sylvester resultant over
+K1 = Q(x)(theta1) (towerrt's `h2rt-logpart`): the resultant R(z) = Res_theta2(D, A - z D2(D)) is evaluated
+at z = 0..deg(D), the ratios are interpolated by rational Lagrange, and the rational residues are read off.
+The obstacle has always been memory -- a single K1-fraction resultant is cheap, but several in sequence
+accumulate transient garbage. The fix is that the interpreter exposes a `(gc)` primitive; calling it
+between the resultant evaluations (now built into `h2rt-Rvals`, plus once at the head of `h2rt-logpart`
+after Hermite) reclaims the dead K1 fractions and lets the multi-evaluation resultant stay within the heap.
+With this, a degree-two x-dependent integral certifies end to end:
+    INT A/D dx = log(theta2 - e^x) + 2 log(theta2 + e^x),   theta2 = log(e^x + 1),
+where D = theta2^2 - e^(2x) carries an x-dependent K1 coefficient and the arguments theta2 +- e^x depend on
+x. The RootSum is certified by differentiation -- sum of c_i D2(v_i)/v_i is checked to equal A/D exactly in
+K1[theta2] -- and the whole example is computed once and certified from the same result to respect the
+heap. This is the first height-two integral with x-dependent logarithm arguments to be certified here, and
+it complements example 246 (x-independent coefficients). Scope, stated honestly: gc reclaims dead objects
+for reuse but does not shrink the process's resident memory, so the peak simultaneous allocation still
+bounds what is feasible. Degree-two x-dependent cases fit; a degree-three x-dependent denominator (four
+evaluations, coefficients like e^(2x)) still exceeds memory, because the K1 fraction arithmetic for such
+coefficients is allocation-heavy. Cracking that needs leaner (fraction-free) K1 resultant arithmetic, not
+just gc timing. See `examples/259-height-two-xdependent-rootsum.lisp` and the `cas_tower2xdep` golden.

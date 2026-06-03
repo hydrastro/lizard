@@ -82,9 +82,10 @@
 (define (q-lagrange xs ys) (q-lag-go xs ys 0 '()))
 
 ; ----- the logarithmic part -----
-(define (h2rt-Rvals As Ds D2D k N acc)
+(define (h2rt-Rvals As Ds D2D k N acc)            ; (gc) between evals frees transient K1 garbage (else OOM at N>=3)
   (if (> k N) (reverse acc)
-      (h2rt-Rvals As Ds D2D (+ k 1) N (cons (h2-resultant Ds (h2-sub As (h2-cscale (k1-from-int k) D2D))) acc))))
+      (let ((r (h2-resultant Ds (h2-sub As (h2-cscale (k1-from-int k) D2D)))))
+        (begin (gc) (h2rt-Rvals As Ds D2D (+ k 1) N (cons r acc))))))
 (define (h2rt-first-nonzero rs k) (if (null? rs) -1 (if (k1-zero? (car rs)) (h2rt-first-nonzero (cdr rs) (+ k 1)) k)))
 (define (h2rt-ratios rs r0 mono1 acc)            ; -> list of rationals | 'notconst
   (if (null? rs) (reverse acc)
@@ -100,6 +101,7 @@
               (h2rt-terms (cdr roots) As Ds D2D Dth2 mono1 (cons (list c v) acc) (+ tdeg (h2-deg v)))
               (h2rt-terms (cdr roots) As Ds D2D Dth2 mono1 acc tdeg))))))
 (define (h2rt-logpart As Ds Dth2 mono1)          ; (list 'rootsum terms) | (list 'algebraic ...) | (list 'degenerate)
+  (begin (gc)
   (let ((D2D (t2-deriv Ds Dth2 mono1)) (N (h2-deg Ds)))
     (let ((rs (h2rt-Rvals As Ds (t2-deriv Ds Dth2 mono1) 0 N '())))
       (let ((k0 (h2rt-first-nonzero rs 0)))
@@ -108,7 +110,7 @@
               (if (equal? rats 'notconst) (list 'algebraic)
                   (let ((roots (ros-rational-roots (q-lagrange (h2rt-int-list N) rats))))
                     (let ((tt (h2rt-terms roots As Ds D2D Dth2 mono1 '() 0)))
-                      (if (= (car (cdr tt)) (h2-deg Ds)) (list 'rootsum (car tt)) (list 'algebraic)))))))))))
+                      (if (= (car (cdr tt)) (h2-deg Ds)) (list 'rootsum (car tt)) (list 'algebraic))))))))))))
 
 ; ----- the full height-two integrator: Hermite rational part + general logarithmic part -----
 (define (int-h2-full A D Dth2 mono1)
