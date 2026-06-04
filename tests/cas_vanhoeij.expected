@@ -1,0 +1,7 @@
+(0 1)
+(0 1 1)
+(corrected (0 1) 2)
+(corrected (0 1 1) 3)
+#t
+no-correction-needed
+needs-place-combination

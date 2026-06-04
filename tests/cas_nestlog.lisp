@@ -1,0 +1,7 @@
+(import "cas/nestlog.lisp")
+(display (car (nl-t1deriv (list (rat-zero) (rat-one))))) (newline)
+(display (nl-tcoeff (nl-deriv (nl-answer-t2)) 0)) (newline)
+(display (nl-q-eq? (nl-tcoeff (nl-deriv (nl-answer-t2)) 0) (nl-t2prime))) (newline)
+(display (nl-certify (nl-answer-t2) (nl-integrand-loglog))) (newline)
+(define E2 (list (nl-q-zero) (nl-q-zero) (nl-q-one)))
+(display (nl-certify E2 (nl-deriv E2))) (newline)

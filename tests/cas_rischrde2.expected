@@ -1,0 +1,7 @@
+(elementary ((-1 1) (1)))
+#t
+(non-elementary no-rational-y)
+(elementary ((1) (0 1)))
+#t
+(elementary ((1/2) (1)))
+(non-elementary no-rational-y)

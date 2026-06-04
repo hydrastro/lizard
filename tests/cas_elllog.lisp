@@ -1,0 +1,7 @@
+(import "cas/elllog.lisp")
+(define r1 (ell-logarithm (rat-from-poly (list 1 0 0 1)) 0))
+(display (car r1)) (display " ") (display (car (cdr r1))) (newline)
+(display (ell-log-decides? (rat-from-poly (list 1 0 0 1)) 0)) (display " ")
+(display (ell-log-decides? (rat-from-poly (list 4 0 0 1)) 0)) (newline)
+(display (car (ell-logarithm (rat-from-poly (list -2 0 0 1)) 3))) (display " ")
+(display (car (ell-logarithm (rat-from-poly (list 1 0 0 1)) 2))) (newline)

@@ -1,0 +1,7 @@
+(import "cas/weier.lisp")
+(display (we-substitute (we-const 1) (we-a+bcos 1 1))) (newline)
+(display (we-integrate (we-const 1) (we-a+bcos 1 1))) (newline)
+(display (we-integrate (we-const 1) (we-a+bcos 2 1))) (newline)
+(display (we-integrate (we-const 1) (we-a+bsin 2 1))) (newline)
+(display (we-integrate (we-a+bcos 0 1) (we-a+bcos 1 1))) (newline)
+(display (we-verify (we-const 1) (we-a+bcos 5 4) (we-integrate (we-const 1) (we-a+bcos 5 4)))) (newline)

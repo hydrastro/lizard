@@ -1,0 +1,8 @@
+(import "cas/slimit2.lisp")
+(display (sl-limit (list 0 1 (/ -1 2) (/ 1 3) (/ -1 4)) (list 0 1) 4)) (newline)
+(display (sl-limit (list 0 0 (/ 1 2) 0 (/ -1 24)) (list 0 0 1) 3)) (newline)
+(display (sl-limit (list 0 1 0 (/ -1 6)) (list 0 0 1) 3)) (newline)
+(display (sl-limit (list 0 0 1) (list 0 1 0 (/ -1 6)) 3)) (newline)
+(display (sl-shift-poly (list -4 0 1) 2)) (newline)
+(display (sl-limit (sl-shift-poly (list -4 0 1) 2) (sl-shift-poly (list -2 1) 2) 3)) (newline)
+(display (sl-limit (sl-shift-poly (list -9 0 1) 3) (sl-shift-poly (list -3 1) 3) 3)) (newline)

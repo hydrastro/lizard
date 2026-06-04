@@ -37,7 +37,7 @@ primitives):
    faces, partial elements, Kan composition, Glue types, and `ua`,
    with computational univalence in the canonical case.
 
-On top of that sits a **standard library of 45 modules (~5,300 lines
+On top of that sits a **standard library of 271 modules (~26,000 lines
 of Lisp)** organized around four research tracks, plus self-hosting
 demonstrations: a metacircular evaluator, a Prolog-style logic engine,
 a regex engine, a lambda-calculus evaluator, and a Hindley-Milner type
@@ -139,7 +139,7 @@ Binary lands at `build/lizard`. `make examples` is honest: it fails if a
 
 ## Examples
 
-124 examples in `examples/`, numbered by topic. Highlights:
+371 examples in `examples/`, numbered by topic. Highlights:
 
 - `01`–`22` — Scheme programs
 - `23`–`34` — λΠ, observational HoTT, and the cubical layer
@@ -184,11 +184,12 @@ for what is checked vs. scaffolded.
 
 - `DESIGN.md` — how the pieces fit together
 - `LIMITATIONS.md` — precise scope of what works / doesn't
-- `docs/ROADMAP.md` — the four-track plan and status
+- `docs/MASTER_PLAN.md`, `docs/TRAGER_ROADMAP.md` — the multi-track plan and status
 - `docs/LIBRARIES.md` — per-module API reference
 - `docs/USAGE.md` — getting-started guide and recipes
 - `docs/CAS.md` — the proof-producing CAS direction
 - `CHANGELOG.md` — development history
+- `CONTRIBUTING.md` — how to build, test, and add a library module soundly
 
 ## License
 

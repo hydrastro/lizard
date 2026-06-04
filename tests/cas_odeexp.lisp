@@ -1,0 +1,7 @@
+(import "cas/odeexp.lisp")
+(display (oef-resonant? 0 1 1)) (display " ") (display (oef-u 0 1 1 (list 1))) (newline)
+(display (oef-resonant? 0 -1 1)) (display " ") (display (oef-u 0 -1 1 (list 1))) (newline)
+(display (oef-u -2 1 1 (list 1))) (newline)
+(display (oef-u 0 -1 1 (list 0 1))) (newline)
+(display (oef-certify -3 2 3 (list 1) (oef-u -3 2 3 (list 1)))) (newline)
+(display (oef-solve 0 -1 1 (list 1))) (newline)

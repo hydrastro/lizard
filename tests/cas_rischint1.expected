@@ -1,0 +1,8 @@
+(elementary ((() (1)) ((1) (1))))
+#t
+#t
+(non-elementary no-rational-rde)
+(elementary (((0 -1) (1)) ((0 1) (1))))
+#t
+(elementary (((0 2) (1)) ((0 -2) (1)) ((0 1) (1))))
+#t

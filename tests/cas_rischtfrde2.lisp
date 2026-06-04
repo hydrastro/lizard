@@ -1,0 +1,6 @@
+(import "cas/rischtfrde2.lisp")
+(display (ctf-step (rat-one) (rat-one) (rat-zero) 0)) (newline)
+(display (ctf-step (rat-one) (rat-zero) (rat-from-poly (list 0 1)) 1)) (newline)
+(display (ctf-solve (rat-one) (list (rat-one)) 4)) (newline)
+(display (ctf-decide-int-E2)) (newline)
+(display (ctf-solve (rat-one) (list (rat-zero)) 4)) (newline)

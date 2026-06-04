@@ -1,0 +1,7 @@
+(import "cas/odefol.lisp")
+(display (fol-particular (list 1) (list 0 1))) (newline)
+(display (fol-particular (list 0 1) (list 0 1))) (newline)
+(display (fol-particular (list 0 2) (list 0 0 0 2))) (newline)
+(display (fol-particular (list 0 1) (list 0 2 0 1))) (newline)
+(display (fol-solve (list 0 1) (list 1))) (newline)
+(display (fol-certify (list 0 2) (list 0 0 0 2) (list -1 0 1))) (newline)

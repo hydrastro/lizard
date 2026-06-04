@@ -1,0 +1,8 @@
+#t
+((gr 0 1) (gr 0 -1))
+((gr 0 1) (gr 0 1))
+#t
+(gr -1 0) #t
+((gr 1 1) (gr 1 -1))
+not-gaussian
+#f

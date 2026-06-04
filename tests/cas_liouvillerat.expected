@@ -1,0 +1,7 @@
+(non-elementary no-rational-S)
+(non-elementary no-rational-S)
+(elementary () (1 0))
+#t
+(elementary (-1 1) ())
+#t
+#t

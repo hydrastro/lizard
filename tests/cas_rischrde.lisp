@@ -1,0 +1,7 @@
+(import "cas/rischrde.lisp")
+(display (rde-solve (rat-from-poly (list 1)) (rat-from-poly (list 0 1)))) (newline)
+(display (rde-solve (rat-make (list -1) (list 0 1)) (rat-from-poly (list 0 1)))) (newline)
+(display (rde-solve (rat-make (list 1) (list 0 1)) (rat-from-poly (list 1)))) (newline)
+(display (rde-solve (rat-make (list 2) (list 0 1)) (rat-make (list 1) (list 0 0 1)))) (newline)
+(display (rde-solve (rat-from-poly (list 1)) (rat-make (list 1) (list 0 1)))) (newline)
+(display (rde-decide (rat-from-poly (list 1)) (rat-make (list 1) (list 0 1)))) (newline)

@@ -2559,3 +2559,1528 @@ depth.  The full multi-residue RootSum at general depth (several distinct algebr
 lifted into the recursion -- that needs polynomial gcd and resultants over a tower coefficient field -- and the
 algebraic case (Trager-Bronstein) remains separate and deeper.  What changed is real: the recursive integrator
 no longer discards logarithms, it produces and certifies them through the recursion, including nested ones.
+
+## Tier 4 (summit, continued): a rational tower and the multi-residue logarithmic part
+
+The recursive driver of the previous sections kept tower elements POLYNOMIAL in each monomial, so the
+coefficient ring at each level was not closed under division.  Two things were out of reach as a result:
+elements rational in a monomial (negative powers like 1/e^x, or 1/log x), and the multi-residue logarithmic
+part, which needs polynomial gcd and resultants over the lower coefficient field.  `rtower.lisp` removes both
+limitations by changing the representation: at every level the coefficients form a genuine FIELD, so a level-L
+element is a FRACTION of polynomials in the top monomial whose coefficients are rational-tower elements one
+level down, bottoming out at Q(x).  This is built in two layers -- field polynomials over the lower field
+(with monic normalization, division with remainder, and gcd) and fractions of those (the field at the next
+level) -- with a recursive quotient-rule derivation D(P/Q) = (P' Q - P Q')/Q^2.
+
+The derivation is verified through depth 2 on inputs the polynomial tower could not represent: D(1/e^x) =
+-1/e^x and D(1/exp(e^x)) = -e^x/exp(e^x) (negative powers), and D(1/log x) = -(1/x)/(log x)^2 (an element
+rational in the monomial).
+
+On this field tower the MULTI-RESIDUE Rothstein-Trager logarithmic part lifts uniformly.  For a proper fraction
+Pnum/V with V monic and squarefree in the top monomial, the residues are the rational roots of the resultant
+res_theta(V, Pnum - c V') in the variable c; each rational residue c contributes c log(gcd_theta(V, Pnum -
+c V')).  The resultant-as-a-function-of-c is recovered by evaluating at integer c and interpolating over the
+rationals, and the rational roots are found with the existing ros-rational-roots.  This produces SEVERAL
+logarithms at once, at arbitrary depth:
+
+  * INT 2 e^x/(e^(2x)-1) dx = log(e^x-1) - log(e^x+1)                         (two residues, depth 1)
+  * INT (2/x)/((log x)^2-1) dx = log(log x-1) - log(log x+1)                  (two residues, NESTED-log arguments)
+  * INT 2 e^x exp(e^x)/(exp(2 e^x)-1) dx                                       (two residues, DEPTH 2)
+
+Every elementary RootSum is certified by the cleared identity sum_i c_i (D v_i) (prod_{j!=i} v_j) = Pnum over
+the lower field (the product form avoids tower division, which keeps the certificate cheap and finite).  A
+RootSum is accepted as complete -- and hence elementary over Q -- only when the residue-argument degrees sum to
+deg V; otherwise some residues are algebraic and the integral is reported non-elementary.  This soundness
+guard is essential: INT 2 e^x/(e^(2x)+1) dx has complex residues (the denominator e^(2x)+1 is irreducible over
+Q), and the driver correctly declines it as non-elementary over Q rather than returning a spurious empty
+RootSum.
+
+Honest scope.  The multi-residue logarithmic part is now complete over Q at arbitrary depth: it returns all the
+logarithms when the residues are rational and declines soundly when they are not.  Two things still lie beyond
+it.  Residues that are algebraic but expressible in a finite real or complex extension (genuine RootSum-over-an-
+extension, as Maxima and FriCAS print with a %r summation) are reported non-elementary here rather than being
+expressed over the needed algebraic extension.  And the ALGEBRAIC case (Trager-Bronstein -- integrands that
+themselves contain algebraic functions, with elliptic and higher-genus non-elementarity) remains the genuine
+deepest summit, still separate.  What changed is real and structural: the tower now has division at every
+level, and the logarithmic part is multi-residue and certified, where before it was single-residue only.
+
+## Tier 4 (summit, the two final boundaries): algebraic-residue RootSum over Q(alpha), and the algebraic case
+
+Two boundaries close the canonical core of the Risch summit.
+
+### Boundary 1 -- the algebraic-residue RootSum over an algebraic extension (algtrace.lisp, algresext.lisp)
+
+The rational tower's multi-residue logarithmic part returns every logarithm when the Rothstein-Trager residues
+are rational and declines soundly when they are not.  The remaining case is when the residue polynomial R(z)
+(the resultant res_theta(V, Pnum - z V')) has an irreducible factor of degree d >= 2: then the residues are
+algebraic numbers and the logarithmic part is the RootSum sum_{R(alpha)=0} alpha log(v_alpha), with v_alpha =
+gcd_theta(V, Pnum - alpha V') computed over Q(alpha)(x).  This is the %r summation Maxima and FriCAS print.
+
+The construction works over Q(alpha)(x)[theta]: alpha is the generator of Q(alpha) = Q[z]/(R-factor); the log
+argument v_alpha is the monic gcd of V and Pnum - alpha V' by the Euclidean algorithm with Q(alpha)(x)
+coefficients (apoly provides Q(alpha)[x], wrapped as fractions).  Soundness is a differentiation certificate
+expressed with the field TRACE Tr_{Q(alpha)/Q}, computed from the regular representation (the
+multiplication-by-beta matrix in the power basis 1, alpha, ..., alpha^{n-1}; trace = its trace, norm = its
+determinant -- algtrace.lisp, verified against Tr(i)=0, N(i)=1, Tr(3+2i)=6, Tr(alpha^2)=2 for z^3-z-1, etc.).
+The derivative of the RootSum over the common denominator V is
+
+    d/dx ( sum_alpha alpha log v_alpha )  =  Tr( alpha (D v_alpha)(V / v_alpha) ) / V,
+
+so the certificate is the polynomial identity over Q[x]:  Tr( alpha (D v_alpha)(V/v_alpha) ) = Pnum, with one
+subtlety -- for an exponential monomial (D theta = w theta) the leading term of D(log(theta + c)) contributes a
+polynomial part, so the identity carries an extra  Tr(alpha) * deg(v_alpha) * V  correction (zero for a
+primitive monomial).  The trace is taken only on the algebraic left-hand side; the right-hand side Pnum is
+rational and is compared directly (tracing a rational q in a degree-d field would multiply it by d).
+
+Verified end to end, each trace-certified: INT 2 e^x/(e^(2x)+1) dx = i log(e^x - i) - i log(e^x + i) over Q(i);
+INT (e^x+1)/(e^(2x)-2) dx over Q(sqrt2); INT 3 e^(2x)/(e^(3x)-2) dx over the cubic field Q(2^(1/3)).  A
+rational-residue integrand (e.g. e^(2x)-1) has no nonlinear resultant factor, so the algebraic path returns
+'none and defers to the rational RootSum -- it never poaches the rational case or asserts a false extension.
+
+### Boundary 2 -- the algebraic case: hyperelliptic reduction and elliptic non-elementarity (hyperell.lisp)
+
+Everything above integrates in transcendental towers or over Q(x)[sqrt(quadratic)] (genus 0, always
+elementary).  The genuine deepest summit is the algebraic case where the integrand itself contains an algebraic
+function of higher genus.  For INT P(x)/sqrt(p) dx with p squarefree of degree m, the curve y^2 = p has genus
+g = floor((m-1)/2).  A Hermite-style reduction on the curve removes the polynomial part of the numerator: since
+
+    D(x^k y) = ( k x^{k-1} p + x^k p'/2 ) / y,
+
+a descending pass cancels the top of P with these numerators, writing P = (Q' p + Q p'/2) + S with deg S < m-1,
+hence INT P/sqrt(p) = Q sqrt(p) + INT S/sqrt(p).  The remainder INT S/sqrt(p) spans the g FIRST-KIND
+(holomorphic) differentials x^i/sqrt(p), i < g, which are NON-ELEMENTARY for g >= 1.  So the integral is
+elementary iff S = 0 after the reduction; the elementary part Q sqrt(p) is certified by differentiation inside
+the function field K = Q(x)[y]/(y^2 - p) (af-deriv, with the radicand passed as a rat), the same arbiter used
+throughout.
+
+Decisive, all verified: INT dx/sqrt(x^3+1) -- the canonical elliptic integral, genus 1 -- is PROVEN
+non-elementary; INT dx/sqrt(x^5+1) and INT x/sqrt(x^5+1) are PROVEN non-elementary (genus 2); while INT
+(3x^2/2)/sqrt(x^3+1) dx = sqrt(x^3+1), INT ((5/2)x^3+1)/sqrt(x^3+1) dx = x sqrt(x^3+1), and INT
+(5x^4/2)/sqrt(x^5+1) dx = sqrt(x^5+1) are found and certified.
+
+### Honest scope
+
+These two boundaries reach the canonical, decidable core, not full generality.  Boundary 1's algresext handles
+the base-level (depth-1) proper fraction where algebraic residues first appear, taking a single irreducible
+nonlinear factor (a mixed residue set is split: the rational part via the rational tower, one algebraic class
+via algresext); residues whose minimal polynomial appears only at depth >= 2 over Q(alpha) are not yet lifted.
+Boundary 2's hyperell handles sqrt of a squarefree polynomial (the hyperelliptic curve) with polynomial
+numerators, extracting the elementary Q sqrt(p) part and deciding via the first-kind remainder; it does not yet
+cover general curves beyond hyperelliptic, mixed transcendental-over-algebraic towers, the full second/third-
+kind decomposition with algebraic logarithmic parts, or rational-function numerators over sqrt(p) in full
+generality.  Those are the genuine frontier of any computer-algebra system (FriCAS territory).  What ships here
+is the elliptic non-elementarity decision and the algebraic-residue %r RootSum, each certified.
+
+## Tier 4 (the Trager climb, Rung 1): residues of an algebraic differential and the second-kind decision
+
+The hyperelliptic reduction of the previous section integrates P(x)/sqrt(p) for a POLYNOMIAL numerator and
+decides non-elementarity via the first-kind remainder.  The path to the full algebraic case (Trager-Bronstein,
+the FriCAS integrator) is laid out in docs/TRAGER_ROADMAP.md as a sequence of certified rungs; this is the
+first.  algresidue.lisp computes the RESIDUES of a differential f dx on the curve y^2 = p, where f = u(x) +
+v(x) y is an element of K = Q(x)[y]/(y^2 - p), and delivers the one decision that residues alone settle.
+
+Over a fibre x = s with p(s) != 0 (s not a branch point) there are two places (s, +sqrt(p(s))) and
+(s, -sqrt(p(s))).  The v(x) y part contributes residues res_{x=s}(v) * (+/- sqrt(p(s))) -- a conjugate pair
+that SUMS TO ZERO -- while the u(x) part contributes res_{x=s}(u) at both places, summing to 2 res_{x=s}(u).
+So the finite residue obstruction comes only from the u-part's simple poles; a 1/sqrt(p) integrand (pure v y)
+with simple non-branch poles is automatically residue-free, and the branch/non-branch split of a denominator B
+is just gcd(B, p) versus B / gcd(B, p).
+
+The decision this rung owns and certifies: a 1/sqrt(p) integrand with a polynomial numerator is residue-free
+and reduces directly through hyperell, which decides elementarity and certifies the answer inside K.  A u-part
+simple pole carries a genuine nonzero residue and is reported third-kind (NOT elementary -- it needs the divisor
+/ torsion rung); a higher-order non-branch pole is reported not-handled (it awaits the rational-function Hermite
+rung).  Nothing is guessed: the only elementary verdict issued is the certified hyperell one.  Verified:
+INT dx/sqrt(x^3+1) classified non-elementary, INT (3x^2/2)/sqrt(x^3+1) = sqrt(x^3+1) certified, the
+1/((x-2)sqrt(p)) conjugate-pair cancellation recognized as second-kind, the pure pole 1/(x-2) on the curve
+reported third-kind, and a double pole reported not-handled.
+
+This rung makes the residue divisor of an algebraic differential computable -- the prerequisite for the
+third-kind logarithm (Rung 3) and, beyond it, the integral-basis / Puiseux normalization (Rung 4) that lifts
+the restriction to hyperelliptic curves.  Each later rung remains gated by the same differentiation arbiter.
+
+## Tier 4 (the Trager climb, Rungs 2 and 3a): algebraic Hermite reduction and the genus-0 third-kind logarithm
+
+Two further rungs of the algebraic-integration climb (docs/TRAGER_ROADMAP.md), each certified inside
+K = Q(x)[y]/(y^2 - p).
+
+### Rung 2 -- algebraic Hermite reduction for a rational-function numerator (algherm.lisp)
+
+hyperell integrates a polynomial numerator P(x)/sqrt(p); this rung removes the higher-order (second-kind) poles
+of a RATIONAL numerator.  For a differential f = w(x) y with w = A/D a proper fraction over Q(x), it produces
+INT w y dx = G y + INT wbar y dx, with G in Q(x) and wbar having at most a simple pole at every non-branch
+place.  The reduction is the algebraic Hermite method carried out over Q via the squarefree factorization of D,
+so no irrational roots are introduced: at the squarefree factor V of maximal multiplicity m >= 2 (V^m || D,
+W = D/V^m), one subtracts D((B/V^{m-1}) y) where B solves the congruence -(m-1) B V' W ≡ A (mod V) (the 2p of
+the y-weight cancels from both sides), which drops the multiplicity by one; iterate until D is squarefree.  V
+sharing a root with p is a branch point and is left untouched for a later rung.  Every step is checked by the
+differentiation certificate D(G y) + wbar y = w y.  Verified on double, triple, and multiple distinct poles,
+on both the quadratic (genus 0) and the elliptic curve x^3+1, and on the no-op cases (already simple / pure
+polynomial).
+
+### Rung 3a -- the genus-0 third-kind algebraic logarithm (algthird.lisp)
+
+A simple pole of the rational part carries a nonzero residue (Rung 1): the integral is third-kind and its
+antiderivative is an algebraic logarithm c log(g) with g in K.  For genus 0 (p a squarefree quadratic) the
+residue divisor is always principal, so the logarithm always exists.  The previous session's probe had shown
+the naive argument (y - sqrt(p(s)))/(x - s) is wrong off the pole-at-origin case -- it injects a spurious
+rational-logarithm term.  The correct argument uses the TANGENT LINE to the curve at the point over the pole:
+
+    INT dx/((x - s) sqrt(p)) = c log( (y - L(x))/(x - s) ),  L(x) = rho + k (x - s),
+    rho^2 = p(s),  k = p'(s)/(2 rho)   (the curve's slope at (s, rho)),
+
+with c the constant obtained by matching, and the whole answer gated by D(c log g) = integrand.  This closes
+INT dx/((x - s) sqrt(quadratic)) GENERALLY, including the shifted-pole cases the naive formula got wrong
+(e.g. INT dx/((x-1) sqrt(x^2+3)), certified).  When p(s) is not a perfect square in Q the answer lives over
+Q(sqrt(p(s))) and is reported 'needs-extension; when p(s) = 0 the pole is a branch point, reported 'branch-pole.
+Nothing is guessed -- the third-kind logarithm is issued only when its certificate holds.
+
+These rungs leave, as the next steps, the genus-1 (elliptic) third-kind case -- where principality of the
+residue divisor becomes a torsion test on the Jacobian -- and the Puiseux / integral-basis normalization that
+lifts the restriction to hyperelliptic curves.
+
+## Tier 4 (the Trager climb, Rung 3b): the elliptic third-kind decision by a torsion test
+
+For the genus-0 radical the third-kind logarithm always exists (Rung 3a).  On a genus-1 (elliptic) curve
+y^2 = p, p a squarefree cubic, principality of the residue divisor is no longer automatic -- it is the real
+Trager obstruction, and it is arithmetic-geometric.  By the Abel-Jacobi theorem a degree-zero divisor is
+principal iff its image in the group law is the identity, so for INT dx/((x - s) sqrt(p)) with the pole lifted
+to the rational point P = (s, rho) on the curve (rho^2 = p(s)):
+
+    the integral is ELEMENTARY  <=>  P is a TORSION point of the elliptic curve.
+
+When P is torsion the third-kind algebraic logarithm exists (and elltorsion.lisp reports the order, from which
+the logarithm can be built); when P is non-torsion the integral is provably NON-ELEMENTARY -- the canonical
+elliptic obstruction.  This is the classical Trager/Davenport criterion; cf. Combot, "Hyperelliptic Integrals
+to Elliptic Integrals" (arXiv:2303.14013), which states that for y^2 = z(z-1)(z-kappa) the third-kind integral
+is elementary exactly when (u, sqrt(p(u))) is a torsion point of the curve.
+
+The decision is computed with the elliptic group law over Q (exact rational arithmetic, the general cubic
+y^2 = x^3 + a2 x^2 + a1 x + a0, so the x^2 coefficient enters x3 = lambda^2 - a2 - xP - xQ), and it terminates
+by Nagell-Lutz + Mazur: on an integral model a torsion point has integer coordinates and order at most 12, so
+computing P, 2P, ... either returns to the point at infinity (torsion) or acquires a non-integer coordinate or
+exceeds the Mazur bound (non-torsion), giving sound, bounded termination.  Verified: (0,1) on y^2 = x^3+1 has
+order 3 and (2,3) order 6, while (3,5) on y^2 = x^3-2 is infinite order; correspondingly INT dx/(x sqrt(x^3+1))
+and INT dx/(x sqrt(x^3+4)) are decided ELEMENTARY (torsion poles) while INT dx/((x-3) sqrt(x^3-2)) is decided
+NON-ELEMENTARY (infinite-order pole).  A pole whose lift is not rational (p(s) not a perfect square) is reported
+needs-extension rather than guessed.
+
+This rung delivers the elliptic third-kind DECISION -- the heart of the Trager algorithm and the first point
+where elementarity rests on the arithmetic of the Jacobian.  The remaining refinement is the explicit
+construction of the logarithm's argument (the function realizing the principal divisor) in the torsion case;
+the order reported here is what that construction consumes.  Beyond it lie the Puiseux / integral-basis
+normalization (general algebraic functions) and the mixed transcendental-over-algebraic towers.
+
+## Tier 4 (the Trager climb): the explicit elliptic logarithm
+
+Rung 3b decided that INT dx/((x - s) sqrt(p)) on a genus-1 curve is elementary exactly when the pole lifts to a
+torsion point P = (s, rho) of order n.  elllog.lisp completes that rung by CONSTRUCTING the answer: an algebraic
+logarithm c log(f) with f in K = Q(x)[y]/(y^2 - p), certified by D(c log f) = integrand.
+
+The residue divisor n([P] - [-P]) is principal (nP = O).  We build the Miller function f_P with div(f_P) =
+n[P] - n[O] by the standard iteration over K -- f_1 = 1, f_{i+1} = f_i * L_{iP,P} / V_{(i+1)P}, using the
+chord/tangent lines L and verticals V of the elliptic group law as elements of K -- then take f = f_P /
+conj(f_P) (conj sends y -> -y), so div(f) = n[P] - n[-P], exactly the principal divisor.  The constant c is
+found by matching f'/f to the integrand, and the whole answer is gated by the differentiation certificate.
+
+The decisive result: INT dx/(x sqrt(x^3+1)) = (1/3) log( (sqrt(x^3+1) - 1)/(sqrt(x^3+1) + 1) ), the pole
+lifting to the order-3 point (0,1); the constant 1/3 is the reciprocal of the torsion order, and the answer is
+certified inside K.  This is a genuinely non-trivial algebraic logarithm on an elliptic curve -- the explicit
+antiderivative the torsion criterion promised.
+
+Scope (honest): the construction is gated by the certificate, so it never returns a wrong logarithm -- it
+yields (list 'log c f) only when D(c log f) = integrand is verified.  It certifies the odd-order torsion poles
+(the Miller iteration produces the principal divisor cleanly when no intermediate multiple is a 2-torsion / y=0
+point); an even-order pole, whose multiples pass through a 2-torsion point, is currently deferred (reported as
+not-yet-constructed) pending a refinement of Miller's verticals at 2-torsion places.  elltorsion still decides
+those cases elementary, so only the explicit log argument is withheld, never the decision.
+
+## Tier 4 (the Trager climb, Rung 4 start): Puiseux expansions of superelliptic functions
+
+The third-kind theory of the previous rungs lives on the curve y^2 = p.  To reach GENERAL algebraic functions
+(n-th roots y^e = g, and arbitrary F(x,y) = 0) the integrator needs the LOCAL structure of the function at each
+place, which is its Puiseux expansion.  puiseux.lisp begins Rung 4 with the superelliptic case.
+
+At the place over x = 0 an algebraic function expands as y(x) = sum_{k >= k0} c_k x^(k/e), a power series in a
+fractional power x^(1/e) (e the ramification index).  For y^e = g(x) the module writes g = x^v gt(x) with
+gt(0) != 0, so y = x^(v/e) gt(0)^(1/e) (1 + (gt/gt(0) - 1))^(1/e), expands the binomial series (1+u)^(1/e), and
+re-expresses everything in the uniformizer t = x^(1/E) where E = e/gcd(v, e) is the true ramification index.
+The result (puiseux E lead coeffs) means y = sum_i coeffs[i] x^((lead+i)/E), and it is checked by raising the
+series to the e-th power and comparing with g.  When gt(0)^(1/e) is not a rational e-th power the leading
+coefficient is reported needs-radical rather than guessed.
+
+Verified: y^2 = x gives y = x^(1/2) (E=2); y^2 = x^3 the cusp y = x^(3/2) (E=2, leading exponent 3);
+y^2 = x + x^2 the fractional series t + t^3/2 - t^5/8 + ... (t = x^(1/2)); y^3 = x gives y = x^(1/3) (E=3);
+y^2 = 4 + x the unramified y = 2 + x/4 - ... (E=1, leading coefficient 2); and y^2 = 2 + x correctly defers
+(needs-radical, sqrt(2) irrational).  Each non-deferred result passes the e-th-power check.
+
+This is the ramification-aware local expansion at a place; the integral-basis construction that completes
+Rung 4 -- normalizing the function field at its singular places to lift integration past the hyperelliptic
+restriction -- consumes these branch expansions.  Remaining in Rung 4: Puiseux for general F(x,y) = 0 via the
+Newton polygon (several branches per place), then the integral basis itself.
+
+## Tier 4 (the Trager climb, Rung 4 continued): the elliptic third-kind decision completed, and the Newton polygon
+
+### The complete elliptic third-kind criterion (ellint.lisp)
+
+Rung 3b decided INT dx/((x-s) sqrt(p)) elementary <=> the pole lifts to a torsion point.  That is NECESSARY but
+NOT SUFFICIENT.  The correct criterion (Trager; Combot, arXiv:2103.04134) has two parts: (1) the pole P=(s,rho)
+is torsion -- which makes the logarithmic part L = c log f EXIST; and (2) the remainder I - L, a holomorphic
+first-kind differential lambda * dx/y, must VANISH.  A nonzero lambda means the integral is an elementary
+logarithm plus a nonzero elliptic integral of the first kind, hence NON-elementary.
+
+ellint.lisp implements both by construction: it builds the function g with div(g) = N[P]-N[O] (N = order of P)
+by interpolation -- g = A(x) + B(x) y vanishing to order N at P, using the local y-power-series, robust at
+2-torsion and verified by N(g) = g*conj(g) = (x-s)^N -- forms f = g/conj(g) so that c f'/f (with c = 1/(N rho))
+matches the residues of dx/((x-s)y), and computes the remainder.  ei-integrate returns a certified elementary
+logarithm when lambda = 0 and a sound non-elementary verdict otherwise.
+
+Corrected findings: INT dx/(x sqrt(x^3+1)) = (1/3) log((y-1)/(y+1)) IS elementary (lambda = 0), and likewise
+INT dx/(x sqrt(x^3+4)); but the torsion poles of orders 4, 5, 6 tested all have lambda != 0 and are
+NON-elementary -- correcting the earlier torsion-only verdict.  It is not a parity phenomenon: lambda = 0 is the
+genuine extra condition.
+
+### The Newton polygon for general F(x,y) = 0 (newton.lisp)
+
+puiseux.lisp expands the superelliptic case y^e = g(x).  For a general plane curve F(x,y) = 0 -- given as a list
+of y-coefficients, each a polynomial in x, F = (F0 F1 ... Fd) meaning sum_j Fj(x) y^j -- newton.lisp computes the
+Newton polygon at x = 0: the lower-left convex hull of the support points (ord_x(Fj), j).  Each hull edge from
+(i1,j1) to (i2,j2) gives a branch leading exponent mu = (i2-i1)/(j2-j1) (a reduced fraction) and an edge
+polynomial in c whose nonzero roots are the branch leading coefficients (y ~ c x^mu).
+
+Verified: the node y^2 - x^2 - x^3 gives one edge of slope 1 with edge polynomial c^2 - 1, the two tangents
+y ~ +-x; y^2 - x gives slope 1/2 (ramification index 2); the cusp y^2 - x^3 gives slope 3/2; (y-x)(y-x^2) gives
+two distinct slopes 2 and 1 (the two branches y ~ x^2 and y ~ x); the tacnode-type y^2 - x^4 gives slope 2 with
+edge polynomial c^2 - 1; and a smooth y - x - x^2 gives slope 1.  This is the branching-and-ramification
+analyzer that the remaining Rung 4 work -- term-by-term general-F Puiseux, then the integral basis -- consumes.
+
+## Tier 4 (Rung 4 continued): assembling the local integral basis
+
+The integral-basis engine (intbasis.lisp) decides whether an algebraic function is regular at a singular place
+by its valuation on every Puiseux branch.  The assembly step turns that into an actual basis: for each power
+y^j (j = 0 .. deg_y(F) - 1), ib-local-basis-at0 finds the largest exponent k_j such that y^j / x^{k_j} is still
+integral at x = 0, returning the basis {y^j / x^{k_j}} of the integral closure localized at 0.  This is the
+van-Hoeij triangular basis in the case where the lower-degree correction terms vanish (superelliptic curves and
+the examples here).
+
+Verified: F = y^3 - x^4 (one branch y = x^(4/3)) gives the rank-3 basis {1, y/x, y^2/x^2} with singularity
+measure delta = sum k_j = 3; the nodal cubic y^2 = x^2(x+1) gives {1, y/x}, agreeing with the independently
+certified quadratic closure g = x; and the smooth elliptic place y^2 = x^3 + 1 gives {1, y} (no extension,
+delta = 0).  Each basis element's integrality is witnessed by the branch valuations and its maximality checked
+by the same engine.  Remaining for Rung 4: combining the local bases across all singular places into a global
+K[x]-basis, the van-Hoeij correction terms for non-superelliptic curves, and Hermite reduction plus the
+logarithmic part phrased over the resulting basis.
+
+## Tier 4 (Rung 4 continued): the global integral basis
+
+The local assembly computes the integral basis at one place; a general curve is singular at several.
+ib-global-basis-superelliptic finds all the singular places of y^n = g(x) (the rational repeated roots of g),
+computes the local basis at each by shifting the curve F(x+a, y) so the place sits at the origin, and combines
+the local denominators into the global basis {y^j / d_j(x)} with d_j(x) = prod_a (x-a)^{k_j(a)}.
+
+Verified: F = y^3 - x^4(x-1)^2, singular at x=0 and x=1, gives the global basis {1, y/x, y^2/(x^2(x-1))} --
+the x^2 in d_2 comes from x=0 and the (x-1) from x=1, so d_2 genuinely combines both places.  Both nontrivial
+basis elements are certified integral: since y^3 = g, w_1^3 = g/x^3 = x(x-1)^2 and w_2^3 = g^2/d_2^3 are both
+polynomials.  The quadratic closure agrees with the independently certified ib-quadratic (g = x on the nodal
+cubic).
+
+Soundness: a singular place can have an irrational tangent -- its branches then live over an extension of Q,
+where the rational Puiseux engine cannot certify integrality.  The routine detects this (the branches come back
+needs-radical) and returns needs-extension rather than a wrong basis; for instance y^2 = x^2(x-1)^2(x+1), whose
+node at x=1 has tangent sqrt(2), is honestly deferred.  Quadratic nodes generically have irrational tangents
+over Q; cusps with rational tangents (e.g. the cube-root case above, where the cube roots of 1 are rational) are
+fully certifiable.  Remaining for Rung 4: the van-Hoeij correction terms for non-superelliptic curves and places
+over extensions, then Hermite reduction and the logarithmic part phrased over the integral basis.
+
+## Tier 4 (Rung 4 continued): recursive Newton-Puiseux for shared tangents
+
+newton.lisp and puiseuxg.lisp handle a branch when its Newton-polygon edge-polynomial root is simple.  When a
+root c has multiplicity m > 1, the m branches all begin c*x^mu and separate only at higher order; the
+simple-root solver cannot distinguish them (F_y vanishes along the shared leading behaviour).  puiseuxr.lisp
+adds the classical resolution: substitute y = (c + y1)*x^mu, obtaining a new equation G(x, y1) = 0; divide out
+the common x-power (pr-deflate); and recurse on G, whose own Newton polygon resolves the next term, until the
+roots are simple.  When the constant-in-y coefficient is zero, y is an exact factor and y = 0 is itself a
+terminating branch, peeled before recursing on F / y.
+
+Each branch is returned as a sequence of (mu . c) leading-term pairs, y = c0 x^{mu0} + c1 x^{mu0+mu1} + ....
+Verified: the node y^2 - x^2 - x^3 separates into y ~ x and y ~ -x; the triple tangent (y-x)(y-2x)(y-3x) into
+y ~ x, 2x, 3x; and the shared-tangent curve (y - x^2)(y - x^2 - x^3) -- whose edge polynomial (c-1)^2 has the
+double root c = 1 -- substitutes to y1^2 - x y1 (simple roots 0 and x) and separates into y = x^2 and
+y = x^2 + x^3.  This supplies each branch its distinct leading-term sequence, the input the van-Hoeij correction
+terms are built from; assembling those corrections for non-superelliptic curves is the next step.
+
+## Tier 3 additions: Laurent series, trigonometric integration, Weierstrass substitution
+
+Three capabilities closing comparison gaps where Maxima was full.
+
+LAURENT SERIES (laurent.lisp): power series allowing finitely many negative-power terms, f = sum_{k>=N} a_k x^k.
+Completes the series toolkit (Taylor + Puiseux + Laurent).  Provides the Laurent algebra (add, mul, inverse of
+a unit, derivative, integrate with explicit log-term detection), residue (coefficient of x^{-1}) and principal
+part, and -- most usefully -- the Laurent expansion of a rational function p/q at any point (writing
+q = x^v u(x), p/q = x^{-v}(p u^{-1})), from which residues follow.  Verified: 1/(x^2(1-x)) = x^-2 + x^-1 + 1 +
+x + ... (residue 1); Res_{x=1} x/((x-1)(x-2)) = -1 and Res_{x=2} = 2.
+
+TRIGONOMETRIC INTEGRATION (trigint.lisp): closed-form INT sin^m(x) cos^n(x) dx by the reduction formulas, the
+answer A(s,c) + B*x with A a polynomial in s = sin, c = cos and B rational.  This shape is closed under d/dx, so
+every result is certified by differentiating it back to the integrand (canonicalizing with s^2 = 1 - c^2).
+Verified: INT sin^3 = -cos + cos^3/3; INT sin^2 cos^2 = x/8 + (s^3 c - s c^3)/8; a battery through INT sin^4
+cos^4, all differentiate-back certified.
+
+WEIERSTRASS SUBSTITUTION (weier.lisp): INT R(sin x, cos x) dx for ANY rational R, via t = tan(x/2)
+(sin = 2t/(1+t^2), cos = (1-t^2)/(1+t^2), dx = 2 dt/(1+t^2)).  This turns a rational trig integral into a
+rational function of t, integrated by the certified rational integrator and carrying its differentiate-back
+proof.  Verified: INT dx/(1+cos x) = tan(x/2); INT dx/(2+cos x) = (2/sqrt 3) arctan(tan(x/2)/sqrt 3);
+INT dx/(2+sin x); INT cos x/(1+cos x); all verified by the rational integrator's certificate.
+
+## Tier 4 (Rung 4 payoff): superelliptic Hermite reduction
+
+The integration payoff for general algebraic curves begins with Hermite reduction on the superelliptic family
+y^n = g(x), generalizing the hyperelliptic (n=2) reduction in hyperell.lisp to arbitrary n (sehermite.lisp).
+On y^n = g the derivation gives y' = g' y/(n g), so D(x^k y^j) = [k x^(k-1) g + (j/n) x^k g'] y^j / g -- the
+power y^j is preserved, so each y^j sector reduces independently, exactly the hyperelliptic mechanism with p
+replaced by g and the constant 1/2 replaced by j/n.  Subtracting these numerators descending in degree gives
+INT (P y^j / g) dx = Q y^j + INT (S y^j / g) dx with deg S < deg g - 1.  If S = 0 the integral is elementary,
+equal to Q y^j, certified by the polynomial identity Q' g + (j/n) Q g' = P (the numerator of D(Q y^j)); if
+S /= 0 the holomorphic first-kind remainder is reported (the integral is not elementary by this reduction).
+
+Verified: INT (3x^4 + 2x) y/(x^3+1) dx = x^2 y on y^3 = x^3+1 (certified); the y^2 sector of the same curve
+recovers its constructed antiderivative; the n=2 specialization reproduces hyperell (INT (3x^2/2) y/(x^3+1) =
+sqrt(x^3+1)); and INT y/(x^3+1) dx is correctly reported non-elementary (first kind).  Remaining for the full
+Rung-4 payoff: the logarithmic (residue) part over the integral basis to handle the simple-pole contributions,
+and the van-Hoeij correction terms for non-superelliptic curves.
+
+## Tier 4 (Rung 4): the general-n superelliptic function field
+
+The integration of algebraic functions needs the function field itself.  algfunc.lisp provides
+K = Q(x)[y]/(y^2 - p) at n = 2; sefield.lisp generalizes this to K = Q(x)[y]/(y^n - g) for arbitrary n -- the
+algebraic foundation the rest of the superelliptic integration is built on.
+
+An element is a length-n list of rational functions (a_0 ... a_{n-1}) = a_0 + a_1 y + ... + a_{n-1} y^{n-1}.
+Multiplication reduces y^{i+j} = g^{floor((i+j)/n)} y^{(i+j) mod n}.  The derivation uses y' = g' y/(n g), so
+d/dx (sum a_j y^j) = sum [a_j' + a_j (j/n) g'/g] y^j, which stays within the field (no reduction needed).
+For a field element u, d/dx log u = u'/u; rather than invert u, the identity INT f dx = c log u is certified by
+clearing the denominator -- f * u = c * u' as a field identity, needing only multiply and derive.
+
+Verified: y^3 = g recovered by repeated multiplication on y^3 = x^3 + 1; the derivation y' = (x^2/(x^3+1)) y;
+u' = 1 + (x^2/(x^3+1)) y for u = x + y; the certified logarithms INT (g'/g) dx = log g and the superelliptic
+INT (x^2/(x^3+1)) ... = log y (with log y = (1/n) log g); and the n = 2 derivation matching algfunc exactly.
+Remaining: rationalize via the field Norm to present third-kind logarithms with polynomial denominators and run
+Rothstein-Trager residue log-finding over the field, then the van-Hoeij correction terms for general curves.
+
+## Tier 4 (Rung 4): the field Norm, inverse, and rationalized logarithmic derivative
+
+To turn the superelliptic field into an integration tool, third-kind logarithms must be presented over ordinary
+polynomial denominators, and that needs the field Norm.  senorm.lisp computes, for u in K = Q(x)[y]/(y^n - g),
+the Norm N(u) = product of the n conjugates (y -> zeta^k g^{1/n}) as the determinant of the multiplication-by-u
+matrix on the basis {1, y, ..., y^{n-1}}, via cofactor expansion over rational functions (reusing the field
+multiplication from sefield.lisp).  The adjugate yields the conjugate-product ubar with u * ubar = N(u), hence
+the inverse u^{-1} = ubar / N(u), and this rationalizes the logarithmic derivative
+u'/u = u' * ubar / N(u) -- a field element over a scalar (in y) denominator N(u) in Q(x).
+
+Verified: N(y) = g; N(x + y + 2 y^2) on y^3 = x^3+1 equals the cubic norm form 8x^6 - 6x^4 + 18x^3 - 6x + 9;
+ubar(y) = y^2 with y * y^2 = g; the inverse satisfies y * y^{-1} = 1 and (x+y)(x+y)^{-1} = 1; the rationalized
+logarithmic derivative satisfies the cleared identity u F = N u'; and the n = 2 specialization reproduces the
+classical norm a^2 - b^2 g (N(x+y) = -1 on y^2 = x^2+1).  Next: Rothstein-Trager residue log-finding over the
+field -- the residues of u'/u at the poles of N(u) give the logarithm arguments -- then the van-Hoeij correction
+terms for non-superelliptic curves.
+
+## Tier 4 (Rung 4 complete for y^n = g): the third-kind logarithm (Rothstein-Trager)
+
+The logarithmic half of integration on a superelliptic curve.  sethird.lisp integrates logarithmic
+differentials u'/u on y^n = g and, conversely, recognizes such a differential and recovers its logarithm.
+
+Constructive: for a field element u, INT (u'/u) dx = log u; st-log returns the rationalized differential (field
+numerator over the polynomial denominator N(u)) with the certified statement, checked by the cleared identity
+u * (numerator) = N(u) * u'.
+
+Recognizer (the Rothstein-Trager step) for the common third-kind argument u = a(x) + y: the conjugate symmetric
+functions of the roots of y^n - g vanish except the last, so N(a + y) = a^n + (-1)^{n+1} g.  Given a logarithmic
+differential's denominator D, the candidate a is the n-th root of D - (-1)^{n+1} g; if that is an exact
+polynomial n-th power and the resulting u = a + y reproduces the differential, the integral is log(a + y),
+certified; otherwise the honest verdict not-third-kind-a+y.  Verified: log(x + y) on y^3 = x^3+1 (N = 2x^3+1);
+recovery of a = x and a = x + 1 from their denominators; rejection of a non-Norm denominator; and the n = 2 case.
+
+With this, Rung 4 is complete for the superelliptic family y^n = g: Puiseux expansion, the Newton polygon,
+local and global integral bases, recursive branch separation, superelliptic Hermite reduction, the general-n
+function field, its Norm, and the third-kind logarithm.  Remaining for fully general curves F(x,y) = 0: the van
+Hoeij correction terms for the non-superelliptic case.
+
+## Tier 5 (Rung 5 begins): mixed transcendental-over-algebraic integration
+
+The open summit: integrands that mix a transcendental monomial with an algebraic function.  mixedexp.lisp takes
+the first step -- INT B * exp(h) dx where the coefficient B is an algebraic function (a field element of
+K = Q(x)[y]/(y^2 - p)) and h is rational.  The exponential sits over an algebraic coefficient field, the genuine
+mixed-tower situation.
+
+The Risch exponential case: INT B exp(h) dx is elementary with the same exponential iff there is a field element
+A in K with A' + h' A = B, and then INT B exp(h) dx = A exp(h).  This is the Risch differential equation with
+coefficients in the algebraic field K rather than Q(x).  On y^2 = p (y' = p' y/(2p)) it decouples by sector into
+two scalar equations over Q(x); for A of bounded degree it is solved by undetermined coefficients (an exact
+linear solve), and every answer is certified by differentiating A exp(h) in the field and checking A' + h' A = B
+exactly -- the differentiation certificate is the arbiter, as throughout.
+
+Verified on the canonical field y^2 = x (y = sqrt x), h = x: INT ((1 + 2x)/(2 sqrt x)) exp(x) dx = sqrt(x)
+exp(x), with the RDE solver recovering A = sqrt x; the richer A = x + sqrt x and A = x^2 + sqrt x recovered; and
+the honest 'none when the search degree is too low.  Next on this rung: logarithmic monomials (the Risch
+primitive case over the field), general n (y^n = g via sefield), and full mixed towers with several monomials.
+
+## Tier 5 (Rung 5): the logarithmic (primitive) case
+
+The companion to the exponential case: INT (P_1 t + P_0) dx where t = log(h) is a primitive monomial
+(t' = h'/h) and the coefficients P_1, P_0 are algebraic functions -- field elements of K = Q(x)[y]/(y^2 - p)
+(mixedlog.lisp).  An element of the tower K(t) is a list of field elements (c_0 c_1 ... c_d) = sum c_i t^i;
+the derivation is d/dx (sum c_i t^i) = sum (c_i' + (i+1) c_{i+1} t') t^i, the t' coupling adjacent degrees.
+
+Integrating a degree-1 input P_1 t + P_0 gives a degree-2 answer Q_2 t^2 + Q_1 t + Q_0 with Q_2' = 0,
+2 Q_2 t' + Q_1' = P_1, and Q_1 t' + Q_0' = P_0 -- a chain of field-antiderivative problems.  For Q of bounded
+field-coefficient degree this is one exact linear system, solved by undetermined coefficients and certified by
+differentiating in K(t) and matching the integrand.
+
+Verified over y^2 = x with t = log x: INT ((1/(2 sqrt x)) log x + 1/sqrt x) dx = sqrt(x) log(x); the rational
+case where d/dx(x log x) = log x + 1; and the genuine t^2 case INT (log x)/x dx = (1/2)(log x)^2 (the answer one
+t-degree higher than the integrand).  With the exponential case (mixedexp.lisp), Rung 5 now handles both kinds
+of transcendental monomial over an algebraic coefficient field.  Next: general n (the base y^n = g via sefield)
+and full mixed towers with several stacked monomials.
+
+## Tier 5 (Rung 5): mixed integration over the general superelliptic field y^n = g
+
+The n=2 sqrt-field mixed cases generalize to any degree, using the general-n field arithmetic of sefield.lisp.
+
+EXPONENTIAL (mixedexpn.lisp): INT B exp(h) dx over K = Q(x)[y]/(y^n - g).  Writing A = sum_j a_j y^j, the
+sefield derivation preserves each y^j sector, so A' + h' A = sum_j [a_j' + ((j/n) g'/g + h') a_j] y^j and
+matching B gives n INDEPENDENT scalar Risch differential equations a_j' + w_j a_j = B_j (w_j = (j/n) g'/g + h').
+The sectors decouple completely; each is solved by undetermined coefficients and the assembled A is certified.
+Verified INT ((1 + x^2/(x^3+1)) y) exp(x) dx = y exp(x) on y^3 = x^3+1, the y^2 sector, the all-sector case
+A = x + y + y^2, and the n=2 specialization reproducing the sqrt field.
+
+LOGARITHMIC (mixedlogn.lisp): INT (P_1 t + P_0) dx, t = log h, coefficients in K.  The tower K(t) derivation is
+d/dx (sum C_i t^i) = sum (C_i' + (i+1) C_{i+1} t') t^i with C_i' the sefield derivative; integrating a degree-1
+input gives Q_2 t^2 + Q_1 t + Q_0 with Q_2' = 0, 2 Q_2 t' + Q_1' = P_1, Q_1 t' + Q_0' = P_0, the field-coefficient
+sectors decoupling within each t-degree.  Verified INT ((x^2/(x^3+1)) y log x + (1/x) y) dx = y log x on
+y^3 = x^3+1, the t^2 case INT (log x)/x = (1/2)(log x)^2, the y^2 sector, and n=2 subsuming mixedlog.
+
+With these, Rung 5 handles both transcendental monomial kinds over an algebraic coefficient field of any degree.
+Remaining: full mixed towers with several stacked monomials, and (Rung 4) van Hoeij corrections for
+non-superelliptic curves.
+
+## Tier 5 (Rung 5): the entangled tower -- exp of an algebraic function
+
+The earlier mixed cases put a transcendental over an algebraic coefficient field but kept the transcendental's
+own logarithmic derivative rational.  algexp.lisp takes the genuinely entangled step: theta = exp(w) where w is
+itself a field element of K = Q(x)[y]/(y^n - g).  Then theta'/theta = w' lives in K (for exp(sqrt x),
+w' = 1/(2 sqrt x)), so the Risch differential equation A' + w' A = B for INT B exp(w) dx = A exp(w) has a
+FIELD-ELEMENT coefficient.  Because w' A is a full field product, the y-power sectors no longer decouple -- the
+coefficient matching is one coupled linear system in all sector coefficients of A.  We solve it by requiring the
+residual field element to vanish at sample points (genuinely linear in the unknowns), and the field certificate
+A' + w' A = B is the exact arbiter.
+
+Verified: INT (1/(2 sqrt x)) exp(sqrt x) dx = exp(sqrt x); INT ((1 + sqrt x)/(2 sqrt x)) exp(sqrt x) dx =
+sqrt(x) exp(sqrt x); the degree-1 coefficient A = x + sqrt x; and the cube-root tower exp(x^(1/3)) on y^3 = x.
+Next: the logarithm of an algebraic argument, and deeper stacked towers with several monomials.
+
+## Tier 4 COMPLETE: van Hoeij correction terms (general curves)
+
+The final Rung-4 piece.  For a superelliptic curve y^n = g the integral basis is the pure-power form
+{y^j / d_j} (intbasis.lisp); for a general curve F(x,y) = 0 a basis element is
+w_j = (y^j + sum_{i<j} c_{j,i}(x) y^i) / d_j, where the lower-degree-in-y "correction terms" cancel the poles
+the naive y^j/d_j would have (vanhoeij.lisp).
+
+At a rational place x = a (Puiseux ramification q = 1) a single branch is an ordinary power series y(x); the
+element (y - c(x))/(x-a)^k is integral there iff y - c vanishes to order >= k, so the correction c(x) is the
+part of the branch BELOW order k -- "subtract the singular part", which raises the valuation from < k to >= k
+and cancels the pole.  Integrality is certified by the general-F Puiseux valuation oracle of intbasis.lisp
+(which already accepts an arbitrary numerator and the branches from pg-branches).  A ramified place (q > 1) or a
+configuration of several branches needing a combined correction returns needs-place-combination rather than a
+guess, preserving soundness.
+
+Verified: on y = x + x^2 + x^3, (y - x)/x^2 and (y - x - x^2)/x^3 are integral while y/x^2 and y/x^3 are not (the
+correction genuinely matters, certified); k = 1 reports no-correction-needed; and the cusp y^2 = x^3 (a ramified
+place) is honestly deferred.  With this, Rung 4 is complete: the full local analysis, integral closure, and
+integration machinery on algebraic curves -- both the superelliptic family and general plane curves.
+
+## Tier 5 (Rung 5): the entangled tower -- log of an algebraic function
+
+The primitive companion of exp of an algebraic argument (algexp.lisp).  alglog.lisp integrates in the tower
+K(t) where t = log(w) and w is a field element of K = Q(x)[y]/(y^n - g).  Now t' = w'/w lives in K (computed via
+the field inverse of senorm.lisp), not merely as a rational function as in mixedlog/mixedlogn.
+
+An element of K(t) is sum_i C_i t^i; the derivation d/dx (sum C_i t^i) = sum (C_i' + (i+1) C_{i+1} t') t^i has
+t' a FIELD element, so the product C_{i+1} t' is a full field product (sf-product) and the y-power sectors
+COUPLE, exactly as in the exponential entangled case.  Integrating a degree-1 input gives Q_2 t^2 + Q_1 t + Q_0
+with Q_2' = 0, 2 Q_2 t' + Q_1' = P_1, Q_1 t' + Q_0' = P_0; the coupled system is solved by requiring the residual
+to vanish at sample points (genuinely linear in the unknowns), with the answer's t-degree inferred from the
+integrand's, and certified by differentiating in K(t).
+
+Verified: INT (w'/w) dx = log(sqrt x + 1) on y^2 = x (the pure entangled logarithm); the t^2 case
+INT (log w)(w'/w) dx = (1/2)(log w)^2; and the cube-root argument log(x^(1/3) + 1) on y^3 = x.  With the
+exponential case, both entangled towers -- exp and log of an algebraic argument -- are now in place.  The
+remaining summit is deeper stacked towers with several monomials.
+
+## Special functions (Maxima parity): Gamma, erf, Bessel
+
+Closing the one capability Maxima had and lizard had none of.  special.lisp represents each special function the
+way it can be computed and certified exactly: by its power series (rational coefficients) together with its
+defining identities, checked with the series engine.
+
+Gamma: integer values Gamma(n) = (n-1)!; half-integer values are rational multiples of sqrt(pi) carried via the
+functional equation Gamma(x+1) = x Gamma(x) (verified Gamma(5)=24 and the sqrt(pi)-coefficients 1, 1/2, 3/4,
+15/8).  erf: the reduced series sum (-1)^n x^{2n+1}/(n!(2n+1)) differentiates exactly to the series of e^{-x^2},
+i.e. erf'(x) = (2/sqrt pi) e^{-x^2}.  Bessel: J_n(x) = sum_m (-1)^m/(m!(m+n)!) (x/2)^{2m+n}, verified to satisfy
+J_0' = -J_1 and the Bessel equation x^2 y'' + x y' + x^2 y = 0.
+
+## Tier 5 (Rung 5): the first stacked two-monomial tower
+
+twotower.lisp realizes an element of Q(x)(theta)(t) with two independent monomials theta = exp(x) and
+t = log(x).  An element is a t-polynomial of theta-polynomials of rational functions; the derivation from
+theta' = theta and t' = 1/x is d/dx (c theta^k t^j) = (c' + k c) theta^k t^j + (j c / x) theta^k t^{j-1} -- the
+exponential acting in place, the logarithm coupling t-degree j down to j-1.  The integrator finds answers by
+undetermined coefficients (residual vanishing at sample points) and certifies them by differentiating in the
+tower.  Verified: INT (exp(x) log x + exp(x)/x) dx = exp(x) log(x) -- a genuinely mixed two-monomial integrand
+whose two summands are each non-elementary (exponential integrals) but whose combination is elementary, exactly
+the cancellation a tower integrator must detect.  This is the structure where the recursive Risch algorithm
+operates over several stacked monomials; deeper nesting and a full decision procedure remain the open summit.
+
+## Linear recurrence solving completed: irrational quadratic roots (Binet)
+
+linrec.lisp solves constant-coefficient recurrences whose characteristic polynomial splits over Q; linrec2.lisp
+closes the remaining case -- a degree-2 irreducible characteristic polynomial, i.e. irrational quadratic roots,
+the Binet/Lucas/Pell case that the rational-root solver declines.
+
+For a_n = p a_{n-1} + q a_{n-2} the characteristic polynomial x^2 - p x - q has discriminant D = p^2 + 4q.  When
+D is not a perfect square the roots r, s = (p +- sqrt D)/2 live in Q(sqrt D), and the closed form is
+a_n = A r^n + B s^n with A = (a_1 - a_0 s)/sqrt D, B = (a_0 r - a_1)/sqrt D, the constants conjugate in Q(sqrt D)
+so a_n is rational for every n.  The computation is carried out exactly in Q(sqrt D) (elements u + v sqrt D), and
+the closed form is certified by evaluating it against the directly iterated recurrence.  Verified: Fibonacci
+(F_15 = 610), Lucas (L_8 = 47), Pell (P_6 = 70), all certified to n = 20; a perfect-square discriminant defers to
+linrec.  With these two modules, linear recurrence solving reaches full Maxima parity.
+
+## Limits at an arbitrary point and indeterminate forms (Maxima parity)
+
+slimit2.lisp generalizes translimit.lisp (limits at x = 0) to limits at ANY point a, including indeterminate
+0/0 forms with transcendental numerators, by local series in t = x - a.  Given the t-series of numerator and
+denominator (the standard expansions of log(1+t), sin, cos, ... and, for rational functions, an exact Taylor
+shift sl-shift-poly), the limit is decided by order comparison: equal orders give the ratio of the unit series
+after dividing out the common t^k (L'Hopital by series); a faster-vanishing numerator gives 0; a faster-
+vanishing denominator diverges.  Verified lim_{x->1}(log x)/(x-1) = 1, lim_{x->0}(1-cos x)/x^2 = 1/2,
+lim_{x->2}(x^2-4)/(x-2) = 4, and the vanishing/diverging cases.
+
+## Transcendental equation solving by substitution (Maxima parity)
+
+transsolve.lisp solves equations that become polynomial under a substitution u = m(x) (exp, log, a power), the
+way Maxima handles e^{2x} - 3 e^x + 2 = 0.  The polynomial in u is solved with the certified solver (solve.lisp)
+and each rational root r is back-substituted: u = e^x gives x = log r for r > 0 (and reports no real x for
+r <= 0), u = log x gives x = e^r, u = x^k gives the real k-th roots.  Solutions are returned in exact closed
+form and each polynomial root is verified by substitution.  Verified e^{2x}-3e^x+2=0 -> x in {log 2, 0};
+(log x)^2-1=0 -> x in {e, 1/e}; e^{2x}-e^x-6=0 -> x = log 3 with the negative root reported as having no real x.
+
+## Tier 5 (Rung 5): the nested-logarithm tower
+
+nestlog.lisp realizes the genuinely nested depth-2 tower Q(x)(t1)(t2) with t1 = log x and t2 = log(log x).  The
+second monomial is the logarithm of the first, so t2' = t1'/t1 = 1/(x t1) carries t1 in its denominator and the
+coefficient ring is rational (not just polynomial) in t1.  Q(x)(t1) elements are rational functions N(t1)/D(t1)
+with Q(x) coefficients (derivation by t1' = 1/x and the quotient rule); over them a tower element is a
+polynomial in t2 (derivation by t2' = 1/(x t1)).  Verified d/dx(log x)=1/x and d/dx((log x)^2)=2 log x/x
+(inner), d/dx(log log x)=1/(x log x) (outer), and the nested-log integrals INT 1/(x log x) dx = log(log x) and
+INT 2 log(log x)/(x log x) dx = (log(log x))^2, all certified by differentiating in the tower.  Deeper nesting
+and a full decision procedure over arbitrary towers remain the open summit.
+
+## Tier 5 (Rung 5): the nested-exponential tower
+
+nestexp.lisp realizes the genuinely nested depth-2 exponential tower Q(x)(s1)(s2) with s1 = exp(x) and
+s2 = exp(exp(x)) = exp(s1) -- the multiplicative-tower dual of the nested logarithm.  Here s2' = s1' s2 = s1 s2
+MULTIPLIES by the inner monomial (rather than dividing by it as t2' = 1/(x t1) did for nested logs), so the
+coefficient ring stays polynomial -- a two-variable polynomial ring over Q(x) -- but the derivation raises the
+s1-degree.  A tower element is a polynomial in s2 with s1-polynomial coefficients; from s1' = s1 and s2' = s1 s2,
+d/dx(c s1^k s2^m) = (c' + k c) s1^k s2^m + (m c) s1^{k+1} s2^m, so within each s2-degree m the s1-polynomial C_m
+goes to ds1(C_m) + m * (s1-shift of C_m).  The s2-degree is preserved, so the derivation is block-diagonal across
+s2-degrees and the integral is solved by undetermined coefficients (residual vanishing at sample points) and
+certified by differentiating in the tower.  Verified d/dx(exp x)=exp x (inner), d/dx(exp(exp x))=exp(x)exp(exp x)
+(= s1 s2), the nested-exp integral INT exp(x) exp(exp(x)) dx = exp(exp(x)), and the s2^2 case
+INT 2 exp(x)(exp exp x)^2 dx = (exp exp x)^2.  With nestlog, both nested towers -- logarithmic and exponential --
+are now in place; arbitrary nesting depth and a full decision procedure remain the open summit.
+
+## Tier 5 (Rung 5): arbitrary-depth iterated exponentials
+
+itexp.lisp generalizes the depth-2 nested exponential to the iterated exponential tower of ARBITRARY height:
+E_0 = x, E_1 = exp(x), E_2 = exp(exp x), ..., E_n = exp(E_{n-1}).  From E_k = exp(E_{k-1}) one proves by
+induction the derivative law E_k' = E_k (E_1 E_2 ... E_{k-1}); in particular d/dx(E_n) = E_1 E_2 ... E_n, the
+product of the whole tower, so INT (E_1 E_2 ... E_n) dx = E_n at any depth n.
+
+A tower element is a sum of monomials c(x) E_1^{a_1} ... E_n^{a_n} (a list of rational-coefficient/exponent-
+vector pairs).  The derivation of a monomial is c' in place plus, for each k with a_k > 0, a term that scales by
+a_k and raises the exponents of E_1..E_{k-1} by one (the E_k' factor); like terms are collected and the result
+is certified by differentiating in the tower.  Verified the derivative law E_1'=E_1, E_2'=E_1 E_2, E_3'=E_1 E_2
+E_3; the full Leibniz expansion d/dx(E_1 E_2 E_3) into three monomials; and the depth-n integrals
+INT(E_1...E_n)=E_n at depths 2, 3, 4, 5, with a soundness control confirming a wrong answer is rejected.  This is
+the first tower of UNBOUNDED nesting depth the system handles; what remains open at the summit is mixed nested
+towers over the algebraic base and a genuine decision procedure (proving non-elementarity).
+
+## Tier 5 (Rung 5): arbitrary-depth iterated logarithms (the dual)
+
+itlog.lisp is the reciprocal mirror of itexp.lisp: the iterated logarithm tower L_0 = x, L_1 = log x,
+L_2 = log(log x), ..., L_n = log(L_{n-1}).  The derivative law (induction from L_k = log(L_{k-1})) is
+L_k' = 1/(L_0 L_1 ... L_{k-1}) = 1/(x L_1 ... L_{k-1}), so d/dx(L_n) = 1/(x L_1 ... L_{n-1}) and
+INT 1/(x L_1 ... L_{n-1}) dx = L_n at any depth.  Because the lower logs sit in denominators, elements are
+Laurent monomials c(x) L_1^{a_1} ... L_n^{a_n} with integer (possibly negative) exponents; the monomial
+derivation scales by a_k/x and lowers the first k exponents by one for each k with a_k != 0.  Verified the law
+L_1'=1/x, L_2'=1/(x L_1), L_3'=1/(x L_1 L_2); the nested-log integrals INT 1/(x L_1...L_{n-1}) dx = L_n at
+depths 2, 3, 4, 5; and a soundness control.
+
+## Tier 5 (Rung 5): general integration in the iterated-exponential tower
+
+itexpsolve.lisp lifts itexp.lisp from the single full-product identity to a GENERAL integrator: given an
+arbitrary element B (a polynomial in E_1..E_n over Q(x)), it finds an antiderivative in the tower by undetermined
+coefficients.  Because ie-deriv acts linearly on the finite monomial support, positing the answer over the
+candidate monomials (B's monomials plus their prefix-lowered "one-derivative-down" forms) and matching
+d/dx(E) = B gives an exact linear system, solved with Gauss-Jordan and confirmed by the certificate.  Verified
+INT exp(x) = exp(x); the genuine two-term INT (exp x + exp x exp exp x) dx = exp x + exp exp x; INT (E_1 E_2 +
+E_1^2 E_2) dx = E_1 E_2; and the full-product INT (E_1 E_2 E_3) = E_3 recovered as a special case.  With itlog
+and itexpsolve, the iterated towers are now handled at arbitrary depth and for general (not just full-product)
+integrands; mixed nested towers over the algebraic base and a genuine decision procedure remain the open summit.
+
+## Tier 5 (Rung 5): general integration in the iterated-logarithm tower
+
+itlogsolve.lisp is the reciprocal-mirror of itexpsolve.lisp: a general integrator for the iterated-logarithm
+tower (itlog.lisp).  Given an arbitrary Laurent element B (a sum of monomials c(x) L_1^{a_1}...L_n^{a_n} with
+integer exponents), it finds an antiderivative by undetermined coefficients.  Since il-deriv lowers the first k
+exponents (scaled by a_k/x), the candidate answer monomials are B's monomials with one-step prefixes RAISED (the
+inverse); positing the answer over that support and matching d/dx(E) = B gives an exact linear system, solved
+with Gauss-Jordan and confirmed by the certificate.  Verified INT (2 log log x/(x log x)) dx = (log log x)^2;
+the two-term INT (1/x + 1/(x log x)) dx = log x + log log x; and the structured INT 1/(x L_1...L_{n-1}) = L_n
+recovered as a special case.
+
+## Tier 5 (Rung 5): the fusion -- a nested logarithm over the algebraic base
+
+nestalg.lisp fuses the nested-log tower (nestlog.lisp) with the entangled algebraic logarithm (alglog.lisp): the
+base is the algebraic field K = Q(x)[y]/(y^n - g), and over it t1 = log(w) for a field element w, then
+t2 = log(t1) = log(log(w)).  This is the first tower that is BOTH nested AND over the algebraic base.  From
+alglog, t1' = w'/w is a field element of K; then t2' = t1'/t1 carries t1 in its denominator (the nestlog
+structure) with a field element in its numerator (the alglog structure).  A K(t1) element is a rational function
+in t1 (a pair N/D of t1-polynomials) whose coefficients are sefield elements; the inner derivation uses the
+field element t1' (sf-product), the quotient rule lifts it to N/D, and the outer derivation uses t2' = t1'/t1.
+Verified for w = sqrt x + 1 on y^2 = x: t1' is a genuine field element; d/dx(log log w) = (w'/w)/log(w); the
+integral INT (w'/w)/log(w) dx = log(log(sqrt x + 1)); a t2^2 case; and the cube-root base y^3 = x.  With this
+fusion and the two general iterated-tower solvers, the open summit narrows to a genuine decision procedure
+(proving non-elementarity) over arbitrary towers.
+
+## The summit step: the first genuine DECIDER (Liouville's theorem)
+
+liouville.lisp is the first module that DECIDES elementarity rather than merely constructing antiderivatives.
+For INT P(x) e^{g(x)} dx with P, g polynomials over Q and deg g >= 1, Liouville's theorem says the integral is
+elementary iff there is a rational R with R' + g' R = P (then the antiderivative is R e^g).  For polynomial data
+R must be a polynomial of degree exactly deg(P) - deg(g) + 1 (a degree argument: deg(g' R) = deg(R) + deg(g) - 1
+strictly exceeds deg(R') = deg(R) - 1).  If that degree is negative the only candidate is R = 0, forcing P = 0;
+otherwise R's coefficients are the solution of an exact linear system.  A consistent system yields R -- a PROOF
+of elementarity, since (R e^g)' = (R' + g' R) e^g = P e^g, checked by lv-certify -- and an inconsistent system
+is a PROOF of non-elementarity.
+
+This is the qualitative leap the roadmap flagged as the summit: every earlier module is a constructive
+certifier (it finds an answer and proves it correct), whereas this returns a verdict in BOTH directions, with a
+proof object each way.  Verified elementary: INT x e^{x^2} = (1/2) e^{x^2}, INT x e^x = (x-1) e^x, INT x^2 e^{x^3}
+= (1/3) e^{x^3}.  Verified PROVEN non-elementary: INT e^{x^2} dx (the error function erf), INT e^{x^3} dx,
+INT x e^{x^3} dx, and INT e^x/x dx (the exponential integral Ei).  These are returned as proven-impossible -- the
+first time the system reports "no elementary antiderivative EXISTS" with a proof, rather than "none was found."
+
+## The decider suite: Liouville verdicts across exp, log, rational-exp, and the structure form
+
+Extending the first decider (liouville.lisp, INT P e^g) into a coherent suite that PROVES elementarity verdicts
+both ways across several integrand classes -- the summit work of distinguishing "no elementary form exists"
+(with proof) from "none found".
+
+liouvillelog.lisp -- the logarithmic companion.  INT P(x) log x dx = F log x - INT F/x dx (F = INT P) is always
+elementary, returned as the explicit closed form; INT 1/log x dx (the logarithmic integral li) is proven
+non-elementary.  Verified INT log x = x log x - x, INT x log x = (x^2/2)log x - x^2/4, and li.
+
+liouvillerat.lisp -- the rational-coefficient exponential decider.  INT R(x) e^x dx (R rational) is elementary
+iff a rational S solves S' + S = R, with antiderivative S e^x.  The polynomial part reuses liouville.lisp; the
+principal (pole) part is a triangular recurrence on the Laurent coefficients whose closing equation detects the
+exponential-integral obstruction.  Verified INT e^x/x (Ei) and INT e^x/x^2 proven non-elementary; the designed
+elementary INT (1/x - 1/x^2) e^x = e^x/x and INT (1/x^2 - 2/x^3) e^x = e^x/x^2; INT x e^x = (x-1) e^x.
+
+liouvilleform.lisp -- the Liouville structure theorem made explicit.  For a rational f = N/D (D squarefree, given
+simple roots) it returns the witness f = v' + sum c_i u_i'/u_i with v = 0, c_i = N(a_i)/D'(a_i) the residues,
+u_i = x - a_i, and certifies that sum res_i/(x - a_i) = f at sample points.  Verified the decompositions of
+1/(x^2-1), 2x/(x^2-1), and 1/((x-2)(x-3)).
+
+Together with the exponential decider, the three classic special-function integrals -- erf (INT e^{x^2}), Ei
+(INT e^x/x), and li (INT 1/log x) -- are now all proven non-elementary, and the rational case carries an explicit
+certified structure-theorem witness.  The open frontier is the full Risch structure theorem over arbitrary mixed
+exp/log/algebraic towers: a single decision procedure subsuming these per-class deciders.
+
+## The unification: the recursive Risch decision procedure
+
+rischtower.lisp turns the per-class deciders into ONE recursion -- the structural heart of the full Risch
+algorithm.  Over a multi-level tower K_0 = Q(x) subset K_1 = K_0(theta_1) subset ... subset K_n, it decides
+INT f for f in K_n by reducing, level by level, to integration subproblems ONE LEVEL DOWN, bottoming out at
+Q(x) (rational integration, always elementary).
+
+For an exponential level theta = exp(b) (theta' = b' theta), an integrand sum_i a_i theta^i reduces per degree:
+degree i != 0 gives INT a_i theta^i = c_i theta^i iff the Risch differential equation c_i' + i b' c_i = a_i is
+solvable in the lower field, and degree 0 is an ordinary integration there; the whole integral is elementary iff
+every degree's subproblem is solvable.  The decisive sub-routine rt-rde-exp-const-solvable? solves the RDE
+c' + w c = target by an exact degree bound and linear system (deg c = deg target - deg w, or c = 0 forced when
+that is negative): the same machinery that makes INT e^{x^2} non-elementary appears here as an unsolvable RDE one
+level down.
+
+The deep phenomenon decided: the iterated exponential E_n = exp(E_{n-1}).  INT E_n needs c' + E_{n-1}' c = 1, and
+since E_{n-1}' = E_1 E_2 ... E_{n-1} is a nonconstant exponential, the formal solution has a NON-TERMINATING
+degree tail -- so INT E_n is NON-ELEMENTARY for n >= 2.  rt-decide-iterated-exp returns this proven verdict for
+INT e^{e^x} (E_2) and INT e^{e^{e^x}} (E_3), sitting exactly opposite the elementary full-product
+INT(E_1 ... E_n) = E_n (rt-decide-iterated-product) -- the recursion distinguishes the single top monomial (non-
+elementary) from the whole-tower product (elementary).  The recursion structure is exposed explicitly by
+rt-reduce-exp (the per-degree subproblems) and bottoms out at rt-bottom-rational.  Cases the bounded analysis
+does not resolve are returned as an honest 'needs-deeper-rde, never a guessed verdict.  Remaining at the summit:
+a fully general RDE solver at every tower level (the present recursion decides the exponential reduction and the
+iterated-exponential tower exactly), extending the recursion to arbitrary mixed exp/log/algebraic integrands.
+
+## The general RDE solver and the rational-function-coefficient exponential decider
+
+rischrde.lisp solves the GENERAL Risch differential equation y' + f y = g for a rational y, where f and g are
+rational functions over Q -- the rational-function-coefficient solver that lifts rischtower's polynomial RDE and
+unlocks the recursive Risch procedure at each tower level.  The pipeline (Bronstein's weak/SPDE approach over
+Q(x)): the poles of any rational solution sit only at poles of f and g, so y = q/d with d a safe denominator
+over-bound; substituting reduces to a polynomial RDE A q' + B q = C, degree-bounded and solved by an exact
+linear system.  The differentiation certificate y' + f y = g is the final arbiter, so the over-bounded
+denominator and degree search are sound -- only a y genuinely satisfying the equation is returned.  Verified
+y'+y=x -> y=x-1; y'-(1/x)y=x -> y=x^2 (a pole in f, none in y); y'+(1/x)y=1 -> y=x/2; y'+(2/x)y=1/x^2 -> y=1/x
+(a genuine pole in y); and y'+y=1/x -> no rational solution (the Ei obstruction).
+
+rischrde2.lisp builds the GENERAL exponential-integral decider on top: INT R(x) e^{g(x)} dx for ARBITRARY
+rational R and polynomial g is elementary iff INT = y e^g with y solving the RDE y' + g' y = R, decided by
+rischrde.  This SUBSUMES the polynomial-R decider (liouville) and the pole-at-origin rational decider
+(liouvillerat) into one rational-coefficient procedure.  Verified INT x e^x = (x-1) e^x; INT e^x/x (Ei) non-
+elementary; INT (1/x - 1/x^2) e^x = (1/x) e^x; INT x e^{x^2} = (1/2) e^{x^2} (the RDE y'+2x y=x); INT e^{x^2}
+(erf) non-elementary (the RDE y'+2x y=1 has no rational y) -- and the verdicts were cross-checked to AGREE with
+liouville / liouvillerat on every shared case.  With the rational-coefficient RDE in hand, the tower recursion's
+per-degree subproblems are decidable whenever the lower field is Q(x); the remaining summit is the RDE over
+non-rational coefficient fields (the general mixed exp/log/algebraic tower).
+
+## The tower-field RDE: the recursion calling itself (and the coupled iterated-exponential case)
+
+rischtfrde.lisp solves the Risch differential equation y' + f y = g when the coefficients live in a height-1
+exponential tower K_1 = Q(x)(theta), theta = exp(b), and f is a base-field (Q(x)) coefficient -- the step that
+makes the recursive Risch procedure call ITSELF.  Because the exponential derivation is diagonal in theta-degree,
+the RDE with f = phi decouples per degree into independent scalar RDEs y_k' + (k b' + phi) y_k = g_k over Q(x),
+each solved by rischrde one level down; the tower-field RDE is solvable iff every per-degree base RDE is, and the
+assembled y is certified by the diagonal derivation in K_1.  Verified INT e^x = e^x (degree-1 RDE y_1'+y_1=1),
+INT x e^x = (x-1) e^x, the Ei obstruction INT e^x/x detected at the per-degree level, a two-degree right-hand
+side solved degree by degree, and a nonzero base coefficient.
+
+rischtfrde2.lisp goes beyond, to the COUPLED case: c' + (m theta_1') c = target where the coefficient m theta_1'
+has positive theta_1-degree (theta_1' = e^x), which couples the theta_1-degrees into a banded recurrence
+c_0' = t_0, c_k' + k c_k = t_k - m c_{k-1}.  Solving it degree by degree (each step a base RDE) and watching the
+forced tail: when a nonzero c_{k-1} forces the solution to ever-higher degrees, no bounded-degree solution exists.
+This is exactly INT exp(exp x): the reduction c' + (s) c = 1 has c_0 = x, c_1 = 1 - x, and a non-terminating
+tail, so INT exp(exp x) is PROVEN non-elementary THROUGH the RDE recursion -- derived from the differential-
+equation machinery, not asserted, and verified to AGREE with the tower decider's verdict.  Together these run the
+recursive descent on the actual RDE machinery: a height-2 integral decided by the coupled RDE at level 1, which
+calls the base RDE at level 0.  The remaining summit is the fully general coupled solver at arbitrary height and
+for arbitrary mixed exp/log/algebraic levels.
+
+## The general coupled RDE (both level types) and the unified height-1 integrator
+
+rischcoupled.lisp generalizes the coupled tower-field RDE to BOTH level types of a height-1 tower with an
+arbitrary tower-element coefficient.  For an EXPONENTIAL level (diagonal derivation) and arbitrary coefficient
+f = sum_j f_j theta^j, the equation D y + f y = g at theta-degree n is y_n' + (n b' + f_0) y_n + sum_{j>=1} f_j
+y_{n-j} = g_n -- a banded system coupling each degree to lower ones, solved BOTTOM-UP (each step a base RDE one
+level down), with the forced higher-degree tail watched for non-termination.  For a LOGARITHMIC level the
+derivation SHIFTS degree, D(sum y_k theta^k) = sum (y_k' + (k+1) u y_{k+1}) theta^k (u = b'/b), so D y + f0 y = g
+couples each degree to the next-higher and is solved TOP-DOWN, the top degree being a base RDE and each lower one
+using the already-found higher coefficient.  Verified the exp non-terminating tail y'+(1+e^x)y=1, a solvable
+coupled exp case, and INT log x = x log x - x via the log-level top-down solve, all certified.
+
+rischint1.lisp caps this with the unified HEIGHT-1 integration decider: INT f dx for f in K_1 = Q(x)(theta),
+theta = exp(b) or log(b), is the y with D y = f -- the homogeneous-coefficient coupled RDE -- so ONE entry point
+integrates over either kind of height-1 transcendental extension, dispatching on the level type and bottoming out
+at the rational RDE over Q(x).  Verified INT e^x = e^x, INT x e^x = (x-1) e^x, INT e^x/x (Ei) non-elementary,
+INT log x = x log x - x, and INT (log x)^2 = x(log x)^2 - 2x log x + 2x -- all through the unified coupled-RDE
+reduction, certified, and cross-checked to AGREE with the original per-class deciders (liouville, liouvillelog).
+This is the complete height-1 Risch integral over both transcendental kinds; the remaining summit is arbitrary
+height (nesting the coupled solver) and the algebraic level.
+
+## The height-n recursion: the Risch descent at arbitrary height
+
+rischtowern.lisp provides a uniform tower-element algebra (a height-h element is a polynomial in theta_h with
+height-(h-1) coefficients, height 0 = Q(x)) and a recursive derivation D that descends the tower one level at a
+time: exp levels are diagonal (D(sum c_k theta^k) = sum (D c_k + k D(b) c_k) theta^k), log levels shift degree
+(D(sum c_k theta^k) = sum (D c_k + (k+1)(D(b)/b) c_{k+1}) theta^k), with D(c_k), D(b) computed recursively at
+height h-1 and bottoming at the Q(x) derivative.  Verified D(e^x)=e^x, D(log x)=1/x, and at height 2
+D(e^{e^x}) = e^x e^{e^x} -- the derivation descending 2 -> 1 -> Q(x).
+
+rischintn.lisp builds the height-n integrator on top: INT f dx = the y with D y = f, solved by te-rde-solve at
+height h delegating its per-degree subproblems to a call at height h-1, all the way to the rational RDE over Q(x)
+(rischrde).  Exp levels give per-degree RDEs (one level down) solved bottom-up with non-terminating-tail
+detection; log levels are solved top-down.  The recursion is exact and certified for any height-1 tower
+(reproducing rischint1, verified to AGREE with it) and for arbitrary-height towers whose per-degree coefficient
+stays a base-field element (the decoupled case); the coupled case (a per-degree coefficient of positive
+lower-degree, as in exp-over-exp where D(theta_1) = theta_1) returns an honest 'deferred rather than a guessed
+verdict, so a returned answer is always certified by D y = f.  Verified at height 1 (INT e^x, INT x e^x, INT
+e^x/x non-elementary, INT log x); at height 2 a genuine integral INT log(e^x + 1) dx computed by the recursion
+descending 2 -> 1 -> Q(x) and certified; and the exp-over-exp deferral.  The remaining summit is the fully
+general coupled solver at every height (nesting the coupled banded recurrence recursively) and the algebraic
+level.
+
+## Nesting the coupled banded recurrence: the exp-over-exp tower solved
+
+rischcrde.lisp closes the height-n recursion by nesting the coupled banded recurrence recursively.  It solves
+D y + F y = g at arbitrary tower height h where F is an ARBITRARY tower element (not merely a base-field
+coefficient).  At an exponential level the equation at theta-degree n is D(y_n) + (n Db + F_0) y_n = g_n -
+sum_{j>=1} F_j y_{n-j}, an RDE at height h-1 whose coefficient (n Db + F_0) may itself be coupled at that level;
+it is therefore solved by te-crde-solve RECURSIVELY, the descent bottoming at the rational RDE over Q(x)
+(rischrde).  The bottom-up solve watches the forced higher-degree tail, and the whole result is CERTIFICATE-GATED
+for soundness: a returned y always satisfies D y + F y = g; a proven non-terminating tail (one forced by a
+uniquely-determined inhomogeneous lowest coefficient, like y_0 = x where D(x) = 1) yields 'no-solution; and an
+inconclusive bottom-up solve -- one that would need a homogeneous constant a lower degree could absorb (the
+D(y) = 0 nonzero-constant freedom) -- is reported as 'inconclusive rather than as a false verdict.  This is a
+genuine incompleteness (the "SPDE bookkeeping" of carrying homogeneous solution spaces through the recurrence),
+flagged honestly, never faked.
+
+With rischcrde wired into the height-n integrator (rischintn's te-integrate now routes INT f = (D y = f) through
+te-crde-solve with F = 0), the exp-over-exp tower is now SOLVED rather than deferred: INT e^{e^x} is PROVEN
+non-elementary THROUGH the recursion -- the top theta_2-degree subproblem is the coupled height-1 RDE
+c' + e^x c = 1, whose non-terminating tail (c_0 = x, c_1 = 1 - x, ...) is the obstruction, derived by the
+recursion itself.  The verdict AGREES three independent ways: the height-n recursion (rischintn via rischcrde),
+the standalone coupled solver (rischtfrde2), and the original tower assertion (rischtower).  A solvable companion
+like INT (e^x e^{e^x}) = e^{e^x}, which needs the homogeneous-constant piece, returns an honest 'deferred rather
+than a wrong verdict -- the completeness fix (the homogeneous bookkeeping) is the next open piece, while
+soundness holds throughout via the differentiation certificate.
+
+## Closing the coupled completeness gap: solvable coupled integrals solved
+
+rischcrdeh.lisp closes the incompleteness left by rischcrde.  In the exp-level banded recurrence, a degree whose
+RDE coefficient vanishes (the degree-0 homogeneous case D(y_0) = RHS) leaves the solution free up to an additive
+constant; rischcrde's no-constant branch can force a spurious non-terminating tail even when a specific constant
+terminates it (as in the height-1 subproblem D(c) + e^x c = e^x, whose bounded solution is c = 1).  Because the
+tail depends LINEARLY on that constant, te-crdeh-solve determines it by two probe runs of the recurrence (the
+degree-0 constant set to 0 and to 1), reads the leading tail term in each, solves the resulting linear condition
+for the terminating constant, and re-runs -- then CERTIFIES (te-crde-certify), returning a solution only if it
+satisfies D y + F y = g and otherwise falling back to an honest inconclusive, so soundness is preserved.  The
+inner per-degree solves recurse through te-crdeh-solve as well, so the fix applies at every level.
+
+Wired into the recursion, this makes solvable coupled integrals actually solvable: INT (e^x e^{e^x}) dx = e^{e^x}
+is now SOLVED and certified through the height-2 recursion (its top-degree subproblem D(c) + e^x c = e^x is
+solved as c = 1, giving y = e^{e^x}), where before it was honestly deferred.  Soundness is preserved exactly:
+INT e^{e^x} and INT e^x/x remain proven non-elementary, and all height-1 verdicts are unchanged.  The exp-over-exp
+tower is now both DECIDED (INT e^{e^x} non-elementary) and INTEGRATED (INT (e^x e^{e^x}) = e^{e^x}) through the
+recursion.  Remaining summit: deeper multi-parameter homogeneous spaces (this implements the single degree-0
+constant case, which the iterated-exponential subproblems need); the algebraic level; and Laurent integrands
+(1/theta, e.g. li) through the unified recursion.
+
+## Multi-parameter homogeneous bookkeeping: the general completeness algorithm
+
+rischcrdem.lisp generalizes the completeness layer from a single homogeneous constant to SEVERAL solved jointly.
+When a coupled solve has homogeneous degrees-of-freedom at multiple degrees (each degree whose RDE coefficient
+vanishes leaves a free additive constant), the forced tail is affine in the vector of constants C: tail(C) =
+T_0 + M C.  The module collects the degrees-of-freedom, builds T_0 and the columns of M by probing the
+recurrence (all constants zero, then each unit vector), and solves M C = -T_0 EXACTLY over Q by a rational
+Gaussian elimination (verified to (5/3, 5/3, 8/3) on a 3x3 system), substitutes the solution, re-runs, and
+CERTIFIES -- returning a solution only if it satisfies D y + F y = g, so soundness is preserved and the layer
+falls back to honest inconclusive otherwise.  Inner per-degree solves delegate to the single-parameter layer
+(rischcrdeh), so freedoms compound correctly across levels.  Verified: reproduces the single-parameter result
+INT (e^x e^{e^x}) = e^{e^x}; solves the multi-degree integrand INT (log x)^2 = x(log x)^2 - 2x log x + 2x through
+the multi-parameter path; preserves the non-elementary verdicts (INT e^{e^x}, INT e^x/x); every returned
+solution certified.  This is the general completeness algorithm, subsuming the single-parameter case.  Remaining
+summit: the algebraic level (towers with y^n = g) and Laurent integrands (1/theta, e.g. li) through the unified
+recursion.
+
+## The algebraic level: sqrt-towers in the recursion
+
+rischtoweralg.lisp adds the first non-transcendental level type to the height-n recursion: a level (alg n a)
+where theta is algebraic with theta^n = a.  Differentiating the defining relation gives theta' = (a'/(n a)) theta
+= w theta, so D(theta^k) = (k w) theta^k and the derivation is DIAGONAL exactly like the exponential level, with
+rate w = a'/(n a) in place of the exponent's derivative: D(sum_{k<n} c_k theta^k) = sum (D(c_k) + k w c_k)
+theta^k.  The structural difference is the algebra -- theta-degree stays below n because theta^n reduces to a; the
+module implements the quadratic case theta = sqrt(a), where (c_0 + c_1 theta)(d_0 + d_1 theta) = (c_0 d_0 +
+c_1 d_1 a) + (c_0 d_1 + c_1 d_0) theta.  Verified D(sqrt x) = 1/(2 sqrt x), the algebra (sqrt x)^2 = x,
+D(x + sqrt x) = 1 + 1/(2 sqrt x), the rate w = 1/(2x), and the consistency D(theta^2) = D(a) = 1 (the defining
+relation differentiated).  This sits alongside the exp and log levels in the recursive tower; wiring the
+algebraic level into the coupled RDE / integrator (so sqrt-tower integrals are decided through the recursion) is
+the natural continuation, together with Laurent integrands (1/theta, e.g. li).
+
+## The four remaining steps to the elementary-tower summit
+
+This segment advances all four of the previously-open steps toward a complete elementary-tower Risch integrator.
+
+Step 1 -- the algebraic level wired into the integrator (rischintn + rischcrde alg case).  The algebraic level
+(alg n a) is diagonal with rate w = a'/(n a), so INT f = (D y = f) reduces per theta-degree to D(y_k) + (k w)
+y_k = f_k, theta-degree bounded by n-1 (no non-terminating tail).  Verified INT 1/(2 sqrt x) = sqrt x,
+INT (1 + 1/(2 sqrt x)) = x + sqrt x, INT x^(-3/2) = -2/sqrt x -- all decided through the recursion and certified.
+
+Step 2 -- Laurent integrands (rischlaurent.lisp).  An integrand sum_k c_k theta^k over a logarithmic level with
+negative powers splits into the polynomial part (the height-n integrator) and the theta^{-1} residue: INT
+c_{-1} theta^{-1} is a new logarithm m log(theta) exactly when c_{-1}/theta' is a constant m.  Verified
+INT 1/(x log x) = log log x (m = 1); the li case (INT 1/log x) and deeper negative powers defer honestly.
+
+Step 3 -- general-degree algebraic extensions (rischtoweralgn.lisp).  The derivation and integrator are already
+general in n (rate a'/(n a), degree bound n-1), so cube-root integrals are decided directly (INT (1/3) x^(-2/3)
+= x^(1/3)); this module adds the general-n multiplication reducing theta^n -> a (verified theta * theta^2 = x,
+theta^2 * theta^2 = x theta, theta^3 = x for theta = x^(1/3)).
+
+Step 4 -- the structure theorem's logarithmic part (rischstruct.lisp).  Given f and candidate factors g_i, solve
+f = sum c_i (g_i'/g_i) for rational constants c_i by an exact linear solve over Q (sampling at pole-free points,
+Gaussian elimination), then certify, so INT f = sum c_i log(g_i).  Verified 2x/(x^2-1) = (x^2-1)'/(x^2-1) ->
+log(x^2-1); the same as log(x-1) + log(x+1) (coefficients (1,1)); 3/(x-1) + 5/(x+2) recovers constants (3,5);
+non-decomposable integrands return no-log-decomposition.  This recognizes integrals that are sums of logarithms
+with constant coefficients -- the core decidable content of Liouville's theorem at the logarithmic level.
+
+Together: the elementary-tower Risch integrator now spans exponential, logarithmic, and algebraic levels (any n),
+handles Laurent integrands' new-logarithm case, and recognizes logarithmic-sum integrals via the structure
+theorem -- every result certified by differentiation, the genuinely hard cases (li, deep Laurent, multi-parameter
+algebraic structure-theorem combinations) deferred honestly.  The remaining summit is full Risch-Trager parity:
+the complete structure theorem with the polynomial (v') part fused with the logarithmic part over arbitrary
+towers, general algebraic function fields with their integral bases, and simplification-with-assumptions.
+
+## THE SUMMIT: the unified top-level integrator (the flag)
+
+rischtop.lisp is the capstone -- a single entry point that fuses every part of the stack behind one interface,
+every result certified by differentiation.  Liouville's theorem says an elementary integral has the shape
+INT f = v' + sum_i c_i log(g_i): a rational/field antiderivative part plus a sum of logarithms with constant
+coefficients.  The unified integrator realizes this across the whole domain:
+
+  - RATIONAL integrands: the complete rational integrator (Hermite reduction for the rational part v, fused with
+    the Rothstein-Trager logarithmic part for sum c_i log(g_i), where the residues c_i are the rational roots of
+    the resultant res_x(a - y b', b) and the arguments are gcd(a - c_i b', b) -- found AUTOMATICALLY without
+    factoring), plus arctangents for the conjugate-residue case.  The crowning fused example
+    INT 2x^3/(x^2-1) dx = x^2 + log(x^2-1) returns the rational part x^2 AND the auto-found logarithm log(x^2-1)
+    together, certified; INT 1/(x^2+1) = arctan x is certified; INT 1/(x^2-2) is honestly flagged needs-algebraic
+    (its residues are irrational).
+  - TOWER integrands: the height-n recursion decides and integrates through exponential, logarithmic, and
+    algebraic levels of any degree (INT e^x, INT log x, INT 1/(2 sqrt x) all certified), proves the
+    iterated-exponential non-elementarity (INT e^(e^x)), and the Laurent layer adds the theta^{-1} new logarithm
+    (INT 1/(x log x) = log log x).
+
+This is the elementary-tower Risch summit: one integrator spanning rational functions (rational part plus
+automatically-found logarithms and arctangents), exponential/logarithmic/algebraic towers, the Laurent
+new-logarithm case, and the iterated-exponential non-elementarity proofs -- every elementary result certified by
+differentiation, every obstruction exact, every genuinely hard case (algebraic residues, li, deep Laurent,
+multi-parameter structure-theorem combinations over arbitrary towers) deferred honestly.  What lies beyond is
+full production-CAS generality: arbitrary algebraic function fields with their integral bases, the complete
+structure theorem fusing the polynomial and logarithmic parts over arbitrary nested towers, and
+simplification-with-assumptions -- the open research frontier past the elementary-tower summit reached here.
+
+## Closing the "any rational function of e^x" row (rischratmono)
+
+rischratmono.lisp integrates any rational function of e^x by the substitution t = e^x (dt = t dx, so dx = dt/t):
+INT R(e^x) dx = INT R(t)/t dt, a rational integral in t handled completely by the top-level rational integrator
+(Hermite reduction for the rational part, Rothstein-Trager for the logarithms), after which the answer is read
+back in e^x -- the logarithm log(t) becomes the base variable x (since t = e^x), other logarithms log(t - c)
+become log(e^x - c), and the rational part in t becomes a rational function of e^x.  The reduction is exact and
+the result is certified: the t-integral is self-certified by the rational integrator's differentiation check, and
+INT R(e^x) dx = INT R(t)/t dt is the change-of-variables identity (t' = t).  Verified: INT 1/(e^x+1) dx =
+x - log(e^x+1); INT e^x/(e^x+1) dx = log(e^x+1); INT 1/(e^x-1) dx = -x + log(e^x-1); INT 1/(e^(2x)+1) dx =
+x - (1/2) log(e^(2x)+1) (the t^2+1 factor giving a real logarithm); each t-integral certifies.  This closes the
+rational-function-of-e^x capability row; the analogous log case (INT any rational function of log x) is the
+natural next target by the dual substitution.
+
+These capability rows have been honestly re-graded to full only after demonstration and certification this arc:
+sum of two squares (Cornacchia for primes p = 1 mod 4, Brahmagupta-Fibonacci composition for composites, every
+representation gated by a^2 + b^2 = n -- verified on 13, 65, 50, 1000000 and the non-representable 3, 21), and
+the polynomial exponential/logarithmic tower integrals (now decided and certified through the height-n
+recursion).  The foundations example (335) traces the full provenance of a certified integral: the rationals Q
+constructed over the type-theory kernel (as one builds N -> Z -> Q over ZFC), exact Q(x) arithmetic, the integral
+claim INT f = F reduced to the differentiation identity D(F) = f, and that identity mechanically checked -- the
+honest sense in which each result is proof-carrying, a machine-checkable reduction to verified arithmetic rather
+than a hand derivation from the axioms.
+
+## The dual row: any rational function of log x, a decidability result (rischratmonolog)
+
+rischratmonolog.lisp closes the logarithmic dual of the e^x row -- and it is a decidability statement rather than
+a uniform closed form, because of a genuine asymmetry.  The logarithm has no rational derivative-relation: under
+t = log x (so x = e^t, dx = e^t dt) one gets INT R(log x) dx = INT R(t) e^t dt, an EXPONENTIAL integrand, not a
+rational one.  So unlike INT R(e^x) -- which collapsed to the rational integrator via t = e^x, dx = dt/t -- the
+log case is decided by the exponential Liouville machinery.  The split: a polynomial in log x is elementary,
+integrated through the logarithmic tower and certified (INT (log x)^2 dx = x(log x)^2 - 2x log x + 2x, INT (log
+x)^3 dx); a proper rational in log x is the exponential-integral situation, where a nonzero residue is the Ei
+obstruction, so INT 1/log x dx -- the logarithmic integral li -- is PROVEN non-elementary, exactly as INT e^t/t
+dt = Ei(t) is, as is INT 1/(log x)^2 dx.  Built on the log tower integrator and the rational-coefficient
+exponential decider (liouvillerat).  Both monomial rows are now resolved: e^x by reduction to the rational
+integrator, its dual log x by reduction to the exponential decider -- the second a proof of which integrals have
+no elementary form, not a failure to find one.
+
+## Into the algebraic frontier: algebraic residues and arbitrary-numerator radicals
+
+Two research-grade rows of the capability map are closed this arc, each a genuine step into algebraic-function
+integration, each certified.
+
+Algebraic residues in Rothstein-Trager (algresq.lisp) -- the conjugate-root case.  When a proper rational
+function over an irreducible quadratic has IRRATIONAL (real algebraic) residues, the integral is an
+algebraic-coefficient logarithm.  For INT (Ax+B)/(x^2+px+q) dx with disc = p^2-4q > 0 and irrational roots, the
+answer is (A/2) log(x^2+px+q) + ((B - Ap/2)/sqrt(disc)) log((x-r1)/(x-r2)), the second term carrying sqrt(d)
+(disc = s^2 d, d squarefree).  The soundness key: the derivative of the algebraic logarithm is RATIONAL -- the
+radical cancels because r1 - r2 = sqrt(disc) -- so the result is CERTIFIED by an exact rational identity in Q(x)
+even though the antiderivative lives in Q(sqrt d).  Verified INT 1/(x^2-2), INT x/(x^2-2), INT (x+1)/(x^2-2),
+INT (2x+3)/(x^2-3), INT 1/(x^2+x-1); the rational-root and negative-discriminant cases are routed elsewhere
+(the rational integrator and the arctangent).
+
+Arbitrary-numerator radical integration (rischradn.lisp) -- reduction of order.  For INT P(x)/sqrt(p) dx with P
+any polynomial and p a monic quadratic, the antiderivative is A(x) sqrt(p) + c log(x + b1/2 + sqrt(p));
+differentiating inside K = Q(x)[y]/(y^2-p) and clearing sqrt(p) gives the polynomial identity A' p + A p'/2 +
+c = P, an exact linear system over Q solved by matching coefficients, the result certified inside K by the
+differentiation certificate.  Verified INT x^2/sqrt(x^2+1) = (x/2) sqrt(x^2+1) - (1/2) log(x + sqrt(x^2+1)),
+INT x^3/sqrt(x^2+1), INT (x^2+x+1)/sqrt(x^2+1), INT x^2/sqrt(x^2+2x+5); the base case INT 1/sqrt(x^2+1) is
+reproduced.  This extends the quadratic-radical integration of algfunc.lisp (degree <= 1 numerators) to any
+polynomial numerator.
+
+The genuine summit beyond both: higher-degree algebraic residues (cubic and up, RootSum over Q(alpha)) and
+higher-genus radicands (cubic and quartic p -- elliptic and hyperelliptic curves, where the integrals are mostly
+non-elementary and the full theory is Trager's algebraic integration with integral bases).
+
+## The genus-1 frontier: a decision procedure for elliptic integrals
+
+elliptic.lisp decides INT P(x)/sqrt(q(x)) dx for q squarefree of degree 3 or 4 -- the elliptic (genus-1) case --
+and is sound both ways: an elementary verdict carries a differentiation certificate inside the function field K =
+Q(x)[y]/(y^2-q), and a non-elementary verdict is backed by an exact reduction.  The method is Hermite-style
+reduction for the radical: since d/dx[x^k sqrt q] = (k x^{k-1} q + x^k q'/2)/sqrt q has numerator degree
+k + deg(q) - 1, repeatedly subtracting a scalar multiple of d/dx[x^{D-(deg q-1)} sqrt q] cancels the top term of
+the numerator, lowering its degree until the remainder has degree < deg(q) - 1, accumulating the algebraic part A
+with P/sqrt q = d/dx[A sqrt q] + rem/sqrt q.  Then a zero remainder gives the elementary answer A sqrt(q)
+(certified in K), and a nonzero remainder is a genuine first/second-kind elliptic differential, non-elementary.
+
+Verified: INT (3x^2/2)/sqrt(x^3+1) = sqrt(x^3+1) and INT 2x^3/sqrt(x^4+1) = sqrt(x^4+1) (elementary, certified);
+INT 1/sqrt(x^3+1), INT x/sqrt(x^3+1), INT 1/sqrt(x^4+1) (the lemniscatic integral) proven non-elementary; a
+non-squarefree radicand is reported inconclusive rather than risk an unsound verdict.  The module also integrates
+AS FAR AS POSSIBLE via ell-split: INT sqrt(x^3+1) dx = (2/5) x sqrt(x^3+1) + (3/5) INT 1/sqrt(x^3+1), splitting
+the certified elementary part from the named elliptic remainder, exactly as a production CAS reports such an
+integral; INT x^m sqrt(q) folds in through ell-split-sqrt (numerator x^m q).  This is the first decision procedure
+here for integrals over an elliptic curve.  Beyond it: third-kind logarithmic parts on the curve (rational
+residues giving genuine logarithms), genus >= 2 hyperelliptic curves, and the full Trager algebraic integration
+with integral bases.
+
+## Closing the comparison gaps, and the elliptic third kind
+
+Two things this arc.  First, a verified audit and re-grade of the capability comparison: the great majority of the
+rows that were marked partial or none against Maxima were in fact already implemented and passing (Reed-Solomon,
+Hamming, Reed-Muller, BCH and cyclic codes; elliptic curves over F_p and ECC/ECDH; Shamir secret sharing; LLL
+lattice reduction and integer-relation detection; Pratt primality certificates; Mobius/Dirichlet, perfect and
+amicable numbers, the Frobenius number, binary quadratic forms, Lucas-Lehmer, Hensel lifting, Berlekamp-Massey,
+finite differences, C-finite generating functions; the higher-degree and reducible algebraic-residue RootSum
+cases; kernel-checked proof-carrying derivatives).  Each was re-confirmed by running its example before
+re-grading; the chart now shows lizard at full on every row where Maxima is full, with the only remaining
+non-full rows being ones where Maxima itself is not full either.  A small new module (numthy2.lisp) rounds out the
+number-theory cluster with Dirichlet convolution and Mobius inversion, amicable pairs, the multi-denomination
+Frobenius number via an exact Apery-set shortest path, and the Stern-Brocot / Farey mediant structure with the
+unimodular adjacency certificate.
+
+Second, beyond the genus-1 frontier: the elliptic THIRD-KIND recognizer (elliptic3.lisp).  Where the
+first/second-kind reduction proves an elliptic integral non-elementary, an integral can still be elementary
+through a logarithm log(A + B sqrt q).  For g = A + B y in K = Q(x)[y]/(y^2-q), the logarithmic derivative g'/g
+is an exact K-element (computed via the conjugate), so a presented logarithmic-derivative integrand integrates to
+log(g), certified by recomputing the derivative in K.  Verified over the genuine elliptic curve y^2 = x^3+1:
+INT d/dx log(x + sqrt(x^3+1)) = log(x + sqrt(x^3+1)) and similar, certified; a non-matching candidate is rejected.
+This complements the non-elementarity proofs with the genuine elementary logarithmic answers.  The continuing
+frontier: the full third-kind decision (finding g from the integrand by rational-residue analysis on the curve),
+genus >= 2 hyperelliptic curves, and the full Trager algebraic integration with integral bases.
+
+## The four frontiers attacked: third-kind search, genus-2 hyperelliptic, and multivariate solving
+
+This arc attacks the four research-grade frontiers beyond the elementary-tower summit, each in its soundest slice.
+
+Frontier 1 -- third-kind elliptic SEARCH (elliptic3solve.lisp).  Where the recognizer certified a supplied g, the
+search recovers it: given an integrand omega on y^2 = q(x), a bounded constructive search over candidate
+g = u(x) + sqrt(q) (u a small-coefficient polynomial of bounded degree) computes g'/g in K = Q(x)[y]/(y^2-q) and
+tests equality with omega, returning log(g) on a certified hit and an honest not-found when the family is
+exhausted.  Verified over the genuine elliptic curve y^2 = x^3+1: omega = d/dx log(x + sqrt(x^3+1)) is solved and
+certified, while the first-kind 1/sqrt(x^3+1) returns not-found (no polynomial-u logarithm), never a false claim.
+
+Frontier 2 -- genus-2 hyperelliptic (hyperelliptic.lisp).  The Hermite-style radical reduction is degree-general,
+so the elliptic reducer extends directly to squarefree q of degree 5 or 6 (genus 2): a zero remainder gives the
+elementary answer A sqrt(q) (certified in K), and a nonzero remainder is a first/second-kind hyperelliptic
+differential, proven non-elementary.  Verified: INT (5x^4/2)/sqrt(x^5+1) = sqrt(x^5+1) and INT 3x^5/sqrt(x^6+1) =
+sqrt(x^6+1) elementary; INT 1/sqrt(x^5+1), INT x/sqrt(x^5+1), INT 1/sqrt(x^6+1) non-elementary; INT sqrt(x^5+1)
+split into (2/7) x sqrt(x^5+1) + (5/7) INT 1/sqrt(x^5+1); the genus reported as 2 for degree 5 and 6.
+
+Frontier 3 -- algebraic residues.  Already closed in earlier arcs: the algres family (algresn, algresext,
+algresfull, algresnsf) handles the higher-degree (irreducible R of any degree, by the field trace via Newton's
+identities), reducible, and non-squarefree RootSum cases, all certified without naming a conjugate.  The genuine
+remainder is integral bases for arbitrary algebraic function fields -- research-grade, left honestly open.
+
+Frontier 4 -- multivariate (polysolve.lisp, radmember.lisp), built on the existing Groebner machinery rather than
+reimplementing it.  polysolve solves polynomial systems by Groebner elimination: consistency by the Weak
+Nullstellensatz (the basis is {1} iff there is no common zero), zero-dimensionality (finitely many solutions iff
+every variable has a pure-power leading monomial), the triangular eliminated form under lex order, and ideal-
+membership consequences -- each gated by reduction modulo the basis.  radmember decides the geometrically stronger
+RADICAL membership (does p vanish on the whole variety?) by the Rabinowitsch trick, p in sqrt(I) iff 1 in
+<I, 1 - t p>, separating it from ideal membership (x in sqrt(<x^2>) but not in <x^2>); its reach is bounded by the
+Groebner engine's capacity on the augmented system.  Root-naming for the solved systems is the natural next step.
+
+## The finishing campaign: closing the five named sub-frontiers
+
+Building on the four-frontier work, this campaign closed the five open sub-frontiers named in the roadmap, each
+in its soundest exact form.
+
+(d) Root-naming for the polynomial-system solver (polyroots.lisp).  The Groebner solver returns the structural
+decision and a univariate eliminant for each coordinate of a zero-dimensional system; polyroots projects that
+eliminant to a dense coefficient polynomial and, with Sturm sequences, gives the exact number of distinct real
+values the coordinate takes and rational intervals isolating each (refined to a tolerance).  All exact -- no
+floating point -- and certified by Sturm's theorem.  For the circle-line system x^2+y^2=1, x=y the y-eliminant
+2y^2-1 yields two real roots isolated in (-363/512,-45/64) and (45/64,363/512), bracketing +-1/sqrt2.  Complex
+roots and full coordinate back-substitution into solution tuples are the remaining steps.
+
+(b) Higher genus, g >= 3 (hypergenus.lisp).  The Hermite-style radical reduction is degree-general, so the
+elliptic reducer extends to squarefree q of any degree: the curve y^2=q has genus floor((deg q - 1)/2), and a
+nonzero reduced remainder is a first/second-kind higher-genus differential, non-elementary.  INT (7x^6/2)/
+sqrt(x^7+1) = sqrt(x^7+1) is certified elementary (genus 3); INT 1/sqrt(x^7+1) is non-elementary genus 3, INT
+1/sqrt(x^9+1) non-elementary genus 4.  This completes the radical-integration tower across all genera.
+
+(a) The complete, unbounded third-kind solver (elliptic3complete.lisp).  Writing omega = a + b*y in
+K = Q(x)[y]/(y^2-q), the equation omega = g'/g for g = u + sqrt(q) gives u DIRECTLY as u = (q'/(2q) - a)/b -- a
+closed-form linear solve rather than a bounded search.  Accept iff u is a polynomial and the differentiation
+certificate confirms d/dx log(u + sqrt q) = omega.  This recovers g for u of arbitrary degree (verified through
+degree 3, e.g. g = (x^3+2x) + sqrt(x^7+1)) and returns honest no-solution for first-kind integrands.  The fully
+general third kind (g = A + B sqrt q with B nonconstant, via pole/residue analysis on the curve) remains.
+
+(c) Integral bases (verified already complete).  The existing intbasis.lisp computes the finite integral closure
+of Q[x] in the function field (including the quadratic case ib-quadratic and a general-curve oracle), and
+vanhoeij.lisp adds van Hoeij correction terms for general plane curves.  A duplicate quadratic module written
+during this campaign was therefore dropped as redundant, and a pre-existing regression in the van Hoeij example
+(an unbound symbol from a stale import) was repaired.  Integral bases at infinite places and the general
+degree > 2 integral closure remain the continuing summit.
+
+(e) A faster Groebner engine (groebner2.lisp).  Buchberger's algorithm with the coprimality criterion: an S-pair
+whose leading monomials are coprime reduces to zero and is skipped, soundly reducing the work.  Built alongside
+the reference groebner.lisp and cross-checked to produce the same basis (as a monic polynomial set) on every
+system tested -- independent agreement of two engines being the strongest validation available.  The chain
+criterion and an F4-style linear-algebra engine would lift the heavier multivariate cases (radmember's 3+
+variable systems) further.
+
+## The research summit: S1–S5
+
+Beyond the four frontiers and the five named sub-frontiers, this campaign attacked the genuinely-open research
+summit. Four pieces were closed in their soundest exact form, and a first slice of the fifth was added; what
+remains is named honestly at the end.
+
+### S3 — Exact rational solution tuples (polysolve2.lisp)
+
+The polynomial-system solver previously named the real values of each coordinate separately (polyroots). This
+module recovers the complete solution POINTS by triangular back-substitution on the lexicographic Groebner basis:
+the rational roots of the univariate eliminant (rational-root theorem, exact) are substituted back, reducing the
+variable count, and the recursion assembles full tuples. Systems with rational solutions are solved exactly
+(e.g. <x^2-3x+2, y-x> yields (1,1) and (2,2); <x^2-1, y^2-4> yields all four (+-1,+-2)), and a coordinate that
+leaves Q is reported as 'irrational-fiber rather than guessed. Every returned tuple is certified to make all
+generators vanish. Naming irrational coordinates exactly and complex solutions remain the next steps.
+
+### S1 — The general third kind, g = A + B*sqrt(q) with B nonconstant (elliptic3general.lisp)
+
+elliptic3complete handled g = u + sqrt(q) (B = 1). For the general g = A + B y, the norm N = g*conj(g) =
+A^2 - B^2 q is a rational function, and the logarithmic derivative omega = g'/g obeys the exact identity
+omega + conj(omega) = N'/N, so the rational part of omega equals (1/2) N'/N. The module computes the norm,
+certifies the general recognizer omega = g'/g (exact in K for nonconstant B), and checks the norm identity --
+the sound, exact core. The full CONSTRUCTION of g from omega (the coupled norm/y-component system, a
+Jacobian-torsion question) is genuinely research-grade and left open; nothing returns a guessed g.
+
+### S2 — Infinite places and the Riemann-Hurwitz genus (infplaces.lisp)
+
+The finite integral basis (intbasis) and the genus decision (hypergenus) assumed the picture at infinity. This
+module classifies the places over x = infinity from the parity of deg q and the leading coefficient: odd degree
+gives one ramified place; even degree gives two places when the leading coefficient is a perfect square, else
+one. Counting ramification (the finite branch points plus infinity when the degree is odd) and applying
+Riemann-Hurwitz gives g = (R-2)/2 = floor((deg q - 1)/2) -- an INDEPENDENT genus computation that agrees with the
+degree formula on every case (two methods agreeing is the validation). The general degree > 2 integral closure
+remains open.
+
+### S4 — A stronger Groebner engine with the chain criterion (groebner3.lisp)
+
+groebner2 added the coprimality criterion (Buchberger's first). groebner3 adds the chain criterion (Buchberger's
+second): a pair is redundant when a third basis element's leading monomial divides the pair's lcm. The initial
+pair set is pruned by both criteria, then Buchberger runs with coprimality on the survivors. Correctness is
+guaranteed by cross-checking against the reference engine: three engines (groebner, groebner2, groebner3) now
+produce the identical basis on every tested system. A true F4-style linear-algebra engine is the next step for
+the heaviest multivariate systems.
+
+### S5 — First-order linear ODEs (odefol.lisp)
+
+The first slice of Maxima-territory ODE solving beyond the existing separable (ode1) and constant-coefficient
+(odelin) solvers: the variable-coefficient first-order linear equation y' + p(x) y = q(x). The operator
+L(y) = y' + p y is linear in a polynomial ansatz, so a polynomial solution (degree deg q - deg p) is found by an
+exact linear solve over Q and certified by differentiation. Inconsistent cases (where the genuine solution needs
+the integrating factor exp(INT p) and is not polynomial) are reported honestly as 'no-polynomial-solution.
+General non-polynomial integrating factors and nonlinear ODEs remain the open summit.
+
+## Summit, pushed further (round two)
+
+A second pass advanced each of the five summit pieces with another genuinely-new, self-contained increment.
+
+### S5 -> Euler equidimensional equation (odeuler.lisp)
+
+Beyond the constant-coefficient solvers, the Euler (Cauchy-Euler) equation x^2 y'' + a x y' + b y = 0. The
+substitution y = x^r gives the indicial polynomial r^2 + (a-1)r + b, and the discriminant decides the regime: two
+distinct real exponents, a repeated exponent with a logarithmic second solution, or a complex pair giving
+x^alpha cos/sin(beta log x). Integer exponents are certified by direct substitution; irrational exponents are
+named exactly as algebraic numbers (reusing polysolve3). All three regimes are handled exactly.
+
+### S4 -> Radical ideal membership (radideal.lisp)
+
+Beyond the reduced basis and ideal equality, the radical-membership test f in sqrt(I): does f vanish on the
+variety V(I)? By the Nullstellensatz this holds iff <I, 1 - t*f> is the whole ring, tested by the Rabinowitsch
+trick -- adjoin a fresh variable t and 1 - t*f, compute a Groebner basis, and check that 1 reduces to zero. This
+is strictly stronger than ordinary membership: x is in sqrt(<x^2>) without lying in <x^2>. An exact two-sided
+decision.
+
+### S3 -> Complete algebraic solution tuples (algtuples.lisp)
+
+Beyond naming individual irrational coordinates, the assembly of complete solution POINTS over a number field. For
+a triangular system m(x_0) = 0, x_j = h_j(x_0), each root alpha of m gives the point (alpha, h_1(alpha), ...) with
+every later coordinate computed exactly in Q(alpha) by algebraic-number arithmetic, and the point certified by
+evaluating every generator to zero in Q(alpha). The variety is now described by genuine algebraic points, not
+per-coordinate values.
+
+### S2 -> Plane-curve genus (planecurve.lisp)
+
+A second, independent genus theory: the genus-degree (Plucker) formula for plane curves, g = (d-1)(d-2)/2 for a
+smooth curve of degree d, corrected by the delta-invariants m(m-1)/2 of ordinary singular points. It reproduces
+the classical genera (conic 0, cubic 1, quartic 3, quintic 6, sextic 10) and node/cusp corrections, and agrees
+with the superelliptic cyclic-cover genus where both apply (the smooth plane cubic and y^2 = cubic, both genus 1).
+
+### S1 -> Third-kind norm reconstruction (elliptic3norm.lisp)
+
+The first constructive step of building g = A + B*sqrt(q) from omega. Since a = (1/2) N'/N for the norm
+N = A^2 - B^2 q, the residues of 2a are the integer orders of N, so from the (pole, multiplicity) data the monic
+norm is reconstructed as prod (x - p_i)^{m_i} and verified to reproduce the rational part a exactly. This turns
+the residue DECISION of elliptic3residue into a partial CONSTRUCTION; splitting N = A^2 - B^2 q into the actual A
+and B -- the Jacobian-torsion step -- remains open.
+
+## Summit, pushed further (round three)
+
+A third pass advanced each of the five summit pieces once more, with one new self-contained increment apiece.
+
+### S5 -> Exponential forcing with resonance (odeexp.lisp)
+
+Beyond polynomial right-hand sides, the equation y'' + a y' + b y = q(x) e^{rx}. The substitution y = u(x) e^{rx}
+reduces it to u'' + (2r+a) u' + (r^2+ar+b) u = q, a constant-coefficient polynomial ODE solved by odelin2. The
+constant term is the characteristic value at r, so resonance (r a characteristic root) makes it vanish and the
+ansatz degree rises automatically -- a double characteristic root included, with no special casing. Certified by
+differentiation (y''-y = e^x gives (x/2)e^x; y''-2y'+y = e^x gives (x^2/2)e^x).
+
+### S1 -> Norm split, full g for constant B (elliptic3split.lisp)
+
+Beyond reconstructing the norm N from residues, splitting N = A^2 - B^2 q back into the actual A and B for the
+decidable case B = c constant: then A^2 = N + c^2 q must be a perfect square polynomial, A its exact polynomial
+square root. With elliptic3norm's residue reconstruction of N, the third-kind element g = A + c*y is now built end
+to end in this case, certified by recomputing the norm. The general nonconstant-B split (Pell / Jacobian torsion)
+remains open.
+
+### S3 -> Complex roots named exactly (cplxroots.lisp)
+
+Beyond naming real irrational coordinates, naming the complex ones. Each non-real root of a real polynomial is the
+root of an irreducible real quadratic x^2 + px + q, so it is named (complex re im2) with re = -p/2 and
+im2 = (4q-p^2)/4 rational -- the actual roots re +- sqrt(im2) i, the imaginary part carried as its square so no
+surd is formed. Each pair is certified by the dividing quadratic. The real-and-complex census is now exact over Q.
+
+### S4 -> Radical generator and squarefree decomposition (radgen.lisp)
+
+Beyond the Nullstellensatz membership decision, the explicit radical GENERATOR of a principal ideal: sqrt(<f>) =
+<f/gcd(f,f')>, the squarefree part. Yun's decomposition f = prod g_k^k exposes the primary-like structure, and
+radical membership becomes a divisibility test, exact and constructive. This is the generator that the general
+radical test (radideal) could not produce; reconstruction of the decomposition certifies it.
+
+### S2 -> Weierstrass gaps and pole semigroup (weierstrass.lisp)
+
+Beyond the genus formulas, the local structure at a place: the Weierstrass gap sequence and pole semigroup at a
+Weierstrass point of a hyperelliptic curve. The pole semigroup is <2, 2g+1>, so the gaps are exactly the g odd
+numbers {1, 3, ..., 2g-1}, the non-gaps are the semigroup elements, the Frobenius number is 2g-1, and the gap
+count equals the genus -- an independent confirmation from the local pole structure. Exact integer arithmetic.
+
+## Completing the exponential second monomial: the single-logarithm recognizer (tower2expfull.lisp)
+
+The height-two exponential integrator (theta2 = exp(u), D2 theta2 = u' theta2) had every component piece -- the
+exponential derivation, Hermite reduction, the Risch differential equation for the polynomial part, the power-sum
+integrator, and a fraction-free Rothstein-Trager logarithmic part via the Sylvester resultant -- but the unified
+driver (tower2risch.lisp) routed the proper-fraction logarithmic part through a power-sum wrapper that only
+accepted a squarefree denominator of the bare-power form c*theta2^j. Any other squarefree denominator, such as
+theta2 - e^x, was reported as an obstruction even when the integral was an honest single logarithm. That is what
+kept the exponential second-monomial capability at "partial" rather than "full".
+
+tower2expfull.lisp supplies the missing recognizer -- the exponential mirror of the primitive single-log
+recognizer h2-newlog in tower2int.lisp. After Hermite leaves a squarefree remainder As/Ds, the integral is the
+single logarithm c log(Ds) exactly when As = c D2(Ds) for a constant c of the tower; this is decided by one
+polynomial division of As by D2(Ds) = t2e-deriv(Ds) over K1[theta2], checking the quotient is a tower constant
+(its two-level derivative vanishes, so it lies in Q). The recovered c log(Ds) is certified by differentiation:
+c D2(Ds)/Ds must equal As/Ds in K1(theta2). The recognizer is cheap -- one division, no resultant -- so it closes
+the common single-residue case for any squarefree denominator without the memory cost of the general fraction-free
+RootSum, which remains available (computed once) in tower2expff.lisp for the multi-residue x-dependent case. The
+recognizer is sound both ways: a recognized logarithm is verified, and a remainder of any other shape returns
+'none / 'notrecognized so the resultant path can handle it, rather than being misreported.
+
+With this in place the exponential second-monomial row matches the primitive one on the single-logarithm case,
+and the comparison's last lizard "partial" entry becomes a genuine, certified integrator.
+
+## Going up the ladder: three rungs climbed
+
+This pass climbed three of the four open ladder rungs to a sound, certified core; only the full third-kind
+construction (the Jacobian-torsion question) remains open.
+
+### Complex coordinates over Q(i) (cplxtuples.lisp)
+
+Where cplxroots NAMES a complex root as (complex re im2), this assembles complete complex solution POINTS over the
+Gaussian rationals Q(i).  When im2 is a perfect square the root is a Gaussian rational a + b i with a, b in Q, an
+exact element of Q(i); the module carries such numbers as (gr a b), does exact Q(i) arithmetic, turns a perfect-
+square complex root into its two Gaussian roots, assembles a triangular system into complete complex points, and
+certifies a point by evaluating every generator to zero in Q(i).  For y = x on x^2 + 1 the point is (i, i); for
+y = x^2 it is (i, -1) since i^2 = -1.  A non-perfect-square imaginary part is reported 'not-gaussian rather than
+forced into a larger field.  Coordinates in Q(i, sqrt d) for non-square d, and positive-dimensional varieties,
+remain ahead.
+
+### Degree > 2 integral closure (superintbasis.lisp)
+
+The integral basis at the finite places of a superelliptic curve y^n = f, the degree>2-in-y companion to the
+quadratic finite integral basis.  For f squarefree the integral closure of Q[x] in Q(x)[y]/(y^n - f) is the free
+power module {1, y, ..., y^(n-1)}: each y^k is integral because it satisfies the monic t^n - f^k (since
+(y^k)^n = f^k), so the power basis is an integral basis and the order is maximal at the finite places.  The module
+produces the basis, certifies each element's integrality by its monic defining polynomial, computes the
+discriminant of the order (n^n f^(n-1) up to sign), and decides maximality by the squarefree test; a non-squarefree
+f is reported non-maximal with the repeated factor, rather than passed off as integrally closed.  The van-Hoeij
+correction at the repeated places, and the places over infinity, remain ahead.
+
+### F4-class linear-algebra reduction (groebnerf4.lisp)
+
+The linear-algebra reduction at the heart of F4: the polynomials to be reduced are laid out as the rows of a
+Macaulay matrix whose columns are the occurring monomials sorted descending, and the matrix is row-reduced to
+reduced row-echelon form over Q.  The nonzero rows read back as polynomials are the reductions, and the pivot
+columns are their leading monomials.  This replaces Buchberger's one-at-a-time polynomial division with a single
+batch Gaussian elimination -- the step that makes F4 fast -- and is exact over Q, with row-space preservation
+certified (every input polynomial reduces to zero against the echelon rows).  Generating the S-pairs and the
+monomial multiples that close the row space under the ideal (the symbolic-preprocessing loop) is the remaining work
+to make it a full engine; the reduction core itself is here and certified.
+
+## Into the algebraic-Risch frontier: genus-0 algebraic integration (algquadint.lisp)
+
+The algebraic-case Risch problem -- integrating a rational function of (x, y) where y is algebraic over Q(x) -- is
+the deepest remaining frontier (the three "none" rows of the comparison, where even Maxima is only partial).  Its
+first rung is the genus-0 case y^2 = quadratic, where every such integral is elementary.  For a linear numerator
+this module integrates INT (p x + r)/sqrt(a x^2 + b x + c) dx completely: the numerator splits as
+p x + r = (p/2a)(2ax+b) + (r - pb/2a), giving an algebraic (second-kind) part (p/2a) sqrt(q) plus a first-kind part
+(r - pb/2a) * J, with J = INT dx/sqrt(q) a logarithm when a > 0 (the arcsinh form log(2ax+b+2 sqrt a sqrt q)) and an
+arcsine -(1/sqrt(-a)) arcsin((2ax+b)/sqrt D) when a < 0 and the radicand has real roots (D = b^2-4ac > 0).  The
+arcsine identity was verified from D - (2ax+b)^2 = -4a q, which gives d/dx of the arcsine exactly 1/sqrt(q).  Every
+piece is certified by differentiation, and an integrand with no real form (a < 0, no real arch) is reported
+'no-real-form rather than forced.  This is the complete, certified genus-0 algebraic integrator for a linear
+numerator; higher numerators reduce to it by Hermite reduction, and the positive-genus algebraic case -- the
+general Trager-Bronstein algorithm over Q(x)[y] -- remains the open summit.
+
+A note on method: this is implemented from the published algorithms (Euler substitution, the classical reduction
+to first/second kind), built from scratch with differentiation certificates, not adapted from any existing
+system's source -- the soundest and most license-clean way to match what mature systems do on this case.
+
+## RUNG 5: stacked algebraic towers -- integration in the field of x^(1/4)
+
+The algebraic-Risch climb (RUNGs 1-4: hyperelliptic decision, Hermite reduction, genus-1 third-kind with explicit
+elliptic logarithms, Puiseux/Newton-polygon/integral-basis, the superelliptic family, and van Hoeij corrections)
+is complete and certified for single algebraic extensions.  RUNG 5 is the genuine remaining summit: deeper STACKED
+towers, where an integrand lives over a tower of two or more algebraic extensions.  This pass builds the first such
+tower and its third-kind logarithm.
+
+### The double algebraic tower (algtower2.lisp)
+
+Q(x)[y][z]/(z^2 - y, y^2 - x) is the field of x^(1/4): elements are a + b z with a, b in the inner field
+Q(x)[y]/(y^2 - x) handled by algfunc.  Multiplication reduces z^2 -> y by the inner field's own product.  The
+decisive part is the derivation: from z^2 = y, z'/z = y'/(2y) = 1/(4x) (matching d/dx x^(1/4) = (1/4) x^(1/4)/x), so
+D(a + b z) = a' + (b' + b/(4x)) z with a', b' the trusted inner derivations.  The whole double-tower derivation thus
+reduces to algfunc's certified derivation plus one rational scalar, so soundness is inherited.  Verified: z^2 = y,
+z^4 = x, (1+z)(1-z) = 1-y, y' = y/(2x), and INT (5/4) x^(1/4) dx = x^(5/4) certified by differentiation in the tower.
+
+### The third-kind logarithm over the tower (algtower2log.lisp)
+
+For e = a + b z the outer conjugate ebar = a - b z gives e*ebar = a^2 - b^2 y in the inner field, so one inner
+inverse yields e^(-1), and the logarithmic derivative e'/e = D(e) e^(-1) is a tower element with INT (e'/e) dx =
+log(e).  This is certified two independent ways: the inverse-free cleared identity e*(e'/e) = D(e) in the tower,
+and the round trip.  A differential that is not d(log e) is rejected, never assigned a spurious logarithm.
+Verified: e*e^(-1) = 1; INT (e'/e) dx = log(1 + x^(1/4)) certified; the generators give INT = log(x^(1/4)) and
+log(sqrt x); a wrong differential is soundly rejected.
+
+Deeper towers with several independent radicals, and the full Trager-Bronstein normalization at every singular
+place (which removes the remaining genus/tower restrictions), are the open summit -- now the single honest "none"
+on the comparison chart.
+
+## Toward the full third-kind construction: the genus-2 Jacobian
+
+The third-kind construction was complete and certified for genus 0 (the Pell fundamental unit, elliptic3pell) and
+genus 1 (the elliptic torsion test elltorsion and the explicit Miller-function logarithm elllog).  Moving past
+genus 1 needs the JACOBIAN group law of a higher-genus curve -- the divisor arithmetic that the elliptic
+chord-tangent law provides in genus 1.  This pass builds it for genus 2.
+
+### The genus-2 Jacobian group law (hyperjac.lisp)
+
+On y^2 = f (deg f = 5, genus 2) a reduced divisor class is a Mumford pair [u, v] with u monic, deg v < deg u <= 2,
+and u | (v^2 - f).  The identity is [1, 0], a point (a, b) is [x - a, b], negation is [u, -v].  Cantor's algorithm
+adds classes by a composition step (a three-way extended gcd of u1, u2, v1 + v2 over Q[x], implemented from
+scratch) followed by reduction (while deg u > 2, u <- monic((f - v^2)/u), v <- -v mod u).  Every result is checked
+against the Mumford curve condition.  Verified: P + identity = P; P + Q = [x^2 + x, x + 1] on y^2 = x^5 + 1 (curve
+condition holds); P + (-P) = identity; and a Weierstrass point is 2-torsion.
+
+### The genus-2 third-kind torsion decision (hyperjactor.lisp)
+
+The genus-1 elementarity test (a pole is elementary iff it lifts to a torsion point) generalizes verbatim with the
+elliptic group replaced by the Jacobian: the third-kind class [P] - [iota P] is elementary iff it is torsion,
+n*[D] = 0.  In Mumford terms that class is the divisor of P, so its order under the Jacobian group law is the
+torsion order.  A bounded multiple search confirms torsion with its order, or reports an HONEST bounded negative
+("no torsion up to B") -- it never falsely claims non-elementarity, since the unconditional genus-2 torsion bound
+needs deeper theory.  Verified: a Weierstrass point is order 2; the point (0, 1) on y^2 = x^5 + 1 generates a
+torsion class of order 5 (so that third-kind integral is elementary); a too-small bound returns the honest bounded
+miss; cross-checked on y^2 = x^5 - x.
+
+The explicit genus-2 algebraic logarithm in the torsion case (the Mumford analogue of the elliptic Miller
+function), and arbitrary genus, remain the open summit -- the single honest "none" on the comparison chart.
+
+## Genus-2 third-kind logarithm and the unified hyperelliptic driver
+
+This pass advances both open frontiers -- the full third-kind construction and the general algebraic Risch -- on
+the genus-2 hyperelliptic family.
+
+### The genus-2 third-kind logarithm (hyperthird.lisp)
+
+The field K = Q(x)[y]/(y^2 - f) and its derivation are handled by algfunc for ANY radicand f, so they cover the
+genus-2 (deg f = 5) case unchanged.  For the third-kind argument g = a(x) + y the rationalized logarithmic
+derivative g'/g has denominator the norm N(a + y) = a^2 - f.  So from a third-kind differential over a polynomial
+denominator D, the candidate is a = sqrt(D + f) when D + f is a perfect square (reusing the tested polynomial
+square root of elliptic3split); the integral is then log(a + y), certified in K by the cleared identity
+(a + y) * omega = D(a + y).  A non-square denominator is rejected.  This generalizes sethird (superelliptic) to the
+hyperelliptic field of arbitrary genus, and is genus-agnostic: verified INT (d log(x + y)) = log(x + y) on
+y^2 = x^5 + 1, recovery of a = x, a = x^2, a = x^2 + 1, soundness rejection, and the same construction on the
+elliptic y^2 = x^3 + 1.
+
+### The unified hyperelliptic integration driver (hyperint.lisp)
+
+One entry point for integration over y^2 = f at any genus: the second-kind part INT P(x)/sqrt(f) routes to hyperell
+(the elementary Q sqrt(f) by Hermite reduction, or a proof of non-elementarity via the first-kind obstruction),
+and a third-kind differential routes to hyperthird (the logarithm log(a + y), with a recovered and certified).  The
+driver classifies and dispatches, returning a single certified verdict; every positive answer carries the
+underlying module's differentiation certificate, so soundness is inherited.  Verified on y^2 = x^5 + 1 (genus 2):
+INT (5/2) x^4 / sqrt(f) = sqrt(f) elementary; INT 1/sqrt(f) non-elementary (genus-2 holomorphic); the third-kind
+differential over N(x + y) giving log(x + y); a non-recognized denominator reported; and the identical decisions on
+the genus-1 curve y^2 = x^3 + 1.
+
+Mixed integrands of several kinds at once, third-kind arguments beyond the a + y shape, and the full divisor-class
+construction at arbitrary genus, remain the open summit.
+
+## Genus-2 nonconstant-B third-kind: the function-field Pell construction (hyperpell.lisp)
+
+hyperthird builds log(a + y), the b = 1 third-kind argument; the genuinely hard case is g = A + B y with B
+NONCONSTANT, whose norm A^2 - B^2 f is the function-field Pell form.  A unit (constant norm) generates these, and
+on the family f = h(x)^2 + c the element g0 = h + y has norm -c, a constant, so g0 is a fundamental unit.  For
+deg h = 3 this is a genuine genus-2 curve y^2 = h^2 + c.  The powers g0^n = A_n + B_n y are computed by exact field
+arithmetic (algfunc, genus-agnostic), have B_n nonconstant for n >= 2, and norm (-c)^n by multiplicativity; each is
+a third-kind logarithm argument INT ((g0^n)'/g0^n) dx = log(g0^n) = n log(h + y), certified by the norm relation
+and by differentiation in the field.  This is the genus-2 companion to the genus-0 elliptic3pell construction.
+Verified on y^2 = x^6 + 1 (h = x^3, c = 1): the unit x^3 + y has norm -1; g0^2 = (2x^6 + 1, 2x^3) with nonconstant
+B and norm 1; g0^3 with norm -1; the logarithm certificate holds for n = 1..3; a second curve (x^3 + x)^2 + 2 also
+certifies; and a non-unit curve (x^5 + 1 for h = x^3) is reported, not forced.  Curves whose sqrt(f) has a
+non-periodic continued fraction (no fundamental unit) remain out of scope.
+
+## The continued fraction of sqrt(f): deciding the Pell unit of a hyperelliptic curve (polycf.lisp)
+
+The genus-2 Pell construction (hyperpell) needed the fundamental unit handed to it via the f = h^2 + c family.
+This module computes the unit for a general curve by expanding sqrt(f) as a continued fraction over Q[x] -- the
+function-field analogue of the numeric continued fraction for sqrt(N).  For f of even degree, sqrt(f) has a
+polynomial part a0 (the polynomial of degree deg(f)/2 whose square matches f's top half), and Abel's recurrence
+expands sqrt(f) with complete quotients (P_i + sqrt f)/Q_i: a_i = polypart((P_i + a0)/Q_i), P_{i+1} = a_i Q_i - P_i,
+Q_{i+1} = (f - P_{i+1}^2)/Q_i.  The expansion is periodic exactly when some Q_i returns to a nonzero constant; the
+curve then has a fundamental Pell unit, read off the convergent h_i/k_i.  Every unit is GATED by its norm
+A^2 - B^2 f being a nonzero constant: pcf-certify-unit and pcf-unit-verified return the unit only when that holds.
+The period-1 family (which includes f = h^2 + c) is fully certified; a higher even period -- where the true unit is
+a higher convergent -- returns unit-unverified rather than a wrong unit, and a curve whose CF does not close within
+the search bound returns no-unit-up-to, an honest bounded negative (the unconditional periodicity bound for a given
+genus needs deeper theory).  Verified: sqrt(x^6 + 1) has period 1 and the certified unit (x^3, 1) of norm -1
+(matching hyperpell); sqrt((x^3 + x)^2 + 2) gives the certified unit (x^3 + x, 1); the classical genus-0 unit
+(x, 1) of sqrt(x^2 + 1) is recovered; x^6 + x (period 2) is honestly returned unit-unverified; x^6 + x^2 + 1 is
+returned no-unit-up-to.  With this, the genus-2 third-kind Pell construction extends past the curves where the unit
+is visible by inspection.

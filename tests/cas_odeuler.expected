@@ -1,0 +1,9 @@
+(-1 0 1)
+4 two-real
+(1 -1)
+#t #t #f
+(two-real-exponents (1 -1))
+0 -1 #t
+(repeated-exponent-with-log -1)
+complex
+((algebraic (-2 0 1) (-3 0)) (algebraic (-2 0 1) (0 3)))

@@ -1,0 +1,4 @@
+(logs (((1) (1))))
+#t
+(logs (((3) (1)) ((5) (1))))
+no-log-decomposition

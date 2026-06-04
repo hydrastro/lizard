@@ -1,0 +1,6 @@
+(import "cas/planecurve.lisp")
+(display (pc-smooth-genus 2)) (display " ") (display (pc-smooth-genus 3)) (display " ") (display (pc-smooth-genus 4)) (display " ") (display (pc-smooth-genus 5)) (display " ") (display (pc-smooth-genus 6)) (newline)
+(display (pc-delta 2)) (display " ") (display (pc-delta 3)) (newline)
+(display (pc-genus 3 (list 2))) (display " ") (display (pc-is-rational? 3 (list 2))) (newline)
+(display (pc-genus 4 (list 2 2 2))) (display " ") (display (pc-genus 4 (list 2))) (newline)
+(display (pc-agrees-superelliptic-cubic?)) (newline)

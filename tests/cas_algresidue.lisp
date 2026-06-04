@@ -1,0 +1,7 @@
+(import "cas/algresidue.lisp")
+(define p3 (list 1 0 0 1))
+(display (car (ar-integrate-1oversqrt (rat-zero) (rat-make (list 1) p3) p3))) (display " ")
+(display (car (ar-integrate-1oversqrt (rat-zero) (rat-make (list 0 0 3) (poly-mul (list 2) p3)) p3))) (newline)
+(display (car (ar-classify (rat-zero) (rat-make (list 1) (poly-mul (list -2 1) p3)) p3))) (display " ")
+(display (car (ar-classify (rat-make (list 1) (list -2 1)) (rat-zero) p3))) (display " ")
+(display (car (ar-classify (rat-zero) (rat-make (list 1) (poly-mul (poly-mul (list -2 1) (list -2 1)) p3)) p3))) (newline)

@@ -1,0 +1,7 @@
+(import "cas/intbasis.lisp")
+(define F1 (list (list 0 0 0 0 -1) (list) (list) (list 1)))
+(display (ib-local-basis-at0 F1 3 4)) (display " ") (display (ib-delta-at0 (ib-local-basis-at0 F1 3 4))) (newline)
+(define F2 (list (list 0 0 -1 -1) (list) (list 1)))
+(display (ib-local-basis-at0 F2 3 5)) (newline)
+(define F3 (list (list -1 0 0 -1) (list) (list 1)))
+(display (ib-local-basis-at0 F3 2 4)) (newline)

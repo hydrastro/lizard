@@ -1,0 +1,8 @@
+(import "cas/rischratmonolog.lisp")
+(define r2 (ratmonolog-poly-integrate (list 0 0 1)))
+(display (ratmonolog-poly-certify (list 0 0 1) (car (cdr r2)))) (newline)
+(define r3 (ratmonolog-poly-integrate (list 0 0 0 1)))
+(display (ratmonolog-poly-certify (list 0 0 0 1) (car (cdr r3)))) (newline)
+(display (car (ratmonolog-decide (quote ()) (list 1)))) (newline)
+(display (car (ratmonolog-decide (quote ()) (list 0 1)))) (newline)
+(display (car (ratmonolog-decide (list 0 1) (quote ())))) (newline)

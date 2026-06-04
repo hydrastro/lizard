@@ -1,0 +1,9 @@
+#t
+#f
+#t
+(elementary E_1)
+(non-elementary rde-tail-nonterminating)
+(non-elementary rde-tail-nonterminating)
+(elementary E_n)
+((0 integrate (0 1)) (1 rde (1) (1)))
+elementary

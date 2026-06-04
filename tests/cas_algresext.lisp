@@ -1,0 +1,8 @@
+(import "cas/algresext.lisp")
+(define s1 (list (list (quote exp) (rat-one))))
+(define spec (list (quote exp) (rat-one)))
+(define (verify P V) (axr-verify s1 spec P V (axr-logpart s1 spec P V)))
+(display (verify (list (rat-zero) (rat-scale 2 (rat-one))) (list (rat-one) (rat-zero) (rat-one)))) (display " ")
+(display (verify (list (rat-one) (rat-one)) (list (rat-scale -2 (rat-one)) (rat-zero) (rat-one)))) (newline)
+(display (verify (list (rat-zero) (rat-zero) (rat-scale 3 (rat-one))) (list (rat-scale -2 (rat-one)) (rat-zero) (rat-zero) (rat-one)))) (newline)
+(display (car (axr-integrate-logpart s1 (list (rat-zero) (rat-scale 2 (rat-one))) (list (rat-neg (rat-one)) (rat-zero) (rat-one))))) (newline)

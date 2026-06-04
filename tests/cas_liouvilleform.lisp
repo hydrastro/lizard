@@ -1,0 +1,8 @@
+(import "cas/liouvilleform.lisp")
+(display (lf-form (list 1) (list -1 0 1) (list 1 -1))) (newline)
+(display (lf-antiderivative-form (list 1) (list -1 0 1) (list 1 -1))) (newline)
+(display (lf-certify (list 1) (list -1 0 1) (list 1 -1))) (newline)
+(display (lf-residues (list 0 2) (list -1 0 1) (list 1 -1))) (newline)
+(display (lf-certify (list 0 2) (list -1 0 1) (list 1 -1))) (newline)
+(display (lf-residues (list 1) (list 6 -5 1) (list 2 3))) (newline)
+(display (lf-certify (list 1) (list 6 -5 1) (list 2 3))) (newline)

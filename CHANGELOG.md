@@ -1,3 +1,67 @@
+# CAS frontier — the continued fraction of sqrt(f): deciding a hyperelliptic curve's Pell unit
+
+- Added `lib/cas/polycf.lisp`: the continued fraction of sqrt(f) over Q[x] (Abel's algorithm), with periodicity detection and the fundamental-unit convergent -- the function-field analogue of the numeric CF for sqrt(N). Computes polypart(sqrt f) by coefficient matching, iterates the complete-quotient recurrence, detects periodicity (Q returns to a constant), and reads the fundamental Pell unit off the convergent. Every unit is gated by its norm A^2-B^2 f being a nonzero constant (pcf-certify-unit, pcf-unit-verified): the period-1 family (incl. f=h^2+c) is fully certified; higher even periods return unit-unverified (never a wrong unit); curves not closing within the bound return no-unit-up-to (honest bounded negative). Verified the certified units of x^6+1 (x^3,1 norm -1), (x^3+x)^2+2, the genus-0 x^2+1, and the honest deferrals for x^6+x (period 2) and x^6+x^2+1 (aperiodic in bound). This lets the genus-2 third-kind Pell construction work for curves where the unit is not visible by inspection.
+- Fixed a convergent-indexing bug found during testing (the fundamental unit uses the first L quotients a_0..a_{L-1}, not the period-closing quotient); caught because the unit norm was non-constant, then verified against hyperpell.
+- Added example 383 and golden cas_polycf with full coverage including the soundness deferrals.
+- Updated the comparison with one new capability row.
+- Zero regressions across the Pell, third-kind, algebraic, and continued-fraction chains; every positive result certified.
+
+# CAS frontier — genus-2 nonconstant-B third-kind via the function-field Pell unit
+
+- Added `lib/cas/hyperpell.lisp`: the genus-2 nonconstant-B third-kind construction. On the family f = h^2 + c the element g0 = h + y is a fundamental unit (constant norm -c); its powers g0^n = A_n + B_n y have B_n nonconstant (n>=2) and norm (-c)^n, each a third-kind logarithm argument INT ((g0^n)'/g0^n) = log(g0^n), certified by the norm relation AND by differentiation in the field (algfunc, genus-agnostic). For deg h = 3 these are genuine genus-2 curves. Verified on y^2=x^6+1 (unit x^3+y, norm -1; g0^2=(2x^6+1,2x^3); g0^3), a second curve (x^3+x)^2+2, and a non-unit rejection. This is the genus-2 companion to the genus-0 elliptic3pell construction, completing the third-kind construction past the a+y shape at genus 2.
+- Added example 382 and golden cas_hyperpell with full coverage including the soundness control.
+- Updated the comparison (one new genus-2 row) and the Trager ladder (the open third-kind rung now records nonconstant-B at genus 2 via the Pell unit; arbitrary genus / non-periodic sqrt(f) remain).
+- Zero regressions across the third-kind, algebraic, and hyperelliptic chains; every positive result certified.
+
+# CAS frontier — genus-2 third-kind logarithm + unified hyperelliptic integration driver
+
+- Added `lib/cas/hyperthird.lisp`: the genus-2 (and general hyperelliptic) third-kind logarithm INT (g'/g) dx = log(g) for g = a(x)+y on y^2=f. Reuses algfunc (genus-agnostic field/derivation) and the tested esp-poly-sqrt; recovers a from the differential's denominator via the norm a^2-f, certifies by the cleared identity (a+y)*omega = D(a+y). Verified on y^2=x^5+1 (a=x, x^2, x^2+1), soundness rejection, and the genus-1 cross-check. Generalizes sethird to arbitrary-genus hyperelliptic. Advances the full third-kind construction into genus 2.
+- Added `lib/cas/hyperint.lisp`: the unified hyperelliptic integration driver -- one entry point that dispatches the second-kind (hyperell: elementary Q sqrt(f) or first-kind non-elementarity proof) and third-kind (hyperthird: logarithm) cases over y^2=f at any genus, returning a single certified verdict. Verified second-kind elementary + non-elementary, third-kind logarithm, honest non-recognition, and identical decisions across genus 1 and 2. Advances the general algebraic Risch for the hyperelliptic family.
+- During development, caught a bug in a from-scratch polynomial square root (failed on arguments with intermediate terms) and fixed it by reusing the already-tested esp-poly-sqrt rather than duplicating the algorithm.
+- Added examples 380-381 and goldens with full coverage including soundness controls.
+- Updated the comparison (two new genus-2 rows) and the Trager ladder (the open third-kind rung now records the explicit genus-2 logarithm; arguments beyond a+y and arbitrary genus remain).
+- Zero regressions across the algebraic, third-kind, and hyperelliptic chains; every positive result certified.
+
+# CAS third-kind frontier — the genus-2 Jacobian: group law + torsion-based elementarity decision
+
+- Added `lib/cas/hyperjac.lisp`: the Jacobian group law of a genus-2 hyperelliptic curve y^2=f (deg 5) by Mumford representation and Cantor's algorithm (composition + reduction over Q[x], with a from-scratch extended gcd). The identity [1,0], points [x-a,b], negation [u,-v], addition, doubling, scalar multiples; every result certified by the Mumford curve condition u | (v^2-f). Verified P+0=P, P+Q=[x^2+x,x+1] on y^2=x^5+1, P+(-P)=0, and Weierstrass 2-torsion.
+- Added `lib/cas/hyperjactor.lisp`: the genus-2 third-kind torsion decision -- the genus-2 analogue of the elliptic order test. The class [P]-[iota P] is elementary iff torsion; computed as the order of P under the Jacobian group law by bounded search, reporting (torsion n) or an HONEST (no-torsion-up-to B) -- never a false non-elementary claim. Verified a Weierstrass point is order 2, (0,1) on y^2=x^5+1 is order 5 (elementary), the soundness bounded-miss, and a cross-check on y^2=x^5-x.
+- Added examples 378-379 and goldens with full coverage including the soundness controls.
+- Updated the comparison and the Trager ladder: two new genus-2 capability rows; the open third-kind rung now records genus-2 progress (group law + torsion decision done; explicit genus-2 logarithm and arbitrary genus remain).
+- Zero regressions across the third-kind, algebraic, and RUNG-5 chains; every positive result certified.
+
+# CAS RUNG 5 — stacked algebraic towers: the field of x^(1/4) and its third-kind logarithm
+
+- Added `lib/cas/algtower2.lisp`: a tower of two algebraic extensions Q(x)[y][z]/(z^2-y, y^2-x), the field of x^(1/4). Element arithmetic (z^2->y reduction) and the certified derivation D(a+bz) = a' + (b' + b/(4x))z, reducing soundly to algfunc's inner derivation plus the scalar z'/z = 1/(4x). Verified z^2=y, z^4=x, y'=y/(2x), and INT (5/4)x^(1/4) = x^(5/4) by differentiation in the tower.
+- Added `lib/cas/algtower2log.lisp`: the field inverse (via the outer conjugate, one inner inverse) and the third-kind logarithm INT (e'/e) dx = log(e), certified by the inverse-free cleared identity e*(e'/e) = D(e). Verified log(1+x^(1/4)), log(x^(1/4)), log(sqrt x), with sound rejection of non-logarithmic differentials.
+- Added examples 376-377 and goldens with full coverage including soundness controls.
+- Corrected the comparison chart: the algebraic-Risch frontier (previously a single stale 'none') is now split into the nine certified sub-capabilities actually built (hyperelliptic decision, algebraic Hermite, genus-1 elliptic logs, Puiseux/integral basis, superelliptic family, van Hoeij, mixed towers, the double tower), leaving exactly ONE honest 'none' row: general algebraic Risch at arbitrary genus/tower, the open summit. The two height-two 'none' rows are corrected to 'part' (single-residue cases certified; only the general multi-residue x-dependent case is memory-bound).
+- Zero regressions across the algebraic and RUNG-5 chains; every positive result certified by differentiation.
+
+# CAS frontier — genus-0 algebraic integration (first rung of the algebraic-case Risch problem)
+
+- Added `lib/cas/algquadint.lisp`: the genus-0 algebraic integral INT (px+r)/sqrt(ax^2+bx+c) dx, the first rung of the algebraic-case Risch frontier (where lizard was at 'none' and even Maxima only 'part'). The linear numerator splits into a certified algebraic (second-kind) part (p/2a) sqrt(q) plus a first-kind part: a logarithm (arcsinh form) when a>0, an arcsine when a<0 with the radicand having real roots. Every closed form certified by differentiation; integrands with no real form reported 'no-real-form. The arcsine condition (a<0 AND discriminant>0, argument (2ax+b)/sqrt D) was derived and verified via D-(2ax+b)^2 = -4a q.
+- Added example 374 and golden cas_algquadint with full coverage (log case, pure-algebraic case, mixed case, two arcsine cases, and the honest no-real-form control).
+- Implemented from the published algorithms (Euler substitution, classical first/second-kind reduction) from scratch with certificates -- not adapted from any GPL source.
+- Zero regressions across the elliptic, hyperelliptic, Hermite, and rational-integration chains.
+
+# CAS ladder — three rungs climbed: complex tuples, superelliptic integral basis, F4 reduction
+
+- Added `lib/cas/cplxtuples.lisp`: complete complex solution tuples over the Gaussian rationals Q(i). Gaussian-rational arithmetic (gr-), perfect-square detection turning a (complex re im2) into its two Q(i) roots, triangular-system assembly into complete complex points, certified by evaluating every generator to zero in Q(i). Non-rational imaginary parts reported 'not-gaussian. Climbs the complex-coordinates ladder rung.
+- Added `lib/cas/superintbasis.lisp`: the integral basis at the finite places of a superelliptic curve y^n = f. For squarefree f the certified power basis {1, y, ..., y^(n-1)}, each element integral via its monic defining polynomial t^n - f^k, with discriminant n^n f^(n-1) and maximality decided by the squarefree test; non-squarefree f reported non-maximal with the repeated factor. Climbs the degree>2 integral-closure ladder rung.
+- Added `lib/cas/groebnerf4.lisp`: the linear-algebra reduction at the heart of F4. A Macaulay matrix (columns = monomials sorted descending, rows = polynomials) is row-reduced to RREF over Q; the nonzero rows read back are the reductions, pivot columns the leading monomials. Exact over Q, with row-space preservation certified. Climbs the F4-class-engine ladder rung.
+- Added examples 371-373 and their goldens with full coverage including honest-deferral controls.
+- Updated the three infographics: the Trager ladder now shows a single remaining open rung (the full third-kind / Jacobian-torsion construction), with the three climbed rungs at summit; the comparison and roadmap reflect the new certified capabilities.
+- Zero regressions across the Groebner, superelliptic, and complex chains; every positive result certified.
+
+# CAS summit — exponential single-logarithm completion + open-source surface
+
+- Added `lib/cas/tower2expfull.lisp`: the exponential single-logarithm recognizer that completes the proper-fraction branch of the height-two exponential integrator. A squarefree remainder As/Ds is recognized as the single logarithm c·log(Ds) exactly when As = c·D2(Ds) for a tower constant c, found by one polynomial division over K1[theta2] (no Sylvester resultant) and certified by differentiation. This closes the case the unified driver's power-sum wrapper previously rejected whenever the denominator was squarefree but not a bare power theta2^j (e.g. theta2 - e^x), promoting the exponential second-monomial capability from partial to a genuine integrator on the single-log case. The multi-residue x-dependent RootSum continues to route through the dedicated fraction-free resultant integrator (`tower2expff.lisp`) to avoid memory blow-up.
+- Added `examples/370-exponential-single-log.lisp` and `tests/cas_tower2expfull.expected` with full coverage including the honest-deferral control (`notrecognized`).
+- Added `CONTRIBUTING.md` documenting the build/test commands, library-module structure, the per-feature workflow (verify-first, additive-safety grep, module + example + golden + docs), and the certificate-and-honest-scope discipline.
+- Corrected stale counts in `README.md` (now 271 library modules, ~26,000 lines of Lisp, 371 examples) and fixed a dead documentation link (`docs/ROADMAP.md` -> the actual `docs/MASTER_PLAN.md` and `docs/TRAGER_ROADMAP.md`); added a `CONTRIBUTING.md` pointer.
+- Zero regressions across the height-two tower and the CAS chains; every positive result remains certified by differentiation.
+
 # Phase 3F — tokenizer source wrapper + explicit GC metadata classification
 
 - Fixed `lizard_tokenize_source` link failure by implementing the tokenizer-source wrapper declared in `tokenizer.h`.

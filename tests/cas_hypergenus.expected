@@ -1,0 +1,6 @@
+3 3 4
+#t
+(non-elementary (hyperelliptic-genus 3))
+non-elementary
+(non-elementary (hyperelliptic-genus 4))
+split
