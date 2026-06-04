@@ -4194,3 +4194,33 @@ The honesty here is the point: sin(x)/x has no elementary antiderivative, and th
 antiderivative engine proves the Dirichlet value -- it proves it by the method that actually works, names which
 steps are certified by which arbiter, and keeps the elementary FTC case (defint) and the non-elementary parameter-
 integral case (dirichlet) clearly distinct.
+
+## A simpler proving UX: axiom mode (axmode.lisp)
+
+For casual use, axiom mode lets a user state axioms once and then ask, for any statement, whether it is proven,
+disproven, or independent -- without re-stating the axioms.  An axiom environment is a database of Horn clauses
+(facts and rules) over the engine of logic.lisp.  ax-assume adds a fact, ax-assume-rule a rule, ax-assume-not a
+negative axiom.  ax-check returns a three-valued verdict: proven (the goal is derivable), disproven (its negation is
+derivable -- negative axioms are stored explicitly, so a disproof is never inferred from mere absence), or
+independent (neither, the honest open-world "don't know").  A set proving both a statement and its negation is
+flagged inconsistent rather than silently resolved.  From {human(socrates), mortal(X):-human(X)} the mode proves
+mortal(socrates), leaves mortal(zeus) independent, and -- once (not (mortal zeus)) is added -- disproves
+mortal(zeus); transitive-closure rules resolve multi-step ancestry.  Everything reduces to the trusted query
+engine, so the verdicts are exactly the engine's; the mode only adds the environment, the explicit-negation
+convention, and the three-valued report.  This is the flexible front end: load axioms, then check anything against
+them.
+
+## Pushing the frontier harder: the ramified-place integral element (ramplace.lisp)
+
+The multi-branch node correction (vanhoeijmb.lisp) handled a place where several branches meet but each is an
+ordinary power series.  The harder case is a RAMIFIED place, where the branch is a Puiseux series in a fractional
+power -- a cusp.  At x = a with (x-a)^m || f, the valuations on y^2 = f are v(x-a) = 2 and v(y) = m, so for m >= 2
+the element w = y/(x-a)^{floor(m/2)} is integral (its valuation m mod 2 >= 0) and generates the local integral
+closure.  Integrality is exact and certified by the monic minimal polynomial: w^2 = f/(x-a)^{2 floor(m/2)} is a
+polynomial.  For the cusp y^2 = x^3 the element is y/x with w^2 = x (the place is ramified, m odd); for y^2 = x^5 it
+is y/x^2 with w^2 = x; for the even multiplicity y^2 = x^2 the place SPLITS and w = y/x is a unit with w^2 = 1; a
+point that is not a root of f is unramified-regular with no new element.  The module computes the multiplicity, the
+two valuations, the element, the certificate, and the place classification (ramified / split / unramified-regular)
+-- the local Riemann-Hurwitz data.  This is a single ramified place of the quadratic cover, by exact polynomial
+division; the general-degree ramification (a Puiseux cycle of length e | n in a degree-n cover) remains ahead, with
+the soundness boundary explicit.

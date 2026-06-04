@@ -400,3 +400,5 @@
 (example "387-multibranch-integral-element.lisp" :expect pass)
 (example "388-definite-integral-theorems.lisp" :expect pass)
 (example "389-sinc-dirichlet-theorem.lisp" :expect pass)
+(example "390-axiom-mode.lisp" :expect pass)
+(example "391-ramified-place-element.lisp" :expect pass)
