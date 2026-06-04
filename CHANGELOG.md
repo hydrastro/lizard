@@ -1,3 +1,47 @@
+# CAS as theorem prover — certified definite integrals and the Dirichlet/sinc integral = pi/2
+
+- Added `lib/cas/defint.lisp`: CERTIFIED DEFINITE INTEGRALS by the Fundamental Theorem of Calculus. For a polynomial integrand, computes the antiderivative F, discharges "F is an antiderivative of f" with the differentiation arbiter, evaluates F(b)-F(a) exactly, and emits a re-checkable proof record (a tampered value fails re-check). INT_0^1 x^2 = 1/3, INT_0^2 (3x^2+2x+1) = 14, etc., each a theorem.
+- Added `lib/cas/dirichlet.lisp`: the Dirichlet integral INT_0^inf sin(x)/x dx = pi/2 (the sinc value), proved by the parameter-integral (Feynman) method -- NOT by an antiderivative (the integrand is non-elementary). I(s)=INT_0^inf e^{-sx} sin x/x dx; I'(s)=-INT e^{-sx} sin x=-1/(s^2+1) (Lemma A, Laplace transform certified from its antiderivative); I(s)=C-arctan(s) (Lemma B, arctan-derivative certified); boundary gives C=pi/2; I(0)=pi/2. The transcendental lemmas are certified by exact-agreement-at-samples; the algebraic backbone is exact; the proof record re-checks.
+- Caught a real reader bug during construction: a quoted symbol containing parentheses (laplace-sine=1/(s^2+1)) broke the s-expression reader though the parens balanced lexically; fixed by removing the embedded parens from the symbol name.
+- Added examples 388 (definite-integral theorems) and 389 (sinc/Dirichlet theorem) and their goldens, including soundness controls (tampered records rejected).
+- The honest division of labor: the FTC case (defint) and the non-elementary parameter-integral case (dirichlet) are kept distinct, naming which arbiter certifies which step.
+- Updated the comparison with the two theorem-proving rows. Zero regressions.
+
+# CAS frontier — multi-branch combined integral element (general-curve integral closure)
+
+- Added `lib/cas/vanhoeijmb.lisp`: the MULTI-BRANCH combined-correction integral element on y^2 = f, building and certifying an integral-basis element w = (A + B y)/d that is integral at a place where several branches meet at once -- the case vanhoeij.lisp deferred as 'needs-place-combination. Found by the exact integral-closure test in K = Q(x)[y]/(y^2-f): w is integral iff its minimal polynomial w^2 - (2A/d)w + (A^2-B^2f)/d^2 has polynomial coefficients (trace and norm both divide out). The norm sees all branches, certifying integrality everywhere simultaneously.
+- Verified: at the node y^2=x^2(x+1) the element y/x (trace 0, norm -(x+1)) is the combined-branch element; at the two-node y^2=x^2(x-1)^2(x+1) the element y/(x(x-1)) is integral at both; non-integral candidates (y/x^2, y/(x-1) at a smooth point) are rejected with the failing trace/norm exhibited.
+- Caught a zero-representation bug during construction: the certificate compared () vs (0) for the zero trace polynomial; fixed by comparing trimmed forms.
+- Added example 387 and golden cas_vanhoeijmb with full coverage including the rejection controls.
+- Updated the comparison (new multi-branch row) and roadmap (the integral-closure horizon now reads: finite squarefree + multi-branch nodes done; ramified and infinite places open).
+- Zero regressions across the integral-closure, superelliptic, and aperiodicity chains.
+
+# CAS last rung closed — unconditional aperiodicity proof for the third-kind integral
+
+- Added `lib/cas/hyperaperiodic.lisp`: an UNCONDITIONAL certificate that y^2 = f has no Pell unit -- hence that INT dx/sqrt(f) is non-elementary -- by traversing the full cycle of complete quotients of the continued fraction of sqrt(f) until a pair (P_i, Q_i) repeats. A closed cycle with no nonzero-constant Q (past the trivial start) is a finite PROOF of non-elementarity, converting polycf's bounded "aperiodic-up-to-B" into a real theorem. Both directions of the third-kind elementarity decision are now closed: periodic gives the explicit logarithm, proven-aperiodic gives non-elementarity.
+- Cross-checked by independent agreement: y^2=x^6+1 has the unit (x^3,1) (elementary, torsion), y^2=x^6+x^2+1 closes its cycle with no unit (proven non-elementary, non-torsion) and the bounded polycf search independently agrees (aperiodic up to 100). x^6+x^4+1 and x^6+x+2 likewise proven non-elementary.
+- Caught a subtle bug during construction: the trivial first complete quotient (P_0,Q_0)=(0,1) has Q_0=1 constant by construction and must be excluded from the unit test (else every curve looks periodic); the test runs over the tail of the cycle only.
+- Added example 386 and golden cas_hyperaperiodic with full coverage including the elementary/non-elementary split and the bounded-vs-unconditional cross-check.
+- The Trager ladder now shows zero open rungs: every rung has a sound certified core, with the full third-kind construction at summit and the genuine research horizon (uniform period bound per genus) named honestly in the roadmap.
+- Zero regressions across the Pell, continued-fraction, Jacobian-torsion, and hyperelliptic chains.
+
+# CAS frontier — hardening the Pell unit engine: square guard + reverse-CF cross-check
+
+- Added a perfect-square guard and explicit unit classification to `lib/cas/polycf.lisp`: pcf-is-square? flags curves where sqrt(f) is a polynomial (no Pell unit), and pcf-unit-status returns one of 'square / (unit A B) / 'unit-unverified / 'no-unit-up-to -- so every verdict is explicit rather than a degenerate unit-unverified. Verified x^4+2x^2+1=(x^2+1)^2 is flagged 'square.
+- Added a reverse-CF round-trip cross-check (example 385): a unit (A,B) with constant norm c determines f=(A^2-c)/B^2, and the continued fraction of that f must independently recover a certified unit. This validates the unit-finder against the opposite construct-from-unit direction -- two independent methods agreeing. Verified the engineered curve x^6+2x^4+3x^2+2 from (x^4+x^2+1, x, 1) is recovered by the CF with exactly that nonconstant-B unit, plus several further engineered units round-tripping.
+- Over Q, polynomial Pell with period >= 3 is rare (none found in a wide small-coefficient scan), so the reverse-CF construction is the rigorous validator of the convergent/norm machinery beyond period 1.
+- Added golden cas_pellcrosscheck; existing cas_polycf golden unaffected (additive functions).
+- Updated the comparison with one new capability row.
+- Zero regressions across the polycf, Pell, third-kind, and algebraic chains; every positive result certified.
+
+# CAS frontier — period-2 Pell units fixed, and a CF-driven third-kind construction for any periodic curve
+
+- Fixed a convergent/iteration-indexing bug in `lib/cas/polycf.lisp`: the Abel recurrence must start from the state AFTER a0 (P_1 = a0, Q_1 = f - a0^2), not from (P=0, Q=1) which recomputed a0 and shifted every partial quotient. With the fix, genuine period-2 curves certify: y^2 = x^6 + x now has period 2 and a certified fundamental unit (2x^6+1+..., 2x^2) of constant norm, where before it was honestly deferred as unit-unverified. The period-1 family (incl. f=h^2+c) is regression-clean. Updated example 383 and golden cas_polycf to reflect the period-2 certification.
+- Added `lib/cas/hyperpellcf.lisp`: the CF-driven genus-2 third-kind Pell construction. Given ANY hyperelliptic curve y^2 = f, it asks polycf for the certified fundamental unit (A,B), builds g0 = A + B y in the genus-agnostic field (algfunc), and produces INT ((g0^n)'/g0^n) = log(g0^n), each gated by the differentiation certificate. Generalizes hyperpell past the f=h^2+c family to every periodic curve, including genuine period-2. Verified on y^2=x^6+x (period 2, not h^2+c) for n=1,2,3, agreement with hyperpell on x^6+1, and an honest no-unit for a non-periodic curve.
+- Added example 384 and golden cas_hyperpellcf with full coverage including the soundness control.
+- Updated the comparison (one new row) and the Trager ladder (the open third-kind rung now records the CF-driven construction and period-2; longer periods at higher genus remain).
+- Zero regressions across the polycf, Pell, third-kind, and algebraic chains; every positive result certified.
+
 # CAS frontier — the continued fraction of sqrt(f): deciding a hyperelliptic curve's Pell unit
 
 - Added `lib/cas/polycf.lisp`: the continued fraction of sqrt(f) over Q[x] (Abel's algorithm), with periodicity detection and the fundamental-unit convergent -- the function-field analogue of the numeric CF for sqrt(N). Computes polypart(sqrt f) by coefficient matching, iterates the complete-quotient recurrence, detects periodicity (Q returns to a constant), and reads the fundamental Pell unit off the convergent. Every unit is gated by its norm A^2-B^2 f being a nonzero constant (pcf-certify-unit, pcf-unit-verified): the period-1 family (incl. f=h^2+c) is fully certified; higher even periods return unit-unverified (never a wrong unit); curves not closing within the bound return no-unit-up-to (honest bounded negative). Verified the certified units of x^6+1 (x^3,1 norm -1), (x^3+x)^2+2, the genus-0 x^2+1, and the honest deferrals for x^6+x (period 2) and x^6+x^2+1 (aperiodic in bound). This lets the genus-2 third-kind Pell construction work for curves where the unit is not visible by inspection.

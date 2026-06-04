@@ -1,0 +1,10 @@
+(has-unit 3)
+elementary
+#t
+(proven-no-unit 3)
+#t
+#f
+non-elementary
+#f
+non-elementary
+non-elementary

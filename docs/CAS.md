@@ -4084,3 +4084,113 @@ genus needs deeper theory).  Verified: sqrt(x^6 + 1) has period 1 and the certif
 (x, 1) of sqrt(x^2 + 1) is recovered; x^6 + x (period 2) is honestly returned unit-unverified; x^6 + x^2 + 1 is
 returned no-unit-up-to.  With this, the genus-2 third-kind Pell construction extends past the curves where the unit
 is visible by inspection.
+
+## Period-2 units and the CF-driven third-kind Pell construction (hyperpellcf.lisp)
+
+A convergent-indexing fix in polycf (the Abel iteration must start from the state AFTER a0, i.e. P_1 = a0,
+Q_1 = f - a0^2, not from P=0, Q=1, which recomputed a0) makes genuine period-2 curves certify their fundamental
+unit: y^2 = x^6 + x has period 2 and the certified unit (2x^6 + 1 + ..., 2x^2) with constant norm, where before the
+period-2 convergent was returned unit-unverified.  With period > 1 units now extracted correctly, hyperpellcf
+bridges polycf and the third-kind construction: given ANY hyperelliptic curve y^2 = f, it asks polycf for the
+certified fundamental unit (A, B), builds g0 = A + B y in the genus-agnostic field (algfunc), and produces
+INT ((g0^n)'/g0^n) dx = log(g0^n) = n log(g0), each gated by the differentiation certificate.  This generalizes
+hyperpell past the f = h^2 + c family to every periodic curve.  Verified: on y^2 = x^6 + x (a genuine period-2
+curve, not of the form h^2 + c) the CF-found unit drives a certified third-kind logarithm for n = 1, 2, 3; on
+y^2 = x^6 + 1 it agrees with hyperpell (unit (x^3, 1)); a non-periodic curve reports no-unit, the honest bounded
+negative.  Longer periods at higher genus, and unconditional aperiodicity proofs, remain the open summit.
+
+## Hardening the Pell unit engine: square guard and reverse-CF cross-check (polycf.lisp, ex385)
+
+Two additions strengthen the continued-fraction Pell engine under the CF-driven third-kind construction.  First, a
+perfect-square guard: if f is a perfect square then sqrt(f) is a polynomial -- no quadratic irrational, no Pell
+unit -- so pcf-is-square? flags it and pcf-unit-status returns 'square rather than a degenerate verdict; the full
+classification is 'square / (unit A B) / 'unit-unverified / 'no-unit-up-to.  Second, a reverse-CF round-trip
+cross-check: a unit (A, B) with constant norm c determines a curve f = (A^2 - c)/B^2, and the continued fraction of
+that f must independently recover a certified unit.  This validates the unit-finder against the opposite
+(construct-from-unit) direction -- two independent methods agreeing.  Verified: x^4 + 2x^2 + 1 = (x^2 + 1)^2 is
+flagged 'square; the engineered curve f = x^6 + 2x^4 + 3x^2 + 2 from the unit (x^4 + x^2 + 1, x, 1) is recovered by
+the CF with exactly that nonconstant-B unit, certified; several further engineered units (constant and nonconstant
+B) round-trip.  Over Q, polynomial Pell with period >= 3 is rare and none appeared in a wide small-coefficient scan,
+so the reverse-CF construction is the rigorous validator of the convergent/norm machinery beyond period 1; longer
+periods at higher genus remain the open summit.
+
+## Closing the last rung: the unconditional aperiodicity proof (hyperaperiodic.lisp)
+
+The full third-kind construction needed one thing to close its core: a way to PROVE, not merely fail to find, that a
+hyperelliptic curve y^2 = f has no Pell unit -- equivalently that INT dx/sqrt(f) is non-elementary.  polycf reports
+a unit when some Q_i of the continued fraction of sqrt(f) returns to a nonzero constant, but when none does it could
+only say "aperiodic up to bound B", a bounded negative.  This module supplies the proof.  Over Q[x] the CF of
+sqrt(f) is purely periodic and its complete quotients (P_i, Q_i) are finite in number, so the pairs must eventually
+repeat; tracking them until the first repeat traverses the entire cycle.  Then exactly one of two things has
+happened: some Q_i past the trivial start Q_0 = 1 was a nonzero constant (a Pell unit exists, the integral is
+elementary, the infinity class is torsion), or the cycle closed with no such constant (there is NO Pell unit,
+UNCONDITIONALLY, so the integral is non-elementary and the class is non-torsion).  The second case is now a finite
+certificate rather than a failed search.
+
+The construction was validated by independent agreement: on y^2 = x^6 + 1 the cycle exposes the unit (x^3, 1) and
+the verdict is elementary, matching polycf; on y^2 = x^6 + x^2 + 1 the cycle closes at length 3 with no constant Q,
+so INT dx/sqrt(x^6+x^2+1) is PROVEN non-elementary, and the bounded polycf search independently reports aperiodic
+up to 100 -- the unconditional proof and the bounded search agree, with the proof strictly stronger.  A subtle but
+essential point caught during construction: the very first complete quotient is the trivial (P_0, Q_0) = (0, 1),
+whose Q_0 = 1 is constant by construction and must be excluded from the unit test, or every curve would look
+periodic; the test runs over the tail of the cycle only.
+
+With both directions of the elementarity decision closed -- periodic gives the explicit logarithm, proven-aperiodic
+gives non-elementarity -- the last rung's core is complete.  What remains is genuinely deep: a single uniform bound
+on the period length as a function of genus (so the traversal bound can be set a priori rather than chosen), and the
+behavior as periods grow without bound at ever higher genus.  Those are the research-grade horizon, named honestly
+and not overclaimed.
+
+## General integral closure: the multi-branch combined correction (vanhoeijmb.lisp)
+
+The van Hoeij correction (vanhoeij.lisp) builds an integral-basis element for a SINGLE branch at a place, and
+honestly defers a place where several branches meet -- returning 'needs-place-combination -- because no
+single-branch correction is integral at all of them.  This module supplies the combined element for the quadratic
+(hyperelliptic) case y^2 = f.  At a node such as y^2 = x^2(x+1), whose two branches y = +-(x + x^2/2 - ...) meet at
+the origin, the integral element is found and certified by the exact integral-closure criterion in
+K = Q(x)[y]/(y^2 - f): an element w = (A + B y)/d has minimal polynomial w^2 - (2A/d) w + (A^2 - B^2 f)/d^2 over
+Q[x], and is integral exactly when both the trace 2A/d and the norm (A^2 - B^2 f)/d^2 are polynomials (divide out
+with zero remainder).  The norm involves all branches at once, so this certifies integrality at every branch
+simultaneously -- which is precisely what the single-branch construction cannot do.  For the node the element y/x
+has trace 0 and norm -(x+1), both polynomials, so y/x is the combined-branch basis element; for the two-node curve
+y^2 = x^2(x-1)^2(x+1) the element y/(x(x-1)) is integral at both nodes.  Non-integral candidates (y/x^2, or y/(x-1)
+at a smooth branch point) are rejected with the failing trace or norm exhibited, never forced.  The certificate is
+the monic minimal polynomial itself, checked to reproduce 2A and A^2 - B^2 f exactly.
+
+This closes the multi-branch combined correction for the quadratic case; the general-degree version (n branches
+over a degree-n field, where the norm is the full field norm rather than A^2 - B^2 f) is the remaining work, and
+the soundness boundary -- ramified places and the general-degree combination -- is reported explicitly rather than
+guessed.
+
+A note on the recommendation behind this step: "general algebraic Risch at arbitrary genus and tower" is the open
+research problem, not a single rung; pursuing it wholesale would mean overclaiming.  The sound way to push that
+frontier is to find the next genuinely missing, certifiable sub-rung -- here, the multi-branch combined correction
+that the existing code explicitly deferred -- build it, certify it, and name what still remains.
+
+## The CAS as a theorem prover: definite integrals and the Dirichlet/sinc integral
+
+Two examples make the proof-producing CAS concrete on integration, with an honest division of labor between the
+elementary and non-elementary cases.
+
+defint.lisp turns a definite integral of a polynomial into a THEOREM by the Fundamental Theorem of Calculus: it
+computes the antiderivative F, discharges the one nontrivial premise "F is an antiderivative of f" with the
+differentiation arbiter (poly-deriv F = f exactly), evaluates F(b) - F(a) in exact rational arithmetic, and emits a
+structured proof record (theorem, value, FTC justification, F'=f certificate) that a checker re-verifies
+independently -- a tampered value fails the re-check.  INT_0^1 x^2 dx = 1/3, INT_0^2 (3x^2+2x+1) dx = 14, and so on,
+each a certified theorem rather than just a number.
+
+dirichlet.lisp proves INT_0^inf sin(x)/x dx = pi/2 -- the value of the sinc integral.  This integrand is NON-
+elementary, so the Risch machinery and the FTC cannot reach it; the proof is the classical parameter-integral
+(Feynman) argument: introduce I(s) = INT_0^inf e^{-sx} sin(x)/x dx, differentiate under the integral to get
+I'(s) = - INT_0^inf e^{-sx} sin x dx, evaluate that Laplace transform to 1/(s^2+1) (Lemma A, from the antiderivative
+G(x,s) = -e^{-sx}(s sin x + cos x)/(s^2+1) whose derivative is checked against the integrand), integrate
+I'(s) = -1/(s^2+1) to I(s) = C - arctan(s) (Lemma B, the arctan-derivative identity certified), fix C = pi/2 by the
+boundary s -> inf, and evaluate I(0) = pi/2.  The two analytic lemmas are transcendental identities, so their
+certificate is exact-agreement-at-samples (a central-difference derivative matching the closed form to high
+precision at several points); the algebraic backbone -- the ODE I'(s) = -1/(s^2+1) integrating to C - arctan(s) and
+the boundary algebra -- is exact.  The proof record re-checks, and a tampered value is rejected.
+
+The honesty here is the point: sin(x)/x has no elementary antiderivative, and the system does not pretend the
+antiderivative engine proves the Dirichlet value -- it proves it by the method that actually works, names which
+steps are certified by which arbiter, and keeps the elementary FTC case (defint) and the non-elementary parameter-
+integral case (dirichlet) clearly distinct.

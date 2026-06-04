@@ -87,20 +87,25 @@
 (define (pcf-step-fin f P Q a Pn) (list a Pn (car (poly-divmod (poly-sub f (poly-mul Pn Pn)) Q))))
 
 ; ----- the quotient list up to the period (Q constant) or bound B -----
-(define (pcf-quotients f B) (pcf-q-go f (list 0) (list 1) (list (pcf-polypart f)) 1 B))
+; the iteration advances a_1, a_2, ... from the state AFTER a_0: P_1 = a_0, Q_1 = (f - a_0^2)/Q_0 = f - a_0^2.
+(define (pcf-quotients f B) (pcf-q-start f (pcf-polypart f) B))
+(define (pcf-q-start f a0 B) (pcf-q-go f a0 (poly-sub f (poly-mul a0 a0)) (list a0) 1 B))
 (define (pcf-q-go f P Q acc i B)
-  (if (> i B) (reverse acc)
-      (pcf-q-dispatch f (pcf-step f P Q) acc i B)))
+  (if (pcf-const? Q) (reverse acc)                             ; Q already constant (period 1: a0 alone)
+      (if (> i B) (reverse acc)
+          (pcf-q-dispatch f (pcf-step f P Q) acc i B))))
 (define (pcf-q-dispatch f st acc i B)
-  (if (pcf-const? (pcf-nth st 2))                              ; Qnext constant -> period reached, include a then stop
+  (if (pcf-const? (pcf-nth st 2))                              ; Qnext constant -> period reached, include this a then stop
       (reverse (cons (car st) acc))
       (pcf-q-go f (pcf-nth st 1) (pcf-nth st 2) (cons (car st) acc) (+ i 1) B)))
 
-; ----- period length: number of steps until Q becomes constant (counting a0 as step 0) -----
-(define (pcf-period f B) (pcf-per-go f (list 0) (list 1) 0 B))
+; ----- period length: number of steps until Q becomes constant (a0 is step 0; period 1 = a0 with Q1 constant) -----
+(define (pcf-period f B) (pcf-per-start f (pcf-polypart f) B))
+(define (pcf-per-start f a0 B) (pcf-per-go f a0 (poly-sub f (poly-mul a0 a0)) 1 B))
 (define (pcf-per-go f P Q i B)
-  (if (>= i B) (list (quote aperiodic-up-to) B)
-      (pcf-per-step f (pcf-step f P Q) i B)))
+  (if (pcf-const? Q) i                                          ; Q_i constant -> period is i
+      (if (>= i B) (list (quote aperiodic-up-to) B)
+          (pcf-per-step f (pcf-step f P Q) i B))))
 (define (pcf-per-step f st i B)
   (if (pcf-const? (pcf-nth st 2)) (+ i 1)
       (pcf-per-go f (pcf-nth st 1) (pcf-nth st 2) (+ i 1) B)))
@@ -136,3 +141,16 @@
 (define (pcf-unit-verified f B) (pcf-uv-dispatch f (pcf-fundamental-unit f B) B))
 (define (pcf-uv-dispatch f u B) (if (equal? u (quote no-unit-up-to)) (quote no-unit-up-to) (pcf-uv-check f u)))
 (define (pcf-uv-check f u) (if (pcf-cert-check f (pcf-unit-norm f (car u) (car (cdr u)))) u (quote unit-unverified)))
+
+; ----- perfect-square guard and explicit unit status -----
+; a perfect-square f has sqrt(f) polynomial (no quadratic irrational, no Pell unit); flag it explicitly rather
+; than returning a degenerate unit-unverified.
+(define (pcf-is-square? f) (pcf-sq-check f (pcf-polypart f)))
+(define (pcf-sq-check f pp) (if (equal? pp (quote not-even-degree)) #f (equal? (poly-norm (poly-mul pp pp)) (poly-norm f))))
+; the full classification of a curve's Pell status within bound B:
+;   'square          : f is a perfect square (sqrt polynomial, no unit)
+;   (list 'unit A B)  : a certified fundamental unit A + B y with constant nonzero norm
+;   'unit-unverified  : periodic but the convergent did not yield a constant-norm unit (deferred)
+;   'no-unit-up-to    : aperiodic within the search bound
+(define (pcf-unit-status f B) (if (pcf-is-square? f) (quote square) (pcf-status-go f (pcf-unit-verified f B))))
+(define (pcf-status-go f u) (if (pair? u) (if (pair? (car u)) (list (quote unit) (car u) (car (cdr u))) (quote unit-unverified)) u))

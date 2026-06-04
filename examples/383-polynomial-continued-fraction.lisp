@@ -37,10 +37,16 @@
 
 (display "soundness: a curve whose sqrt(f) is not periodic within the bound is reported, not forced:") (newline)
 (must "y^2 = x^6 + x^2 + 1 returns no-unit-up-to (aperiodic in bound)" (equal? (pcf-unit-verified (list 1 0 1 0 0 0 1) 30) (quote no-unit-up-to)))
-(must "a higher-period curve y^2 = x^6 + x returns unit-unverified, never a wrong unit" (equal? (pcf-unit-verified (list 0 1 0 0 0 0 1) 30) (quote unit-unverified)))
+
+(display "and a genuine PERIOD-2 curve y^2 = x^6 + x now certifies its fundamental unit:") (newline)
+(must "sqrt(x^6 + x) has period 2" (= (pcf-period (list 0 1 0 0 0 0 1) 30) 2))
+(must "its period-2 unit certifies (constant norm)" (pcf-certify-unit (list 0 1 0 0 0 0 1) 30))
+(define u3 (pcf-unit-verified (list 0 1 0 0 0 0 1) 30))
+(display "  the verified period-2 unit (A, B): ") (display (list (poly-norm (car u3)) (poly-norm (car (cdr u3))))) (newline)
+(must "the unit norm A^2 - B^2 f is a constant" (= (pcf-len (poly-norm (pcf-unit-norm (list 0 1 0 0 0 0 1) (car u3) (car (cdr u3))))) 1))
 
 (newline)
 (display "The continued-fraction engine for sqrt(f) now decides periodicity and produces the fundamental Pell unit,") (newline)
 (display "certified by its constant norm -- so the genus-2 third-kind Pell construction works for curves where the") (newline)
-(display "unit is not visible by inspection, not only the f = h^2 + c family.  Higher even periods (where the true") (newline)
-(display "unit is a higher convergent) and unconditional aperiodicity proofs remain the open summit.") (newline)
+(display "unit is not visible by inspection, including genuine period-2 curves, not only the f = h^2 + c family.") (newline)
+(display "Longer periods at higher genus, and unconditional aperiodicity proofs, remain the open summit.") (newline)
