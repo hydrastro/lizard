@@ -1,5 +1,0 @@
-((0 1) (1))
-((1 -1) (1))
-(non-elementary nonterminating-tail)
-(non-elementary E2-nonterminating-tail)
-(solvable ())

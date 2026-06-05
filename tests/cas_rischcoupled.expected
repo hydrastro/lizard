@@ -1,5 +1,0 @@
-(non-elementary tail)
-#t
-(solvable (((0 -1) (1)) ((0 1) (1))))
-#t
-#t

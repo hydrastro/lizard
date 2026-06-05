@@ -1,8 +1,0 @@
-(import "cas/liouville.lisp")
-(display (lv-decide (list 0 1) (list 0 0 1))) (newline)
-(display (lv-decide (list 0 1) (list 0 1))) (newline)
-(display (lv-decide (list 0 0 1) (list 0 0 0 1))) (newline)
-(display (lv-decide (list 1) (list 0 0 1))) (newline)
-(display (lv-decide (list 1) (list 0 0 0 1))) (newline)
-(display (lv-decide (list 0 1) (list 0 0 0 1))) (newline)
-(display (lv-decide-exp-over-x)) (newline)
