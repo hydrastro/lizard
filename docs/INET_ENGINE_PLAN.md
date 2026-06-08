@@ -377,15 +377,20 @@ and pointing the system's actual evaluation path at `kt_normalize_auto` rather
 than calling `kt_whnf` directly — at which point flipping the gate makes the net
 the default.
 
-**Status (Phase 17, foundation).** Parallelism rests on the net being *strongly
-confluent* — reducing independent active pairs in any order gives the same
-result. `tests/ic_confluence_test.c` checks this empirically and in a strong
-form: reduced LIFO versus FIFO (`ic_set_reduce_fifo`), a term reaches not only the
-same normal form but the same *interaction count*, across recursion, arithmetic,
-and DUP-sharing (54 terms). With order-independence pinned, the remaining step is
-the actual multithreaded reducer — atomic port operations or a work queue over
-the frontier of active pairs — which is the Bend-style payoff and deliberately
-last.
+**Status (Phase 17, in progress).** Two pieces are in place. First, confluence:
+`tests/ic_confluence_test.c` shows that reducing LIFO versus FIFO
+(`ic_set_reduce_fifo`) gives the same normal form in the same *interaction count*
+across recursion, arithmetic, and DUP-sharing (54 terms) — the order-independence
+parallel scheduling needs. Second, a wavefront reducer (`ic_set_reduce_rounds`)
+fires each generation of disjoint active pairs as one batch and reports the
+parallel depth (rounds) and peak width (`tests/ic_parallel_test.c`); since the
+work (interaction count) is unchanged, work/depth is the available parallelism —
+branching recursion is highly parallel (`fib 18`: ~389 average, peak frontier
+2266), while tail recursion stays sequential (`gcd`: 1.0). This is a faithful
+single-threaded *model* of the parallel schedule. The remaining step is the
+actual multithreaded reducer — atomic operations on ports and a thread-safe arena
+so independent active pairs reduce on real cores — which is the Bend/HVM-style
+payoff and deliberately last.
 
 
 ## 7. Honest list of the hard parts
@@ -492,16 +497,21 @@ last.
                                               result types, and routing the system's main eval
                                               path through kt_normalize_auto (then the gate makes
                                               the net the default).
-  17  parallel reduction              FOUNDATION src/ic.c (ic_set_reduce_fifo), tests/
-                                              ic_confluence_test.c: interaction nets are strongly
-                                              confluent, so a term reduced LIFO and FIFO reaches
-                                              the same normal form in the SAME interaction count --
-                                              checked over recursion, arithmetic, and DUP-sharing
-                                              (54 terms).  That order-independence is the property
-                                              parallel scheduling relies on; the actual
-                                              multithreaded reducer (atomic port ops / a work
-                                              queue over independent active pairs) is the
-                                              remaining Bend-style step.  `make ic-confluence`.
+  17  parallel reduction              PROGRESS src/ic.c (ic_set_reduce_fifo / ic_set_reduce_rounds),
+                                              tests/ic_confluence_test.c + ic_parallel_test.c.
+                                              (a) Strong confluence: LIFO and FIFO reach the same
+                                              normal form in the SAME interaction count (54 terms)
+                                              -- the order-independence parallel scheduling needs.
+                                              (b) Wavefront reduction reduces each generation of
+                                              disjoint active pairs as one batch and reports parallel
+                                              DEPTH (rounds) and peak WIDTH; work is unchanged, so
+                                              work/depth is the available parallelism -- branching
+                                              recursion is highly parallel (fib 18: ~389 avg, peak
+                                              2266), tail recursion is sequential (gcd: 1.0).  Checked
+                                              against sequential reduction.  `make ic-confluence`,
+                                              `make ic-parallel`.  Remaining: the real multithreaded
+                                              reducer (atomic port ops over the frontier; thread-safe
+                                              arena) -- the Bend/HVM-style payoff.
 ```
 
 The throughline: lizard already has every separate piece — a combinator runtime,

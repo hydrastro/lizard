@@ -42,6 +42,10 @@ tests/net_eval_test.c    net-evaluator checks (net result == kernel) + auto-disp
 tests/ic_confluence_test.c  phase 17 (foundation): LIFO vs FIFO reduction agree on result AND
                          interaction count (strong confluence -> parallel scheduling is sound);
                          `make ic-confluence`
+tests/ic_parallel_test.c    phase 17 (beyond): wavefront reduction (ic_set_reduce_rounds) reduces
+                         each generation of disjoint active pairs at once and reports parallel
+                         depth/width -- branching recursion is highly parallel, tail recursion is
+                         sequential; validated vs sequential.  `make ic-parallel`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

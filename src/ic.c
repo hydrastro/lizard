@@ -105,9 +105,26 @@ static int g_reduce_fifo = 0;
 static int g_rdx_head = 0;
 void ic_set_reduce_fifo(int on) { g_reduce_fifo = on ? 1 : 0; }
 
+/* Wavefront (parallel-rounds) reduction.  All active pairs present at a given
+ * moment are mutually DISJOINT — a node has one principal port, so it lies in at
+ * most one active pair — hence an entire frontier can be reduced "at once"
+ * without interference, which is precisely what a multicore engine does.  This
+ * mode reduces generation by generation and records the number of rounds (the
+ * parallel DEPTH) and the largest frontier (the peak WIDTH); the interaction
+ * count (the WORK) is unchanged.  work/depth is the average available
+ * parallelism.  Single-threaded here — a faithful model of the parallel
+ * schedule; the actual multithreaded reducer is the remaining Phase 17 step. */
+static int  g_reduce_rounds = 0;
+static long g_rounds = 0;
+static long g_max_frontier = 0;
+void ic_set_reduce_rounds(int on)   { g_reduce_rounds = on ? 1 : 0; }
+long ic_reduce_rounds(void)         { return g_rounds; }
+long ic_reduce_max_frontier(void)   { return g_max_frontier; }
+
 static void ic_reset(void) {
   g_nnode = 0; g_nfree = 0; g_nvar = 0; g_nnum = 0;
   g_nrdx = 0; g_inter = 0; g_oom = 0; g_rdx_head = 0;
+  g_rounds = 0; g_max_frontier = 0;
 }
 
 static int new_node(int tag, int lab) {
@@ -455,6 +472,19 @@ static void interact(Port a, Port b) {
 }
 
 static void reduce(void) {
+  if (g_reduce_rounds) {                 /* wavefront schedule: one frontier per round */
+    long start = 0;
+    while (start < (long)g_nrdx && !g_oom && g_inter < STEP_LIMIT) {
+      long end = (long)g_nrdx;           /* snapshot the disjoint active pairs */
+      long i, w = end - start;
+      if (w > g_max_frontier) g_max_frontier = w;
+      g_rounds++;
+      for (i = start; i < end && !g_oom && g_inter < STEP_LIMIT; i++)
+        interact(g_ra[i], g_rb[i]);      /* new pairs land beyond `end` -> next round */
+      start = end;
+    }
+    return;
+  }
   while (!g_oom && g_inter < STEP_LIMIT) {
     Port a, b;
     if (g_reduce_fifo) {                 /* consume the queue front-to-back */

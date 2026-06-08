@@ -131,6 +131,15 @@ int ic_normalize_int(ic_term_t *t, mpz_t out, long *interactions);
  * are invariant (strong confluence), which tests/ic_confluence_test.c checks. */
 void ic_set_reduce_fifo(int on);
 
+/* Wavefront (parallel-rounds) reduction: reduce each generation of disjoint
+ * active pairs as one batch.  After a normalize, ic_reduce_rounds() is the
+ * parallel DEPTH and ic_reduce_max_frontier() the peak WIDTH; the interaction
+ * count (WORK) is unchanged.  work/depth = average available parallelism.
+ * (Single-threaded model of the parallel schedule.) */
+void ic_set_reduce_rounds(int on);
+long ic_reduce_rounds(void);
+long ic_reduce_max_frontier(void);
+
 /* Reduce `t` to normal form and write a textual rendering into `buf`.
  *   integers           -> decimal
  *   superpositions     -> "{a b}"  (optionally "{L: a b}" if labelled)
