@@ -2,7 +2,8 @@
  * against the TRUSTED kernel reducer kt_whnf.
  *
  * For each random term we build a CLOSED kernel term of type Bool over the
- * shared fragment {true, false, bool_rec, pair/proj, lambda/app} and:
+ * shared fragment {true, false, bool_rec, pair/proj, lambda/app, coproducts
+ * (inl/inr/sum_rec), options (just/nothing/maybe_rec)} and:
  *   - reduce it with the kernel:  kt_whnf -> KT_TRUE / KT_FALSE      (bit_kernel)
  *   - translate it to the core IR (kt_to_core), lower to a net, observe by
  *     applying the resulting Church boolean to 1 and 0, and normalise (bit_net)
@@ -63,12 +64,34 @@ static kterm_t *kif(kterm_t *c, kterm_t *tc, kterm_t *fc) {
   t->data.bool_rec.scrutinee  = c;
   return t;
 }
+static kterm_t *kinl(kterm_t *v) {
+  kterm_t *t = kmk(KT_INL); t->data.inl.value = v; t->data.inl.right_type = kmk(KT_BOOL); return t;
+}
+static kterm_t *kinr(kterm_t *v) {
+  kterm_t *t = kmk(KT_INR); t->data.inr.value = v; t->data.inr.left_type = kmk(KT_BOOL); return t;
+}
+static kterm_t *ksumrec(kterm_t *lc, kterm_t *rc, kterm_t *s) {
+  kterm_t *t = kmk(KT_SUM_REC);
+  t->data.sum_rec.motive = kmk(KT_BOOL);
+  t->data.sum_rec.left_case = lc; t->data.sum_rec.right_case = rc; t->data.sum_rec.scrutinee = s;
+  return t;
+}
+static kterm_t *kjust(kterm_t *v)   { kterm_t *t = kmk(KT_JUST); t->data.just.value = v; return t; }
+static kterm_t *knothing(void)      { return kmk(KT_NOTHING); }
+static kterm_t *kmayberec(kterm_t *nc, kterm_t *jc, kterm_t *m) {
+  kterm_t *t = kmk(KT_MAYBE_REC);
+  t->data.maybe_rec.motive = kmk(KT_BOOL);
+  t->data.maybe_rec.nothing_case = nc; t->data.maybe_rec.just_case = jc; t->data.maybe_rec.scrutinee = m;
+  return t;
+}
+/* \x:Bool. x  — the identity handler (returns the carried value) */
+static kterm_t *kidfun(void) { return kt_lam(H, "x", kmk(KT_BOOL), kt_var(H, 0)); }
 
 /* ------------------------------------------------- generator (closed Bool) - */
 typedef struct { int b[64]; int n; } BEnv;
 
 static kterm_t *genB(int depth, BEnv *e, int *bit) {
-  int choice = (depth <= 0) ? (int)rnd((unsigned int)(e->n > 0 ? 2 : 1)) : (int)rnd(6);
+  int choice = (depth <= 0) ? (int)rnd((unsigned int)(e->n > 0 ? 2 : 1)) : (int)rnd(8);
   if (choice == 1 && e->n == 0) choice = 0;     /* no variables in scope */
   switch (choice) {
     case 0: { int v = (int)rnd(2); *bit = v; return v ? kmk(KT_TRUE) : kmk(KT_FALSE); }
@@ -91,6 +114,26 @@ static kterm_t *genB(int depth, BEnv *e, int *bit) {
       kterm_t *b = genB(depth - 1, e, &bb);
       *bit = first ? ab : bb;
       return kproj(first, kpair(a, b));
+    }
+    case 5: {                                   /* eliminate a coproduct */
+      int pb, cb, left = (int)rnd(2);
+      kterm_t *payload = genB(depth - 1, e, &pb);
+      kterm_t *scrut = left ? kinl(payload) : kinr(payload);
+      cb = (int)rnd(2);                          /* constant returned by the other case */
+      /* left_case = \x.x (returns payload);  right_case = \x. <const> */
+      *bit = left ? pb : cb;
+      return ksumrec(kidfun(),
+                     kt_lam(H, "x", kmk(KT_BOOL), cb ? kmk(KT_TRUE) : kmk(KT_FALSE)),
+                     scrut);
+    }
+    case 6: {                                   /* eliminate an option */
+      int pb, nb, isjust = (int)rnd(2);
+      kterm_t *payload = genB(depth - 1, e, &pb);
+      kterm_t *m = isjust ? kjust(payload) : knothing();
+      nb = (int)rnd(2);                          /* value for the nothing case */
+      /* just_case = \x.x (returns payload);  nothing_case = <const> */
+      *bit = isjust ? pb : nb;
+      return kmayberec(nb ? kmk(KT_TRUE) : kmk(KT_FALSE), kidfun(), m);
     }
     default: {                                  /* (\x:Bool. body) arg */
       int ab, bb;
@@ -161,7 +204,7 @@ int main(int argc, char **argv) {
   if (fails)
     printf("FAIL: %ld/%ld disagreed (%ld skipped)\n", fails, iters, skips);
   else
-    printf("OK: all %ld Bool terms agree (oracle == kernel == net)%s\n",
+    printf("OK: all %ld finite-data terms agree (oracle == kernel == net)%s\n",
            iters - skips,
            skips ? " [some skipped]" : "");
   return fails ? 1 : 0;

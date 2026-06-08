@@ -231,7 +231,10 @@ What remains in this phase:
 1. **The cross-check against the kernel (Phase 13b — done).** Random closed terms
    are reduced both on the trusted kernel (`kt_whnf`) and on the net and asserted
    to agree. The bridge `src/kt_to_core.c` translates the shared fragment —
-   λ/app, Σ pairs/projections, `let`, and `Bool` via the Church encoding — from
+   λ/app, Σ pairs/projections, `let`, `Bool` via the Church encoding, and the
+   other finite (non-recursive) data: coproducts (`inl`/`inr`/`sum_rec`) and
+   options (`just`/`nothing`/`maybe_rec`), each encoded as a tagged Σ pair
+   `(tag, payload)` reusing the first-class `PAIR`/`FST`/`SND` agents — from
    the kernel's `kterm_t` into the core IR, which lowers to the net. The
    observable is a `Bool`: the kernel reduces a closed term to `true`/`false`,
    and the net evaluates the same term (translated, applied to `1` and `0`) to
@@ -355,11 +358,12 @@ local, so independent active pairs reduce concurrently. It is deliberately last
                                               negative + Sigma core + runtime frag;
                                               fuzzed vs oracle (pair/proj/let/deBruijn)
   13b cross-check vs the kernel        DONE   src/kt_to_core.{c,h}, tests/ic_kernel_diff_test.c:
-                                              random closed Bool terms reduced on the trusted
+                                              random closed terms reduced on the trusted
                                               kt_whnf AND on the net (via kt_to_core) agree with
-                                              each other and an oracle (150k+); covers beta, Σ
-                                              pairs/projections, bool_rec, bound vars.
-                                              `make ic-kernel-diff`
+                                              each other and an oracle (250k+); covers beta, Σ
+                                              pairs/projections, bool_rec, bound vars, and the
+                                              other finite data — coproducts (sum_rec) and
+                                              options (maybe_rec).  `make ic-kernel-diff`
       optimal (labelled) readback      hard   Lamping-Gonthier brackets
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders

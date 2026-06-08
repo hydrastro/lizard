@@ -7,10 +7,15 @@
  *
  * Shared fragment translated here:
  *   KT_VAR, KT_LAM (the domain annotation is dropped — the net is untyped),
- *   KT_APP, KT_PAIR, KT_PROJ1, KT_PROJ2, KT_LET, and Bool via the Church encoding
+ *   KT_APP, KT_PAIR, KT_PROJ1, KT_PROJ2, KT_LET, Bool via the Church encoding
  *     true     = \t.\f. t
  *     false    = \t.\f. f
  *     bool_rec C t f s  ==>  (s t) f
+ *   and the other finite (non-recursive) data — coproducts and options — encoded
+ *   as a tagged Sigma pair (tag, payload) with a Church-boolean tag:
+ *     inl v / inr v        ==> (true, v) / (false, v)
+ *     just v / nothing     ==> (true, v) / (false, 0)
+ *     sum_rec  / maybe_rec ==> select on (fst s), apply the case to (snd s)
  * Any term using a former outside this fragment (Nat, Id, List, cubical, ...)
  * yields NULL, and the caller skips it.  This keeps the bridge total and honest
  * rather than silently mis-encoding what the net cannot yet represent.
