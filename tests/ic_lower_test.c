@@ -83,6 +83,16 @@ static void curated(void) {
     eval(core_app(core_app(core_lam(core_lam(VAR(1))), LIT(1)), LIT(2)), &ok), 1); TEST_ASSERT(ok);
   TEST_ASSERT_EQ(
     eval(core_app(core_app(core_lam(core_lam(VAR(0))), LIT(1)), LIT(2)), &ok), 2); TEST_ASSERT(ok);
+
+  /* a pair value (not fully projected) reads back as (pair a b) */
+  {
+    char b[256]; long it = 0;
+    ic_term_t *e = ic_lower(core_pair(LIT(3), LIT(4)));
+    TEST_ASSERT(e != NULL);
+    TEST_ASSERT(e && ic_readback(e, b, sizeof b, &it) == 1);
+    TEST_ASSERT_STR(b, "(pair 3 4)");
+    if (e) ic_term_free(e);
+  }
 }
 
 /* ---- differential fuzz over the core IR -------------------------------- */
@@ -109,7 +119,7 @@ static long oop(int op, long a, long b) {
 typedef struct { long v[64]; int n; } IEnv;
 
 static core_t *genI(int depth, IEnv *e, long *val) {
-  int ch = (depth <= 0) ? rint_(e->n > 0 ? 2 : 1) : rint_(6);
+  int ch = (depth <= 0) ? rint_(e->n > 0 ? 2 : 1) : rint_(7);
   switch (ch) {
     case 0: { long n = (long)rint_(13); *val = n; return LIT(n); }
     case 1: { int j; if (e->n == 0) { long n = (long)rint_(13); *val = n; return LIT(n); }
@@ -132,6 +142,24 @@ static core_t *genI(int depth, IEnv *e, long *val) {
       *val = which ? a : b;
       return which ? core_proj1(p) : core_proj2(p);
     }
+    case 5: {  /* SHARED pair: let p = (A,B) in (op (fst p) (snd p))
+                * p is used twice -> a DUP duplicates the pair (PAIR~DUP commute),
+                * then each copy is projected.  The body is a fixed gadget that
+                * only references the new binder (de Bruijn 0), so the integer
+                * environment is untouched. */
+      long a, b, v; int op = OPS[rint_(8)];
+      core_t *A = genI(depth - 1, e, &a);     /* outer scope */
+      core_t *B = genI(depth - 1, e, &b);
+      core_t *body = core_prim(op, core_proj1(core_var(0)), core_proj2(core_var(0)));
+      if (op == IC_MUL) { double ap = (double)a * (double)b;
+        if (ap > (double)CAP || ap < -(double)CAP) op = IC_ADD;
+        body = core_prim(op, core_proj1(core_var(0)), core_proj2(core_var(0))); }
+      v = oop(op, a, b);
+      if (v > CAP || v < -CAP) { op = IC_ADD; v = a + b;
+        body = core_prim(op, core_proj1(core_var(0)), core_proj2(core_var(0))); }
+      *val = v;
+      return core_let(core_pair(A, B), body);
+    }
     default: {  /* let _ = V in B   (B may use the new integer binder) */
       long vv, bv;
       core_t *V, *B;
@@ -146,19 +174,40 @@ static core_t *genI(int depth, IEnv *e, long *val) {
   }
 }
 
+/* normalize a core term via a chosen lowering, WITHOUT consuming it. */
+static long norm_via(const core_t *t, ic_term_t *(*low)(const core_t *), int *ok) {
+  ic_term_t *e = low(t);
+  mpz_t o; long it = 0, v = 0; int st;
+  if (!e) { *ok = 0; return 0; }
+  mpz_init(o);
+  st = ic_normalize_int(e, o, &it);
+  *ok = (st == 1);
+  if (st == 1) v = mpz_get_si(o);
+  mpz_clear(o);
+  ic_term_free(e);
+  return v;
+}
+
 static int fuzz(long iters) {
   long i, fails = 0;
   for (i = 0; i < iters; i++) {
-    IEnv e; long want; int ok; long got;
+    IEnv e; long want; int okf = 0, oke = 0; long vf, ve;
+    core_t *t;
     e.n = 0;
-    got = eval(genI(5, &e, &want), &ok);   /* eval consumes the term */
-    if (!ok || got != want) {
+    t = genI(5, &e, &want);
+    vf = norm_via(t, ic_lower, &okf);           /* first-class PAIR/FST/SND   */
+    ve = norm_via(t, ic_lower_encoded, &oke);    /* Church encoding (validated) */
+    core_free(t);
+    if (!okf || !oke || vf != want || ve != want || vf != ve) {
       if (++fails <= 8)
-        printf("  fuzz FAIL [%ld]: want %ld got %ld (ok=%d)\n", i, want, got, ok);
+        printf("  fuzz FAIL [%ld]: oracle %ld  first-class %ld(ok%d)  encoded %ld(ok%d)\n",
+               i, want, vf, okf, ve, oke);
     }
   }
-  if (fails) printf("  lowering fuzz: %ld/%ld disagreed\n", fails, iters);
-  else       printf("  lowering fuzz: all %ld random core terms agree\n", iters);
+  if (fails)
+    printf("  lowering fuzz: %ld/%ld disagreed\n", fails, iters);
+  else
+    printf("  lowering fuzz: all %ld terms agree (oracle == first-class == encoded)\n", iters);
   return fails == 0;
 }
 

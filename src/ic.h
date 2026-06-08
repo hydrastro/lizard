@@ -59,7 +59,10 @@ typedef enum {
   IC_TOP,    /* (op lhs rhs)                        */
   IC_TSUP,   /* {a b}^L  — a superposition, label L */
   IC_TDUP,   /* dup^L x y = v in body  — a let-style splitter, label L */
-  IC_TERA    /* *  — the eraser as a value          */
+  IC_TERA,   /* *  — the eraser as a value          */
+  IC_TPAIR,  /* (pair a b)  — Σ introduction        */
+  IC_TFST,   /* (fst p)     — Σ first projection  π1 */
+  IC_TSND    /* (snd p)     — Σ second projection π2 */
 } ic_tkind_t;
 
 /* binary numeric operators (same codes as inet) */
@@ -91,6 +94,9 @@ ic_term_t *ic_sup(int label, ic_term_t *l, ic_term_t *r);
 ic_term_t *ic_dup(int label, const char *x, const char *y,
                   ic_term_t *value, ic_term_t *body);
 ic_term_t *ic_era(void);
+ic_term_t *ic_pair(ic_term_t *fst, ic_term_t *snd);  /* (a, b) */
+ic_term_t *ic_fst(ic_term_t *p);                     /* pi1 p  */
+ic_term_t *ic_snd(ic_term_t *p);                     /* pi2 p  */
 void ic_term_free(ic_term_t *t);
 
 /* ---- evaluation -------------------------------------------------------- */
@@ -132,9 +138,13 @@ int ic_dump_net(ic_term_t *t, char *buf, size_t cap, int reduce_first);
  *          | '(' 'dup' [':' INT] NAME NAME term term ')' ; dup x y = v in body
  *          | '{' term term '}'                   ; superposition (label 0)
  *          | '{' ':' INT term term '}'           ; superposition with a label
+ *          | '(' 'pair' term term ')'            ; Σ introduction (a, b)
+ *          | '(' 'fst' term ')'                  ; Σ first projection  π1
+ *          | '(' 'snd' term ')'                  ; Σ second projection π2
  *   app   := term term*                          ; left-associated application
  * Labels are optional and written ':'N (e.g. {:1 a b}, (dup :1 x y v body)); a
  * bare leading number is an ordinary element, so {2 3} is an unlabelled pair.
+ * Reserved words (cannot be used as variable names): lam op dup pair fst snd.
  * Returns a heap term (free with ic_term_free) or NULL on parse error,
  * writing a short message to `err` (capacity `errcap`) when non-NULL. */
 ic_term_t *ic_parse(const char *src, char *err, size_t errcap);

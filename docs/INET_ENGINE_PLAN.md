@@ -347,8 +347,14 @@ local, so independent active pairs reduce concurrently. It is deliberately last
   13b cross-check vs the kernel        next   ds available -> unblocked; reduce
                                               elaborated terms on kt_whnf and the net
       optimal (labelled) readback      hard   Lamping-Gonthier brackets
-  14  Id-by-observation on nets        next   Sigma componentwise, Pi pointwise, U by equivalence;
-                                              first-class PAIR/FST/SND agents land here
+  14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
+                                              syntax (pair/fst/snd), readback renders
+                                              (pair a b); ic_lower emits them and is
+                                              cross-checked vs the Church encoding +
+                                              oracle (270k terms, incl. shared pairs)
+  14b Id-by-observation on nets        next   Sigma componentwise, Pi pointwise, U by
+                                              equivalence; Id/transport agent dispatches
+                                              on the former it meets (Sigma rule reuses 14a)
   15  transport as agent/type-former rewrite  validated against the cubical layer
   16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
   17  parallel reduction                      Bend-style, last

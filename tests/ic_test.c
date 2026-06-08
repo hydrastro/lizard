@@ -111,5 +111,19 @@ int main(void) {
   TEST_ASSERT(rb_eq(P("(op + {:1 10 20} {:2 100 200})"),
                     "{{110 210} {120 220}}"));
 
+  /* ---- Sigma: first-class pairs and projections ----------------------- */
+  /* projection fires against the constructor */
+  TEST_ASSERT(rb_eq(P("(fst (pair 3 4))"), "3"));
+  TEST_ASSERT(rb_eq(P("(snd (pair 3 4))"), "4"));
+  /* nested pairs */
+  TEST_ASSERT(rb_eq(P("(fst (fst (pair (pair 1 2) 3)))"), "1"));
+  /* a pair value reads back as (pair a b) */
+  TEST_ASSERT(rb_eq(P("(pair (op + 1 2) (op * 5 5))"), "(pair 3 25)"));
+  /* a shared pair: bound once, used twice -> a DUP duplicates it, then each
+   * copy is projected (PAIR~DUP commute, then FST/SND ~ PAIR) */
+  TEST_ASSERT(rb_eq(P("((lam p (op + (fst p) (snd p))) (pair 10 20))"), "30"));
+  /* a projection distributes over a superposition of pairs (FST ~ SUP) */
+  TEST_ASSERT(rb_eq(P("(fst {(pair 1 2) (pair 3 4)})"), "{1 3}"));
+
   TEST_RETURN();
 }

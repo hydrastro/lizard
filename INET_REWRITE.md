@@ -22,6 +22,7 @@ tests/ic_lower_test.c    lowering checks + a core-term fuzz vs the oracle
 tests/ic_graph_demo.c    prints a program as an abstract syntax GRAPH (shows sharing/DUP)
 Makefile                 your Makefile, with `ic` and `ic_lower` added to LIB_OPTIONAL_SRCS
 docs/INET_ENGINE_PLAN.md the staged rewrite plan (the duality + HOTT, mapped onto the engine)
+docs/IC_SYNTAX.md        full syntax of the primitives (textual + Scheme surfaces)
 docs/ic_primitives.patch Scheme-facing primitives (ic-normalize/ic-cost/ic-reduce)
 docs/ic_graph_output.txt captured ASG dumps — variables as wires, sharing as DUP nodes
 docs/ic_demo_output.txt  captured output of ic_demo — all 17 checks passing

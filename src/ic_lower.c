@@ -43,6 +43,7 @@ typedef struct {
   int  depth;                     /* number of binders in scope  */
   int  fresh;                     /* fresh-name counter          */
   int  ok;                        /* cleared on overflow/malformed */
+  int  firstclass;                /* 1: emit PAIR/FST/SND agents; 0: Church-encode */
 } LowCtx;
 
 static void fresh_name(LowCtx *c, char *out) {
@@ -87,17 +88,25 @@ static ic_term_t *lo(LowCtx *c, const core_t *t) {
     case CT_PRIM:
       return ic_op(t->op, lo(c, t->a), lo(c, t->b));
     case CT_PAIR: {
-      /* pair a b  ==>  \k. ((k a) b) */
-      char k[24];
-      ic_term_t *A = lo(c, t->a);
-      ic_term_t *B = lo(c, t->b);
-      fresh_name(c, k);
-      return ic_lam(k, ic_app(ic_app(ic_var(k), A), B));
+      if (c->firstclass) {
+        ic_term_t *A = lo(c, t->a);
+        ic_term_t *B = lo(c, t->b);
+        return ic_pair(A, B);
+      } else {
+        /* pair a b  ==>  \k. ((k a) b) */
+        char k[24];
+        ic_term_t *A = lo(c, t->a);
+        ic_term_t *B = lo(c, t->b);
+        fresh_name(c, k);
+        return ic_lam(k, ic_app(ic_app(ic_var(k), A), B));
+      }
     }
     case CT_PROJ1:
-      return ic_app(lo(c, t->a), selector(c, 1));
+      return c->firstclass ? ic_fst(lo(c, t->a))
+                           : ic_app(lo(c, t->a), selector(c, 1));
     case CT_PROJ2:
-      return ic_app(lo(c, t->a), selector(c, 2));
+      return c->firstclass ? ic_snd(lo(c, t->a))
+                           : ic_app(lo(c, t->a), selector(c, 2));
     case CT_LET: {
       /* let _ = v in b  ==>  (\_. b) v ; v is in the OUTER scope */
       char nm[24];
@@ -119,7 +128,16 @@ static ic_term_t *lo(LowCtx *c, const core_t *t) {
 ic_term_t *ic_lower(const core_t *t) {
   LowCtx c;
   ic_term_t *r;
-  c.depth = 0; c.fresh = 0; c.ok = 1;
+  c.depth = 0; c.fresh = 0; c.ok = 1; c.firstclass = 1;
+  r = lo(&c, t);
+  if (!c.ok) { ic_term_free(r); return NULL; }
+  return r;
+}
+
+ic_term_t *ic_lower_encoded(const core_t *t) {
+  LowCtx c;
+  ic_term_t *r;
+  c.depth = 0; c.fresh = 0; c.ok = 1; c.firstclass = 0;
   r = lo(&c, t);
   if (!c.ok) { ic_term_free(r); return NULL; }
   return r;

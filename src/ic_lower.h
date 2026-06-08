@@ -21,15 +21,15 @@
  *                                   ic operators), i.e. core_term's
  *                                   LIZARD_CORE_RUNTIME_AST path.
  *
- * Pairs and projections are lowered by the standard constructor encoding —
- *     pair a b   ==>  \k. k a b
- *     proj1 p    ==>  p (\a. \b. a)
- *     proj2 p    ==>  p (\a. \b. b)
- * so no new agents are needed yet; the engine's CON beta does the work, and a
- * shared pair is duplicated by the same DUP machinery as any other value.
- * First-class PAIR/FST/SND agents are deferred to Phase 14, where the Id/transport
- * agent needs to dispatch on the Sigma former structurally (Id over Sigma =
- * componentwise).  See docs/INET_ENGINE_PLAN.md.
+ * Pairs and projections lower to first-class PAIR/FST/SND agents (Phase 14): a
+ * pair is a constructor node, fst/snd are eliminators that fire against it
+ * (FST~PAIR keeps the first field and erases the second; SND the reverse), and a
+ * shared pair is duplicated by the ordinary DUP machinery (PAIR commutes past
+ * DUP).  For differential testing, ic_lower_encoded lowers the same Σ forms by
+ * the older constructor *encoding* instead -
+ *     pair a b   ==>  \k. k a b ,   proj_i p ==> p (\a.\b. selector) ;
+ * the two must agree on every term, which is how the first-class rules are
+ * validated against the already-trusted CON beta.
  * ------------------------------------------------------------------------ */
 
 #include <gmp.h>
@@ -73,5 +73,11 @@ void    core_free(core_t *t);
  * ic_readback exactly as for any other ic term.  Returns a heap ic_term_t
  * (free with ic_term_free) or NULL on malformed input / depth overflow. */
 ic_term_t *ic_lower(const core_t *t);
+
+/* Same lowering, but Sigma forms use the constructor *encoding* (\k.k a b /
+ * p (\a.\b.sel)) rather than first-class agents.  Exists so the first-class
+ * PAIR/FST/SND rules can be differentially cross-checked against CON beta.
+ * Same return contract as ic_lower. */
+ic_term_t *ic_lower_encoded(const core_t *t);
 
 #endif /* LIZARD_IC_LOWER_H */

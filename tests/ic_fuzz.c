@@ -147,6 +147,9 @@ static void show(ic_term_t *t) {
     case IC_TSUP: printf("{"); show(t->a); printf(" "); show(t->b); printf("}"); break;
     case IC_TDUP: printf("(dup %s %s ", t->name, t->name2); show(t->a);
                   printf(" "); show(t->b); printf(")"); break;
+    case IC_TPAIR: printf("(pair "); show(t->a); printf(" "); show(t->b); printf(")"); break;
+    case IC_TFST: printf("(fst "); show(t->a); printf(")"); break;
+    case IC_TSND: printf("(snd "); show(t->a); printf(")"); break;
     case IC_TERA: printf("*"); break;
   }
 }

@@ -25,6 +25,9 @@ typedef unsigned long Port;
 #define T_OPR  6u
 #define T_OP1  7u
 #define T_EMP  8u           /* sentinel: an unbound var slot */
+#define T_PAIR 9u           /* Σ pair constructor (binary)   */
+#define T_FST  10u          /* Σ first projection (eliminator) */
+#define T_SND  11u          /* Σ second projection (eliminator) */
 
 #define MKP(tag, val) ( ((Port)(val) << 4) | (Port)(tag) )
 #define PTAG(p)       ((unsigned)((p) & 15u))
@@ -33,18 +36,24 @@ typedef unsigned long Port;
 #define P_EMPTY       (MKP(T_EMP, 0))
 
 #define ISBIN(t) ((t) == T_CON || (t) == T_DUP || (t) == T_SUP || \
-                  (t) == T_OPR || (t) == T_OP1)
+                  (t) == T_OPR || (t) == T_OP1 || (t) == T_PAIR)
 #define ISNUL(t) ((t) == T_ERA || (t) == T_NUM)
+/* an agent occupies a node (has a principal port); FST/SND are unary eliminators
+ * handled explicitly, so they are not in ISBIN but are still agents. */
+#define ISAGENT(t) (ISBIN(t) || (t) == T_FST || (t) == T_SND)
 
 /* family used by the annihilate/commute decision:
  *   CON         -> 0  (lambda / application / constructors)
  *   DUP and SUP -> 1  (the dual pair: same family, so DUP~SUP can annihilate)
  *   OPR         -> 2
- *   OP1         -> 3                                                       */
+ *   OP1         -> 3
+ *   PAIR        -> 4  (its own family: PAIR meets its eliminators FST/SND, not
+ *                      another PAIR, so PAIR~PAIR has no annihilation rule)     */
 static int fam(unsigned t) {
   if (t == T_CON) return 0;
   if (t == T_DUP || t == T_SUP) return 1;
   if (t == T_OPR) return 2;
+  if (t == T_PAIR) return 4;
   return 3; /* T_OP1 */
 }
 
@@ -215,10 +224,52 @@ static void erase_bin(unsigned long bi) {
   free_node((int)bi);
 }
 
+/* FST/SND are unary eliminators (principal faces the pair producer; p1 = result;
+ * p2 is an unused wire kept at ERA).  This handles every agent the projector's
+ * principal can meet. */
+static void do_proj(unsigned pt, unsigned long pi, unsigned xt, unsigned long xi) {
+  if (xt == T_PAIR) {                          /* the projection fires */
+    if (pt == T_FST) { link_ports(g_p1[pi], g_p1[xi]); link_ports(g_p2[xi], P_ERAP); }
+    else             { link_ports(g_p1[pi], g_p2[xi]); link_ports(g_p1[xi], P_ERAP); }
+    free_node((int)pi);
+    free_node((int)xi);
+    return;
+  }
+  if (xt == T_DUP || xt == T_SUP) {            /* commute past a duplicator/superposition */
+    int xn = new_node((int)xt, g_lab[xi]);     /* recombine the two results */
+    int p1n = new_node((int)pt, 0);
+    int p2n = new_node((int)pt, 0);
+    link_ports(g_p1[xi], MKP(pt, (unsigned long)p1n));   /* each producer -> a projector */
+    link_ports(g_p2[xi], MKP(pt, (unsigned long)p2n));
+    link_ports(g_p1[p1n], g_p1[xn]);           /* the two results -> the recombiner */
+    link_ports(g_p1[p2n], g_p2[xn]);
+    link_ports(g_p1[pi], MKP(xt, (unsigned long)xn)); /* consumer <- recombiner */
+    link_ports(g_p2[p1n], P_ERAP);
+    link_ports(g_p2[p2n], P_ERAP);
+    free_node((int)pi);
+    free_node((int)xi);
+    return;
+  }
+  /* ERA / NUM / CON / OPR / OP1 / FST / SND on the pair side: ill-typed or dead.
+   * The projection produces nothing; erase its result, and clean up a binary peer. */
+  link_ports(g_p1[pi], P_ERAP);
+  free_node((int)pi);
+  if (ISBIN(xt)) erase_bin(xi);
+  else if (xt == T_FST || xt == T_SND) { link_ports(g_p1[xi], P_ERAP); free_node((int)xi); }
+  return;
+}
+
 static void interact(Port a, Port b) {
   unsigned ta = PTAG(a), tb = PTAG(b);
   unsigned long ia = PVAL(a), ib = PVAL(b);
   g_inter++;
+
+  /* Σ eliminators are handled first, as unary agents. */
+  if (ta == T_FST || ta == T_SND || tb == T_FST || tb == T_SND) {
+    if (ta == T_FST || ta == T_SND) do_proj(ta, ia, tb, ib);
+    else                            do_proj(tb, ib, ta, ia);
+    return;
+  }
 
   if (ISNUL(ta) && ISNUL(tb)) {
     return;                                   /* VOID: both vanish */
@@ -320,6 +371,11 @@ ic_term_t *ic_dup(int label, const char *x, const char *y,
   t->a = value; t->b = body; return t;
 }
 ic_term_t *ic_era(void) { return talloc(IC_TERA); }
+ic_term_t *ic_pair(ic_term_t *f, ic_term_t *s) {
+  ic_term_t *t = talloc(IC_TPAIR); t->a = f; t->b = s; return t;
+}
+ic_term_t *ic_fst(ic_term_t *p) { ic_term_t *t = talloc(IC_TFST); t->a = p; return t; }
+ic_term_t *ic_snd(ic_term_t *p) { ic_term_t *t = talloc(IC_TSND); t->a = p; return t; }
 
 void ic_term_free(ic_term_t *t) {
   if (!t) return;
@@ -453,6 +509,29 @@ static Port compile(ic_term_t *t) {
       wire_binder(g_p1[d], g_scope[g_sp].uses, g_scope[g_sp].n);
       free(g_scope[g_sp].uses);
       return bodyout;
+    }
+    case IC_TPAIR: {
+      int pr = new_node(T_PAIR, 0);
+      Port out = MKP(T_PAIR, pr);          /* the pair value = principal */
+      Port l = compile(t->a);
+      Port r = compile(t->b);
+      link_ports(g_p1[pr], l);             /* p1 = fst field */
+      link_ports(g_p2[pr], r);             /* p2 = snd field */
+      return out;
+    }
+    case IC_TFST: {
+      int f = new_node(T_FST, 0);
+      Port pout = compile(t->a);
+      link_ports(MKP(T_FST, f), pout);     /* principal faces the pair producer */
+      link_ports(g_p2[f], P_ERAP);         /* unused wire */
+      return g_p1[f];                      /* result */
+    }
+    case IC_TSND: {
+      int s = new_node(T_SND, 0);
+      Port pout = compile(t->a);
+      link_ports(MKP(T_SND, s), pout);
+      link_ports(g_p2[s], P_ERAP);
+      return g_p1[s];
     }
     case IC_TERA: {
       return P_ERAP;
@@ -591,6 +670,12 @@ static void rb_read_producer(int id, int depth) {
       rb_putc(' ');
       rb_read_from(m * 3 + 2, depth);
       rb_putc('}');
+    } else if (tag == T_PAIR) {
+      rb_puts("(pair ");
+      rb_read_from(m * 3 + 1, depth);
+      rb_putc(' ');
+      rb_read_from(m * 3 + 2, depth);
+      rb_putc(')');
     } else {
       g_rb_ok = 0;                   /* residual DUP/OPR/OP1 -> net fallback */
     }
@@ -629,13 +714,15 @@ static void rb_read_from(int consumer_id, int depth) {
 static const char *tagname(int t) {
   switch (t) {
     case T_CON: return "CON"; case T_DUP: return "DUP"; case T_SUP: return "SUP";
-    case T_OPR: return "OPR"; case T_OP1: return "OP1"; default: return "?";
+    case T_OPR: return "OPR"; case T_OP1: return "OP1";
+    case T_PAIR: return "PAIR"; case T_FST: return "FST"; case T_SND: return "SND";
+    default: return "?";
   }
 }
 static void rb_port(Port p) {
   Port t = enter(p);
   unsigned tg = PTAG(t);
-  if (ISBIN(tg)) { rb_putc('n'); rb_putint((int)PVAL(t)); }
+  if (ISAGENT(tg)) { rb_putc('n'); rb_putint((int)PVAL(t)); }
   else if (tg == T_NUM) { rb_puts("#"); rb_putmpz(g_num[PVAL(t)]); }
   else if (tg == T_ERA) { rb_putc('*'); }
   else if (tg == T_VARP) { rb_putc('v'); rb_putint((int)PVAL(t)); }  /* a wire junction */
@@ -832,6 +919,22 @@ static ic_term_t *p_term(P *p) {
       if (p_peek(p) != ')') { p_err(p, "lam: expected ')'"); ic_term_free(body); return NULL; }
       p->i++;
       return ic_lam(name, body);
+    }
+    if (len && !strcmp(tok, "pair")) {
+      ic_term_t *l, *r;
+      l = p_term(p); if (!l) return NULL;
+      r = p_term(p); if (!r) { ic_term_free(l); return NULL; }
+      if (p_peek(p) != ')') { p_err(p, "pair: expected ')'"); ic_term_free(l); ic_term_free(r); return NULL; }
+      p->i++;
+      return ic_pair(l, r);
+    }
+    if (len && (!strcmp(tok, "fst") || !strcmp(tok, "snd"))) {
+      int first = (tok[0] == 'f');
+      ic_term_t *pr = p_term(p);
+      if (!pr) return NULL;
+      if (p_peek(p) != ')') { p_err(p, "fst/snd: expected ')'"); ic_term_free(pr); return NULL; }
+      p->i++;
+      return first ? ic_fst(pr) : ic_snd(pr);
     }
     if (len && !strcmp(tok, "op")) {
       char ops[256]; int o; ic_term_t *l, *r;

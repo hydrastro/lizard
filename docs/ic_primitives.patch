@@ -112,6 +112,19 @@ itself is already verified standalone via tests/ic_test.c and src/ic_demo.c.
 +        if (lt == NULL || rt == NULL) { ic_term_free(lt); ic_term_free(rt); return NULL; }
 +        return ic_sup(label, lt, rt);
 +      }
++      if (!strcmp(h, "pair")) {
++        /* (pair a b) */
++        ic_term_t *lt = lz_ic_parse(lz_ic_nth(t, 1));
++        ic_term_t *rt = lz_ic_parse(lz_ic_nth(t, 2));
++        if (lt == NULL || rt == NULL) { ic_term_free(lt); ic_term_free(rt); return NULL; }
++        return ic_pair(lt, rt);
++      }
++      if (!strcmp(h, "fst") || !strcmp(h, "snd")) {
++        /* (fst p) / (snd p) */
++        ic_term_t *pp = lz_ic_parse(lz_ic_nth(t, 1));
++        if (pp == NULL) return NULL;
++        return (h[0] == 'f') ? ic_fst(pp) : ic_snd(pp);
++      }
 +      if (!strcmp(h, "dup")) {
 +        /* (dup x y v body) or (dup L x y v body) */
 +        int base = 1, label = 0;
