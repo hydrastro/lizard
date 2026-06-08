@@ -231,22 +231,40 @@ What remains in this phase:
 1. **The cross-check against the kernel (Phase 13b — done).** Random closed terms
    are reduced both on the trusted kernel (`kt_whnf`) and on the net and asserted
    to agree. The bridge `src/kt_to_core.c` translates the shared fragment —
-   λ/app, Σ pairs/projections, `let`, `Bool` via the Church encoding, and the
-   other finite (non-recursive) data: coproducts (`inl`/`inr`/`sum_rec`) and
-   options (`just`/`nothing`/`maybe_rec`), each encoded as a tagged Σ pair
-   `(tag, payload)` reusing the first-class `PAIR`/`FST`/`SND` agents — from
-   the kernel's `kterm_t` into the core IR, which lowers to the net. The
-   observable is a `Bool`: the kernel reduces a closed term to `true`/`false`,
-   and the net evaluates the same term (translated, applied to `1` and `0`) to
-   `1`/`0`; `tests/ic_kernel_diff_test.c` checks `oracle == kernel == net` over
-   150k+ terms (`make ic-kernel-diff`). This pins the net's beta / Σ / sharing
-   reduction to the reducer the type theory's soundness already depends on,
-   rather than only to an independent in-test oracle. The kernel allocates through
-   `lizard_heap_alloc`; in the full build that is `mem.c`'s arena, and the kernel
-   uses no GC or runtime, so the test links against `liblizard.a` directly.
-   Extending the cross-check to the *typed* fragment (Nat via the recursor, and Id)
-   waits on Nat-as-cycles and the typed-Id work (14c) — the net does not yet have
-   those formers, so the shared fragment is the honest boundary today.
+   λ/app, Σ pairs/projections, `let`, `Bool` via the Church encoding, the other
+   finite data (coproducts `inl`/`inr`/`sum_rec` and options
+   `just`/`nothing`/`maybe_rec`, each a tagged Σ pair `(tag, payload)` reusing the
+   first-class `PAIR`/`FST`/`SND` agents), and the **inductive data with their
+   recursors**: `Nat` (`zero`/`succ`/`nat_rec`) and `List` (`nil`/`cons`/
+   `list_rec`), as Church encodings whose *primitive* recursion is recovered with
+   the pair-trick so the recursor sees the predecessor/tail, not only the
+   recursive result — and the propositional-equality eliminator `J` on `refl`
+   (`J C d A a b (refl v) → d v`, refl being transparent) — from the kernel's
+   `kterm_t` into the core IR, which lowers to the net. That is **all six of the
+   kernel's eliminators** (`bool_rec`, `sum_rec`, `maybe_rec`, `nat_rec`,
+   `list_rec`, `J`). Two observables are used: a `Bool` term reduces on the kernel
+   to `true`/`false` and on the net (applied to `1`,`0`) to `1`/`0`; a `Nat`-valued
+   term (including `list_rec` folds and `J` results) reduces on the kernel to a
+   numeral and on the net to the same integer (observing the Church numeral as
+   `n (λx. x+1) 0`).
+   `tests/ic_kernel_diff_test.c` checks `oracle == kernel == net` (finite data) and
+   `kernel == net` (Nat/List/J) over 200k+ terms (`make ic-kernel-diff`). This pins
+   the net's β / Σ / sharing / **structural-recursion** reduction to the reducer
+   the type theory's soundness already depends on, not only to an in-test oracle.
+   The kernel allocates through `lizard_heap_alloc`; in the full build that is
+   `mem.c`'s arena, and the kernel uses no GC or runtime, so the test links against
+   `liblizard.a` directly. Two honest caveats: (i) this validates recursion
+   *expressed as λ-encoding* — it is genuine net reduction (the numeral/list drives
+   the iteration through real `CON`/`DUP` interactions, terminating because the
+   data is finite), with native inductive agents and general recursion-as-cycles
+   left as a possible engine optimisation; (ii) the `J` check is the *eliminator*
+   computation rule only. The deeper **by-observation `Id`** (14c) — `Id` over Σ
+   componentwise, over Π pointwise, over 𝒰 by equivalence — is not validated here,
+   and importantly `kt_whnf` does **not** reduce `KT_ID` structurally either (the
+   kernel keeps `Id` canonical and only steps `J`), so 14c has no oracle in the
+   trusted kernel: it must be checked against the cubical layer `src/tt_equality.c`
+   or against a written specification. That is why 14c is the genuinely
+   research-grade step rather than more of the same.
 2. **Optimal readback** — the genuinely hard part. Reading a shared normal form
    back into a correct tree needs the labelled-bracket bookkeeping of
    Lamping–Gonthier optimal reduction (the "oracle"/croissants-and-brackets).
@@ -360,10 +378,12 @@ local, so independent active pairs reduce concurrently. It is deliberately last
   13b cross-check vs the kernel        DONE   src/kt_to_core.{c,h}, tests/ic_kernel_diff_test.c:
                                               random closed terms reduced on the trusted
                                               kt_whnf AND on the net (via kt_to_core) agree with
-                                              each other and an oracle (250k+); covers beta, Σ
-                                              pairs/projections, bool_rec, bound vars, and the
-                                              other finite data — coproducts (sum_rec) and
-                                              options (maybe_rec).  `make ic-kernel-diff`
+                                              each other and an oracle (200k+); covers beta, Σ
+                                              pairs/projections, bound vars, and ALL SIX kernel
+                                              eliminators — bool_rec, sum_rec, maybe_rec,
+                                              nat_rec, list_rec, and J on refl.  i.e. the whole
+                                              computational fragment, including structural
+                                              recursion, is validated.  `make ic-kernel-diff`
       optimal (labelled) readback      hard   Lamping-Gonthier brackets
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders

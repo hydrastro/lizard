@@ -16,9 +16,15 @@
  *     inl v / inr v        ==> (true, v) / (false, v)
  *     just v / nothing     ==> (true, v) / (false, 0)
  *     sum_rec  / maybe_rec ==> select on (fst s), apply the case to (snd s)
- * Any term using a former outside this fragment (Nat, Id, List, cubical, ...)
- * yields NULL, and the caller skips it.  This keeps the bridge total and honest
- * rather than silently mis-encoding what the net cannot yet represent.
+ *   and the INDUCTIVE data with recursors, via Church encodings whose primitive
+ *   recursion is recovered with the pair-trick (so the recursor receives the
+ *   predecessor / tail, not just the recursive result):
+ *     zero / succ n        ==> church_zero / church_succ n
+ *     nil  / cons h t      ==> church_nil  / church_cons h t
+ *     nat_rec / list_rec   ==> snd (scrutinee step base)
+ * Any term using a former outside this fragment (Id, cubical, ...) yields NULL,
+ * and the caller skips it.  This keeps the bridge total and honest rather than
+ * silently mis-encoding what the net cannot yet represent.
  */
 #ifndef KT_TO_CORE_H
 #define KT_TO_CORE_H
