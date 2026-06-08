@@ -85,7 +85,7 @@ endif
 # modules present in src/.  This prevents scaffold/test modules from compiling
 # against headers whose .c file was accidentally left out of liblizard.a.
 LIB_CORE_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel tactics
-LIB_OPTIONAL_SRCS := prims_tt tt_check_modal tt_check_hit tt_check_fresh tt_check_cubical tt_logic tt_faces prims_syntax prims_bytecode prims_gc prims_lists prims_modules prims_logic prims_collections prims_persistent prims_string prims_kernel diagnostics object_model gc_metadata hamt pvector lzrt inet ic ic_lower kt_to_core report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice elaborator
+LIB_OPTIONAL_SRCS := prims_tt tt_check_modal tt_check_hit tt_check_fresh tt_check_cubical tt_logic tt_faces prims_syntax prims_bytecode prims_gc prims_lists prims_modules prims_logic prims_collections prims_persistent prims_string prims_kernel diagnostics object_model gc_metadata hamt pvector lzrt inet ic ic_lower kt_to_core id_observe report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice elaborator
 EXISTING_OPTIONAL_LIB_SRCS := $(foreach m,$(LIB_OPTIONAL_SRCS),$(if $(wildcard $(SRC_DIR)/$(m).c),$(m)))
 LIB_SRCS := $(LIB_CORE_SRCS) $(filter-out $(LIB_CORE_SRCS),$(EXISTING_OPTIONAL_LIB_SRCS))
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
@@ -134,6 +134,30 @@ ic-kernel-diff: $(LIB_STATIC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) -Iinclude \
 	    tests/ic_kernel_diff_test.c $(LIB_STATIC) $(LDLIBS) -lgmp -o $(BUILD_DIR)/ic_kernel_diff_test
 	$(BUILD_DIR)/ic_kernel_diff_test $(N) 1
+
+# Recursion-as-cycles: a recursive definition is a self-referential graph (a
+# `ref D a` node whose unfolding contains further `ref D ...` nodes), unfolded
+# lazily and terminating because the definition branches on its now-concrete
+# argument.  Drives fact/sumto/fib/pow2/gcd through the net (incl. a bignum 25!
+# on the GMP path) and checks against C oracles.
+.PHONY: ic-recursion
+ic-recursion:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) -Iinclude \
+	    tests/ic_recursion_test.c $(SRC_DIR)/ic.c -lgmp -o $(BUILD_DIR)/ic_recursion_test
+	$(BUILD_DIR)/ic_recursion_test
+
+# Phase 14c: the by-observation identity reduction system and its executable
+# specification.  Id_A(x,y) computes by recursion on the structure of A (Bool/Nat
+# structurally, product componentwise, function pointwise/funext, universe by
+# univalence, transport-refl as identity).  No kernel oracle exists for these
+# rules, so the checks are against hand-computed normal forms.
+.PHONY: id-observe
+id-observe:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) \
+	    tests/id_observe_test.c $(SRC_DIR)/id_observe.c -o $(BUILD_DIR)/id_observe_test
+	$(BUILD_DIR)/id_observe_test
 
 $(LIB_SHARED): $(LIB_OBJS)
 	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)

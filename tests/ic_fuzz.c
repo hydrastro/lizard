@@ -157,6 +157,7 @@ static void show(ic_term_t *t) {
     case IC_TFST: printf("(fst "); show(t->a); printf(")"); break;
     case IC_TSND: printf("(snd "); show(t->a); printf(")"); break;
     case IC_TTRANSP: printf("(transp "); show(t->a); printf(")"); break;
+    case IC_TREF: printf("(ref %d ", t->op); show(t->a); printf(")"); break;
     case IC_TERA: printf("*"); break;
   }
 }

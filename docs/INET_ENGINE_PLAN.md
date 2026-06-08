@@ -56,12 +56,21 @@ Two honest qualifications. First, the *front end* — the parser, and the `core`
 IR that lowers to nets (`src/ic_lower.c`) — is still a tree; it is the notation a
 program is written in, and the graph is constructed from it at compile time. The
 claim is not that no tree exists anywhere, but that the thing which *runs* is the
-graph. Second, the current fragment is acyclic (a DAG). Genuine recursion —
-fixpoints, `letrec`, the `NAT_REC`/`LIST_REC` recursors in `kterm` — must be
-represented as a *cyclic* wire in the net (a back-edge), never by unfolding the
-definition into a tree. That is the one place where "graph, not tree" will be
-load-bearing in a way it is not yet, and it is called out again in the phase plan
-so the recursion work does not quietly reintroduce a tree.
+graph. Second, recursion is represented as a *self-referential* definition rather
+than by unfolding into a tree: a `ref D a` node (`T_REF`) whose unfolding —
+produced by `build_def_body` — contains further `ref D ...` nodes, so the
+definition refers back to itself. The unfolding is lazy: a `ref` fires only once
+its argument has reduced to a concrete number (exactly as `OPR` waits for its
+operands), and it terminates because the definition branches on that number, so
+the base case introduces no further `ref`. This is the discipline a real
+interaction-net runtime (HVM) uses for its top-level definitions — the branch in
+`build_def_body` plays the role of pattern-matching on the constructor — and it
+is what lets `fact`/`fib`/`gcd`/… run on the net (`make ic-recursion`, 92 checks
+including a bignum `25!`) without the un-taken branch of a conditional ever being
+built (an eager Church-`if` recursor *would* diverge by building it). A fully
+general lazy-whole-net fixpoint with back-edges shared *in the graph* is the
+next refinement; the definition-reference form already gives genuine,
+terminating general recursion driven by data.
 
 
 ## 1. Where lizard computes today
@@ -316,6 +325,23 @@ the *checking* direction (a constructed equality meeting its observation and
 collapsing), while proof *search* for an equality is the SUP direction. The same
 agent set carries both.
 
+**Status (Phase 14c).** The rule set above is now realised, on its own, as a
+small terminating reduction system — `src/id_observe.c` (see `make id-observe`,
+22 checks). It computes `Id_A(x,y)` exactly by recursion on `A`: `Bool`/`Nat`
+structurally (`Id Nat (succ m)(succ n) → Id Nat m n`, bottoming out at
+`Unit`/`Empty`), product componentwise, function pointwise (β fires under the
+resulting `Π`, so `Id (Unit→Bool) (λ.true)(λ.true) →* Π Unit. Unit`), the
+universe by univalence (`Id 𝒰 A B → Equiv A B`), and `transport refl x → x`;
+open terms stay neutral, since canonicity is only for closed terms. Because
+`kt_whnf` does **not** reduce `KT_ID` structurally, there is no kernel oracle for
+these rules, so this module *is* the executable specification — the exact rewrite
+set the `Id`/type-former agents must implement in the net. What remains for 14c
+proper is to express that system *as agents in the graph* (an `Id` agent whose
+principal port faces a type-former agent, reducing by the local rules above)
+rather than as a standalone AST reducer, plus the genuinely dependent cases
+(transport threaded through the second component of a dependent `Σ`); those are
+validated against `tt_equality.c`.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -395,10 +421,28 @@ local, so independent active pairs reduce concurrently. It is deliberately last
                                               (Σ componentwise, Π pointwise, base trivial);
                                               reflexive transport = identity, fuzz-checked
                                               (transp wrap never changes a value)
-  14c Id-by-observation: typed         next   Id/REFL/J + type-former agents (Σ/Π/𝒰);
-                                              non-reflexive paths, dependent 2nd component
-                                              of Id-over-Σ, funext (Π), univalence (𝒰);
-                                              validated against tt_equality.c
+  rec recursion-as-cycles              DONE   src/ic.{c,h} (T_REF, build_def_body,
+                                              expand_def), tests/ic_recursion_test.c:
+                                              a recursive definition is a self-referential
+                                              graph whose `ref` node unfolds lazily once its
+                                              argument is concrete; fact/sumto/fib/pow2/gcd
+                                              run on the net and match C oracles incl. a
+                                              bignum 25! (92 checks).  `make ic-recursion`.
+                                              This is the HVM top-level-definition discipline;
+                                              the C branch in build_def_body is the match.
+  14c Id-by-observation: semantics     DONE   src/id_observe.{c,h}, tests/id_observe_test.c:
+      as a reduction system            (sem.)  a self-contained terminating reduction system
+                                              that computes Id_A(x,y) by recursion on A —
+                                              Bool/Nat structurally, product componentwise,
+                                              function pointwise (funext, beta under Pi),
+                                              universe by univalence (-> Equiv), transport-
+                                              refl = identity; 22 checks vs hand-computed
+                                              normal forms (no kernel oracle exists).
+                                              `make id-observe`.  This is the executable
+                                              SPEC the net's Id + type-former agents must
+                                              implement; wiring it into the net as agents
+                                              (Id meets Σ/Π/𝒰 in the graph), and the dependent
+                                              cases, are the remaining 14c step.
   15  transport as agent/type-former rewrite  validated against the cubical layer
   16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
   17  parallel reduction                      Bend-style, last

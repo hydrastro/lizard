@@ -146,8 +146,39 @@ What is implemented now is this *structural, reflexive* core (and it is fuzz-
 checked: wrapping any subterm in `transp` never changes its value). The full
 identity type — transport along a *non-reflexive* path, the dependent second
 component of Id-over-Σ, function extensionality as the Π case, and univalence as
-the 𝒰 case — dispatches on the *type* former and is the remaining Phase 14b work,
-validated against the cubical layer. See `docs/INET_ENGINE_PLAN.md`.
+the 𝒰 case — dispatches on the *type* former. The reduction *semantics* of that
+identity type is now realised as a standalone reduction system in
+`src/id_observe.c` (`make id-observe`); wiring it into the net as agents is the
+remaining Phase 14c work. See `docs/INET_ENGINE_PLAN.md`.
+
+### Recursion — self-referential definitions (recursion-as-cycles)
+
+Recursion is **not** textual syntax — the parser has no `ref` token, so the
+grammar above is unchanged. It is reached through the C API: `ic_ref(def_id,
+arg)` builds a call node `(ref D a)` to a built-in recursive definition `D`. The
+node is the graph form of recursion: when `a` has reduced to a concrete number,
+the `ref` fires and `build_def_body` produces the body for that number — which
+contains further `(ref D …)` calls, so the definition refers back to itself. The
+unfolding is lazy (a `ref` waits for its argument, like `op` waits for operands)
+and terminates because the body branches on the number, so the base case
+introduces no further `ref`.
+
+```c
+#include "ic.h"
+/* fact 6 on the net */
+ic_term_t *t = ic_ref(IC_DEF_FACT, ic_num_si(6));
+mpz_t out; long inter = 0;
+mpz_init(out);
+ic_normalize_int(t, out, &inter);     /* out = 720 */
+mpz_clear(out); ic_term_free(t);
+```
+
+Built-in definition IDs (`ic.h`): `IC_DEF_FACT` (`n! = n=0 ? 1 : n·fact(n−1)`),
+`IC_DEF_SUMTO` (`n + sumto(n−1)`), `IC_DEF_POW2` (`2·pow2(n−1)`), `IC_DEF_FIB`
+(`fib(n−1)+fib(n−2)`, a *branching* unfolding), and `IC_DEF_GCD` (tail-recursive,
+argument packing the pair as `a<<16 | b`). These run on the net and match C
+oracles in `tests/ic_recursion_test.c` (`make ic-recursion`, 92 checks including a
+bignum `25!` that exercises the GMP path).
 
 ---
 

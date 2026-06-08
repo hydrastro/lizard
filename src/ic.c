@@ -29,6 +29,8 @@ typedef unsigned long Port;
 #define T_FST  10u          /* Σ first projection (eliminator) */
 #define T_SND  11u          /* Σ second projection (eliminator) */
 #define T_TRANSP 12u        /* transport / Id-by-observation (unary) */
+#define T_REF  13u          /* recursive-definition call (unary): principal faces
+                             * the argument; expands the named definition lazily   */
 
 #define MKP(tag, val) ( ((Port)(val) << 4) | (Port)(tag) )
 #define PTAG(p)       ((unsigned)((p) & 15u))
@@ -314,6 +316,57 @@ static void do_transp(unsigned long ti, unsigned xt, unsigned long xi) {
   return;
 }
 
+/* ---- recursive definitions: the cycle, unfolded lazily ---------------- *
+ * A (ref D a) node carries the definition id D in its label and faces its
+ * argument a on the principal port.  When a reduces to a number n the node
+ * fires: build_def_body(D, n) produces the body for that argument — which may
+ * contain further (ref D ...) nodes — and we lower a *fresh* copy of it into the
+ * live arena (compile is re-entrant) and wire it to the result.  Because the
+ * builder branches on n in C, the base case introduces no further ref, so the
+ * unfolding of the self-referential graph terminates on finite data.  This is
+ * the same discipline an interaction-net runtime (HVM) uses for its definitions;
+ * the C-level branch plays the role of pattern matching on the argument's
+ * constructor (zero vs. successor). */
+static Port compile(ic_term_t *t);
+
+static ic_term_t *build_def_body(int def_id, const mpz_t n) {
+  long k = mpz_get_si(n);
+  switch (def_id) {
+    case IC_DEF_FACT:
+      if (k <= 0) return ic_num_si(1);
+      return ic_op(IC_MUL, ic_num_z(n),
+                   ic_ref(IC_DEF_FACT, ic_op(IC_SUB, ic_num_z(n), ic_num_si(1))));
+    case IC_DEF_SUMTO:
+      if (k <= 0) return ic_num_si(0);
+      return ic_op(IC_ADD, ic_num_z(n),
+                   ic_ref(IC_DEF_SUMTO, ic_op(IC_SUB, ic_num_z(n), ic_num_si(1))));
+    case IC_DEF_POW2:
+      if (k <= 0) return ic_num_si(1);
+      return ic_op(IC_MUL, ic_num_si(2),
+                   ic_ref(IC_DEF_POW2, ic_op(IC_SUB, ic_num_z(n), ic_num_si(1))));
+    case IC_DEF_FIB:
+      if (k < 2) return ic_num_z(n);
+      return ic_op(IC_ADD,
+                   ic_ref(IC_DEF_FIB, ic_op(IC_SUB, ic_num_z(n), ic_num_si(1))),
+                   ic_ref(IC_DEF_FIB, ic_op(IC_SUB, ic_num_z(n), ic_num_si(2))));
+    case IC_DEF_GCD: {
+      /* a packed in n>>16, b in low 16 bits;  gcd a b = b=0 ? a : gcd b (a mod b) */
+      long a = k >> 16, b = k & 0xffff;
+      if (b == 0) return ic_num_si(a);
+      return ic_ref(IC_DEF_GCD, ic_num_si((b << 16) | (a % b)));
+    }
+    default:
+      return ic_num_si(0);
+  }
+}
+
+static Port expand_def(int def_id, const mpz_t n) {
+  ic_term_t *body = build_def_body(def_id, n);
+  Port root = compile(body);                     /* fresh instantiation into the arena */
+  ic_term_free(body);
+  return root;
+}
+
 static void interact(Port a, Port b) {
   unsigned ta = PTAG(a), tb = PTAG(b);
   unsigned long ia = PVAL(a), ib = PVAL(b);
@@ -329,6 +382,19 @@ static void interact(Port a, Port b) {
   if (ta == T_TRANSP || tb == T_TRANSP) {
     if (ta == T_TRANSP) do_transp(ia, tb, ib);
     else                do_transp(ib, ta, ia);
+    return;
+  }
+  /* recursive-definition call: fires once its argument is a concrete number. */
+  if (ta == T_REF || tb == T_REF) {
+    unsigned long ri; unsigned ot; unsigned long oi;
+    if (ta == T_REF) { ri = ia; ot = tb; oi = ib; } else { ri = ib; ot = ta; oi = ia; }
+    if (ot == T_NUM) {
+      Port body = expand_def(g_lab[ri], g_num[oi]);
+      link_ports(g_p1[ri], body);                /* result <- the unfolded body */
+    } else {
+      link_ports(g_p1[ri], P_ERAP);              /* no concrete argument: nothing to unfold */
+    }
+    free_node((int)ri);
     return;
   }
 
@@ -438,6 +504,9 @@ ic_term_t *ic_pair(ic_term_t *f, ic_term_t *s) {
 ic_term_t *ic_fst(ic_term_t *p) { ic_term_t *t = talloc(IC_TFST); t->a = p; return t; }
 ic_term_t *ic_snd(ic_term_t *p) { ic_term_t *t = talloc(IC_TSND); t->a = p; return t; }
 ic_term_t *ic_transp(ic_term_t *v) { ic_term_t *t = talloc(IC_TTRANSP); t->a = v; return t; }
+ic_term_t *ic_ref(int def_id, ic_term_t *arg) {
+  ic_term_t *t = talloc(IC_TREF); t->op = def_id; t->a = arg; return t;
+}
 
 void ic_term_free(ic_term_t *t) {
   if (!t) return;
@@ -601,6 +670,13 @@ static Port compile(ic_term_t *t) {
       link_ports(MKP(T_TRANSP, tr), pout); /* principal faces the value producer */
       link_ports(g_p2[tr], P_ERAP);
       return g_p1[tr];                     /* result */
+    }
+    case IC_TREF: {
+      int r = new_node(T_REF, t->op);      /* def id carried in the label */
+      Port aout = compile(t->a);           /* the argument */
+      link_ports(MKP(T_REF, r), aout);     /* principal faces the argument producer */
+      link_ports(g_p2[r], P_ERAP);         /* unused aux wire */
+      return g_p1[r];                      /* result */
     }
     case IC_TERA: {
       return P_ERAP;

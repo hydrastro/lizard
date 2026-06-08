@@ -12,7 +12,11 @@ file is `INET_REWRITE.md`, not `README.md`, so it leaves your `README.md` alone.
 
 ```
 src/ic.h                 the interaction-calculus core: header + agent/rule docs
-src/ic.c                 the implementation — all FOUR agents (adds SUP to inet.c's three)
+src/ic.c                 the implementation — all FOUR agents (adds SUP to inet.c's three),
+                         first-class Sigma, transport, and recursion-as-cycles (T_REF: a
+                         `ref D a` node that unfolds a self-referential definition lazily,
+                         once its argument is a concrete number, terminating because the
+                         definition branches on it — the HVM top-level-definition discipline)
 src/ic_demo.c            standalone driver / self-test (no project build needed)
 src/ic_lower.h           core_term-shaped IR + lowering to nets (Phase 12)
 src/ic_lower.c           the lowering implementation (Sigma + runtime fragment)
@@ -20,6 +24,13 @@ tests/ic_test.c          the four-agent checks through the project's test harnes
 tests/ic_fuzz.c          differential validator: net vs an independent integer oracle
 tests/ic_lower_test.c    lowering checks + a core-term fuzz vs the oracle
 tests/ic_graph_demo.c    prints a program as an abstract syntax GRAPH (shows sharing/DUP)
+tests/ic_recursion_test.c    recursion-as-cycles: fact/sumto/fib/pow2/gcd run on the net
+                         (incl. a bignum 25!) and match C oracles; `make ic-recursion`
+src/id_observe.{c,h}     phase 14c: a self-contained by-observation identity REDUCTION SYSTEM
+                         — Id_A(x,y) computes by recursion on A (Bool/Nat structurally, product
+                         componentwise, function pointwise/funext, universe by univalence,
+                         transport-refl = identity).  The executable spec for the net's Id agent.
+tests/id_observe_test.c  the 14c spec checks (vs hand-computed normal forms); `make id-observe`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

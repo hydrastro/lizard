@@ -63,8 +63,24 @@ typedef enum {
   IC_TPAIR,  /* (pair a b)  — Σ introduction        */
   IC_TFST,   /* (fst p)     — Σ first projection  π1 */
   IC_TSND,   /* (snd p)     — Σ second projection π2 */
-  IC_TTRANSP /* (transp v)  — transport / Id-by-observation (reflexive: identity) */
+  IC_TTRANSP,/* (transp v)  — transport / Id-by-observation (reflexive: identity) */
+  IC_TREF    /* (ref D a)   — a call to recursive definition D with argument a;
+              * the recursive cycle made explicit as a graph node (Phase: recursion) */
 } ic_tkind_t;
+
+/* Built-in recursive definitions reachable through IC_TREF.  Each is realised as
+ * a self-referential graph: its body contains further (ref D ...) nodes, so the
+ * "recursion is a cycle" rather than a finite tree.  The cycle is unfolded lazily
+ * and terminates because the definition branches on its concrete argument (the
+ * base case introduces no further ref), exactly as pattern-matching definitions
+ * do in an interaction-net runtime such as HVM. */
+enum {
+  IC_DEF_FACT,    /* factorial:  fact n = n=0 ? 1 : n * fact (n-1)        */
+  IC_DEF_SUMTO,   /* triangular: sumto n = n=0 ? 0 : n + sumto (n-1)      */
+  IC_DEF_FIB,     /* fibonacci:  fib n = n<2 ? n : fib (n-1) + fib (n-2)  */
+  IC_DEF_GCD,     /* gcd of (n encodes a fixed pair) — see build_def_body */
+  IC_DEF_POW2     /* pow2 n = n=0 ? 1 : 2 * pow2 (n-1)                    */
+};
 
 /* binary numeric operators (same codes as inet) */
 enum {
@@ -99,6 +115,7 @@ ic_term_t *ic_pair(ic_term_t *fst, ic_term_t *snd);  /* (a, b) */
 ic_term_t *ic_fst(ic_term_t *p);                     /* pi1 p  */
 ic_term_t *ic_snd(ic_term_t *p);                     /* pi2 p  */
 ic_term_t *ic_transp(ic_term_t *v);                  /* transport along refl = id */
+ic_term_t *ic_ref(int def_id, ic_term_t *arg);       /* (ref D a): call recursive def D */
 void ic_term_free(ic_term_t *t);
 
 /* ---- evaluation -------------------------------------------------------- */
