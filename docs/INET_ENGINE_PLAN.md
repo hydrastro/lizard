@@ -455,13 +455,54 @@ payoff and deliberately last.
   covered by {annihilate, erase, commute}. The honest boundary is different and
   narrower than `opt_core`'s: the *core* is perfectly confluent but the full
   λK case needs the paper's **non-interaction canonicalization rules plus a
-  global reduction order**, which are not implemented here. Without them, a
-  genuinely nonlinear term like Church multiplication reduces cleanly (no bad
-  pairs) but leaves a **cyclic net** whose naive read-back does not terminate;
-  `dn_normalize` detects this and reports it as cyclic rather than returning a
-  wrong normal form (`make deltanets` prints `mul 2 3` / `mul 3 3` as the
-  documented limitation). Closing it — the canonicalization layer + global order —
-  is the next concrete step, now with a reference oracle to validate against.
+  global reduction order**, which are not implemented here.
+
+  *What randomized differential testing showed (and how soundness is kept).* A
+  fuzzer (saved as the basis of the test's section [2]) normalises random closed
+  terms with both `dn_normalize` and the reference, and classifies match / cyclic
+  / refused / mismatch. Two clean results came out of it. (1) On the **linear
+  fragment** (λL, every bound variable used once) the core is *exactly* correct:
+  260,000 random linear terms across depths 10–20 all matched the reference, with
+  zero flagged and zero mismatches — expected, since λL reduction is only fan
+  annihilation, which is perfectly confluent, so order is irrelevant and the net
+  is always canonical. (2) On general **λK** with the core's arbitrary order,
+  ~99% of random terms reduce correctly and most of the rest are refused, but a
+  rare term (≈1 in 10^5 at depth 7–8) reduces to a *structurally-valid yet wrong*
+  net — confirming the paper's warning that in λK the leftmost-outermost order is
+  required not merely for optimality but for correctness. Because such a wrong
+  net reads back as a perfectly ordinary tree, no read-back check can catch it.
+  The response is to make `dn_normalize` **sound by refusal**: read-back now flags
+  every situation it *can* detect that signals a non-canonical net — a cycle, a
+  re-entered (shared) node, a reachable eraser, a dead stub, an out-of-range index
+  — and returns "needs canonicalization" instead of a possibly-wrong tree. So the
+  guarantee is precise: a non-NULL result is a *proven* normal form for linear
+  inputs; the known-correct λK examples (successor, addition, …) are verified
+  individually in the test; and adversarial λK is the reason the canonicalization
+  layer below is the next step rather than a finished claim.
+
+  *The remaining algorithm, extracted precisely from the paper (§3–§4).* Full λK
+  closes the gap with a **global leftmost-outermost reduction order** plus four
+  canonicalization steps that depart from the pure interaction paradigm.
+  (a) *Paired/unpaired + fan-in/fan-out bookkeeping.* Canonical replicators are
+  fan-ins (aux ports are parents, principal a child); commuting a fan with a
+  replicator always yields one fan-in and one fan-out; a fan-out is necessarily
+  paired; replicators start unpaired and an unpaired×fan commutation marks both
+  results "unknown". (b) *Unpaired-replicator merging:* if an unpaired replicator
+  A feeds a consecutive replicator B (unknown status) through an aux port with
+  delta d, and `0 ≤ l_B − l_A ≤ d`, then B is provably unpaired and A,B may be
+  merged (tree-flatten). (c) *Unpaired-replicator decay (λK):* drop aux ports
+  wired to erasers; a 1-aux-port replicator with delta 0 becomes a wire.
+  (d) *Two-phase reduction:* phase 1 runs the core rules + merging in
+  leftmost-outermost order to a fixpoint; phase 2 replaces core fan-replication
+  with the **aux-fan-replication** rule (Fig. 6 — "make each fan's first auxiliary
+  port its principal"), which eliminates all fan-outs, replicates the shared
+  subnets, and accumulates fan-ins at abstraction variable ports, yielding a
+  canonical net. (e) *Final erasure canonicalization:* mark everything reachable
+  by parent-child wires from the root and GC the rest to erasers. Replicators may
+  be capped at two aux ports (a tree of them stands in for any arity), making
+  interaction count an honest time measure. Implementing (a)–(e) is the concrete
+  path from "λL proven + λK examples verified" to "λK guaranteed", and there is
+  now a reference oracle and a fuzz harness to validate each step against.
 
   *Why HVM drops optimality (grounding the trade-off).* HVM2 (Taelin, "HVM2: A
   Parallel Evaluator for Interaction Combinators") makes the opposite choice from
@@ -542,13 +583,14 @@ payoff and deliberately last.
                                               Salvadori 2025 -- a single n-ary `replicator`
                                               (level + per-port level-deltas) replaces all
                                               brackets/croissants.  Core interaction system +
-                                              translation + read-back validated vs the reference
-                                              on a LARGER fragment than opt_core: function
-                                              duplication, Church successor AND addition; no
-                                              uncovered-pair case.  Full lambda-K (e.g. Church
-                                              multiplication -> cyclic net) needs the paper's
-                                              canonicalization rules + a global order (not yet).
-                                              `make deltanets`
+                                              translation + read-back.  SOUND on the linear
+                                              fragment (260k random terms vs reference, zero
+                                              mismatch); Church successor/addition verified;
+                                              read-back refuses non-canonical nets rather than
+                                              mis-normalising.  Full lambda-K (leftmost-outermost
+                                              order + canonicalization: merging/decay/phase-2
+                                              aux-fan replication/erasure GC) is documented but
+                                              not yet implemented.  `make deltanets`
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders
                                               (pair a b); ic_lower emits them and is

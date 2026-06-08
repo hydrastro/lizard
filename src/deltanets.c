@@ -26,10 +26,14 @@
  *                          the lower-level one are exact.
  *
  * The core is perfectly confluent: any normalising order yields the same result
- * in the same number of interactions.  Full lambda-K additionally needs the
- * paper's canonicalization rules + a global order (not implemented); terms that
- * need them (e.g. Church multiplication) leave a cyclic net and are reported as
- * such by dn_normalize rather than mis-normalised.
+ * in the same number of interactions.  It is SOUND on the linear fragment (only
+ * fan annihilation; validated by a 260k random-term differential test vs the
+ * reference).  Full lambda-K additionally needs the paper's canonicalization
+ * rules + a leftmost-outermost order (not implemented); since an arbitrary order
+ * can leave a wrong-but-valid-looking net for adversarial lambda-K, read-back is
+ * made sound by REFUSAL -- dn_normalize returns "needs canonicalization" whenever
+ * it detects a non-canonical net (cycle, residual sharing, reachable eraser, dead
+ * stub, bad index) rather than emitting a possibly-wrong normal form.
  */
 #include "deltanets.h"
 #include <stdio.h>
@@ -175,23 +179,46 @@ static int enc(const lc_term *t, int lev, int depth) {
   }
 }
 
-/* ---- readback: arrive at port0 = lambda, port1 = @-result, port2 = lambda's var ---- */
-static int rb_d[MAXA];
-static int rb_rec, rb_cyc;
+/* ---- readback: arrive at port0 = lambda, port1 = @-result, port2 = lambda's var.
+ *
+ * The read-back is the term-reading bijection phi^-1, which is only defined on a
+ * CANONICAL net (a tree, up to the transparent 1-ary replicators that encode
+ * variable scope). A proper-but-non-canonical net -- one that still has genuine
+ * sharing (a node reachable via two term-paths), a reachable eraser or dead
+ * stub in a term position, or a cycle -- cannot be linearised into a lambda-term
+ * without the canonicalization layer. Rather than emit a structurally-valid but
+ * semantically-WRONG tree in those cases, read-back sets rb_noncanon / rb_cyc and
+ * dn_normalize reports "needs canonicalization" (NULL, *cyclic = 1). This keeps
+ * the function sound: it never returns a wrong normal form. */
+static int rb_d[MAXA], rb_seen[MAXA];
+static int rb_rec, rb_cyc, rb_noncanon;
 static lc_term *rb(int a, int p, int depth) {
   lc_term *res;
   if (++rb_rec > RB_CAP) { rb_rec--; rb_cyc = 1; return lc_var(0); }
   for (;;) {
-    if (a < 0 || g_dead[a]) { rb_rec--; return lc_var(0); }
+    if (a < 0 || g_dead[a]) { rb_noncanon = 1; rb_rec--; return lc_var(0); }   /* dead stub */
     if (g_kind[a] == K_ROOT) { int na2 = tg(a, 0), np = tpp(a, 0); a = na2; p = np; continue; }
     if (g_kind[a] == K_REP)  { int np = (p == 0) ? 1 : 0, na2 = tg(a, np), npp = tpp(a, np); a = na2; p = npp; continue; }
-    if (g_kind[a] == K_ERA)  { rb_rec--; return lc_var(0); }
+    if (g_kind[a] == K_ERA)  { rb_noncanon = 1; rb_rec--; return lc_var(0); }  /* eraser in term position */
     break;
   }
-  if (p == 0) { rb_d[a] = depth; res = lc_lam(rb(tg(a, 1), tpp(a, 1), depth + 1)); rb_rec--; return res; }
-  if (p == 1) { lc_term *f = rb(tg(a, 0), tpp(a, 0), depth);
-                lc_term *x = rb(tg(a, 2), tpp(a, 2), depth); rb_rec--; return lc_app(f, x); }
-  rb_rec--; return lc_var(depth - 1 - rb_d[a]);
+  if (p == 0) {                                                               /* abstraction */
+    if (rb_seen[a]) { rb_noncanon = 1; rb_rec--; return lc_var(0); }           /* shared node */
+    rb_seen[a] = 1; rb_d[a] = depth;
+    res = lc_lam(rb(tg(a, 1), tpp(a, 1), depth + 1)); rb_rec--; return res;
+  }
+  if (p == 1) {                                                               /* application */
+    lc_term *f, *x;
+    if (rb_seen[a]) { rb_noncanon = 1; rb_rec--; return lc_var(0); }           /* shared node */
+    rb_seen[a] = 1;
+    f = rb(tg(a, 0), tpp(a, 0), depth);
+    x = rb(tg(a, 2), tpp(a, 2), depth); rb_rec--; return lc_app(f, x);
+  }
+  {                                                                           /* variable */
+    int idx = depth - 1 - rb_d[a];
+    if (idx < 0 || !rb_seen[a]) { rb_noncanon = 1; rb_rec--; return lc_var(0); }
+    rb_rec--; return lc_var(idx);
+  }
 }
 
 lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic) {
@@ -199,14 +226,15 @@ lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic) {
   lc_term *no;
   g_n = 0; g_inter = 0; g_bad = 0; g_wn = 0;
   for (d = 0; d < MAXD; d++) occ_n[d] = 0;
-  rb_rec = 0; rb_cyc = 0;
+  rb_rec = 0; rb_cyc = 0; rb_noncanon = 0;
   rw = enc(t, 0, 0);
   R = na(K_ROOT, 0, 0); att(rw, R, 0);
   reduce();
   if (interactions) *interactions = g_inter;
-  if (g_bad) { if (cyclic) *cyclic = 0; return (lc_term *)0; }
+  if (g_bad) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  for (d = 0; d < g_n; d++) rb_seen[d] = 0;
   no = rb(tg(R, 0), tpp(R, 0), 0);
-  if (rb_cyc) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  if (rb_cyc || rb_noncanon) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
   if (cyclic) *cyclic = 0;
   return no;
 }

@@ -61,11 +61,14 @@ src/deltanets.{c,h}         Delta-Nets (Salvadori 2025): the newest optimal-para
                          A single n-ary `replicator` (level + per-port level-deltas) replaces ALL
                          brackets/croissants, so delimiters never accumulate.  Implements the core
                          interaction system (fan/eraser/replicator) + the lambda<->net translation +
-                         read-back, reusing opt_core's term type + reference oracle.  Validated on a
-                         LARGER fragment than opt_core -- function duplication, Church successor AND
-                         addition -- with no uncovered-pair case.  Church multiplication leaves a
-                         cyclic net (the documented limitation: needs canonicalization + a global
-                         reduction order).  tests/deltanets_test.c, `make deltanets`
+                         read-back, reusing opt_core's term type + reference oracle.  SOUND on the
+                         linear fragment (260k random terms vs reference -> zero mismatch); Church
+                         successor and addition verified individually; read-back REFUSES any
+                         non-canonical net (cycle / residual sharing / reachable eraser) instead of
+                         returning a wrong tree.  Full lambda-K (leftmost-outermost order +
+                         canonicalization: unpaired merging/decay, phase-2 aux-fan replication,
+                         erasure GC) is precisely documented as remaining work.
+                         tests/deltanets_test.c, `make deltanets`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

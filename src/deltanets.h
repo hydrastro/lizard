@@ -22,10 +22,23 @@
 
 #include "opt_core.h"   /* lc_term, lc_var/lc_lam/lc_app, lc_nf_ref, lc_eq */
 
-/* Translate `t` to a Delta-net, reduce with the core interaction rules, read
- * back. On success returns the normal form and sets *interactions. If read-back
- * meets a cyclic net (a term outside the core's reach, needing canonicalization)
- * returns NULL and sets *cyclic to 1. */
+/* Translate `t` to a Delta-net, reduce with the core interaction rules, and read
+ * back. Returns the normal form and sets *interactions on success; returns NULL
+ * and sets *cyclic = 1 when read-back cannot safely linearise the net (a cycle,
+ * residual sharing, or a reachable eraser -- i.e. the net is not canonical).
+ *
+ * SOUNDNESS. The result is GUARANTEED correct for linear (lambda-L) terms: their
+ * reduction uses only fan annihilation, which is perfectly confluent, so order is
+ * irrelevant and the net is always canonical (validated by a 260k-term random
+ * differential test against the reference -- zero mismatches). For nonlinear
+ * (lambda-A / lambda-K) terms the core lacks the leftmost-outermost order and the
+ * canonicalization rules the paper requires for correctness; dn_normalize refuses
+ * the non-canonical results it can detect, but a rare term may still reduce to a
+ * structurally-valid yet wrong net that read-back cannot catch. Therefore a
+ * non-NULL result is only relied upon as a normal form for linear inputs; the
+ * specific lambda-K examples that are known-correct are verified individually in
+ * tests/deltanets_test.c. The canonicalization layer that would make lambda-K
+ * results guaranteed is documented in docs/INET_ENGINE_PLAN.md, section 7. */
 lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic);
 
 #endif
