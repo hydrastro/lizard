@@ -126,6 +126,11 @@ void ic_term_free(ic_term_t *t);
  * `out` must be an initialised mpz_t. */
 int ic_normalize_int(ic_term_t *t, mpz_t out, long *interactions);
 
+/* Select the reduction order (default LIFO).  Setting FIFO makes the reducer
+ * consume the redex queue front-to-back; the result and the interaction count
+ * are invariant (strong confluence), which tests/ic_confluence_test.c checks. */
+void ic_set_reduce_fifo(int on);
+
 /* Reduce `t` to normal form and write a textual rendering into `buf`.
  *   integers           -> decimal
  *   superpositions     -> "{a b}"  (optionally "{L: a b}" if labelled)

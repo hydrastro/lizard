@@ -147,6 +147,17 @@ ic-recursion:
 	    tests/ic_recursion_test.c $(SRC_DIR)/ic.c -lgmp -o $(BUILD_DIR)/ic_recursion_test
 	$(BUILD_DIR)/ic_recursion_test
 
+# Phase 17 (foundation): empirical strong confluence.  Reduces terms under both
+# the default LIFO order and a FIFO order and checks the result AND the
+# interaction count match -- the order-independence that makes parallel
+# scheduling sound.
+.PHONY: ic-confluence
+ic-confluence:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) -Iinclude \
+	    tests/ic_confluence_test.c $(SRC_DIR)/ic.c -lgmp -o $(BUILD_DIR)/ic_confluence_test
+	$(BUILD_DIR)/ic_confluence_test
+
 # Phase 14c: the by-observation identity reduction system and its executable
 # specification.  Id_A(x,y) computes by recursion on the structure of A (Bool/Nat
 # structurally, product componentwise, function pointwise/funext, universe by

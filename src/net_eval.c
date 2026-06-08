@@ -70,3 +70,23 @@ kterm_t *kt_normalize_gated(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t,
   }
   return kt_whnf(heap, ctx, t);                    /* fallback: the trusted reducer */
 }
+
+int kt_eval_via_net_auto(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t,
+                         kterm_t **out) {
+  kterm_t *ty = kt_infer(heap, ctx, t);             /* infer the term's type */
+  net_result_kind kind;
+  if (ty == NULL) return 0;                          /* ill-typed: decline        */
+  ty = kt_whnf(heap, ctx, ty);                       /* head-normalize the type    */
+  if (ty->tag == KT_NAT)       kind = NET_RESULT_NAT;
+  else if (ty->tag == KT_BOOL) kind = NET_RESULT_BOOL;
+  else return 0;                                     /* unsupported result type     */
+  return kt_eval_via_net(heap, ctx, t, kind, out);
+}
+
+kterm_t *kt_normalize_auto(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t) {
+  if (g_enabled) {
+    kterm_t *out = NULL;
+    if (kt_eval_via_net_auto(heap, ctx, t, &out)) return out;
+  }
+  return kt_whnf(heap, ctx, t);
+}

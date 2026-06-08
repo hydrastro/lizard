@@ -34,10 +34,14 @@ src/id_observe.{c,h}     phase 14c + 15: a self-contained by-observation identit
                          spec for the net's Id + transport agents.
 tests/id_observe_test.c  the 14c/15 spec checks (vs hand-computed normal forms); `make id-observe`
 src/net_eval.{c,h}       phase 16 (started): the net as evaluator — kt_eval_via_net runs a closed
-                         kernel term on the net and reads the result back as a kterm; a gate
-                         (kt_normalize_gated) selects net-vs-kt_whnf with the trusted reducer as
+                         kernel term on the net and reads the result back as a kterm; the result
+                         kind is inferred via kt_infer (kt_eval_via_net_auto), and a gate
+                         (kt_normalize_auto) selects net-vs-kt_whnf with the trusted reducer as
                          fallback.  The seam by which the net becomes the engine.
-tests/net_eval_test.c    net-evaluator checks (net result == kernel) + gate/fallback; `make net-eval`
+tests/net_eval_test.c    net-evaluator checks (net result == kernel) + auto-dispatch + gate/fallback; `make net-eval`
+tests/ic_confluence_test.c  phase 17 (foundation): LIFO vs FIFO reduction agree on result AND
+                         interaction count (strong confluence -> parallel scheduling is sound);
+                         `make ic-confluence`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

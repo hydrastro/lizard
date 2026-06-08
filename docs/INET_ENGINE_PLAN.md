@@ -370,10 +370,22 @@ gate (`kt_net_eval_set_enabled`), falling back to the trusted reducer whenever t
 net declines a term. So the third bullet — only trusting a net result once it is
 a `kterm_t` again — is realised for the current fragment, and the routing bullet
 has a concrete entry point to grow into. The net-evaluator is checked against
-`kt_whnf` (`make net-eval`). What remains is type-directed dispatch (so the result
-kind need not be passed in), reading back richer result types, and pointing the
-system's actual evaluation path at `kt_normalize_gated` rather than calling
-`kt_whnf` directly — at which point flipping the gate makes the net the default.
+`kt_whnf` (`make net-eval`). The result kind is now inferred from the term's type
+(`kt_eval_via_net_auto` calls `kt_infer`, then whnf's the inferred type), so the
+caller no longer supplies it. What remains is reading back richer result types
+and pointing the system's actual evaluation path at `kt_normalize_auto` rather
+than calling `kt_whnf` directly — at which point flipping the gate makes the net
+the default.
+
+**Status (Phase 17, foundation).** Parallelism rests on the net being *strongly
+confluent* — reducing independent active pairs in any order gives the same
+result. `tests/ic_confluence_test.c` checks this empirically and in a strong
+form: reduced LIFO versus FIFO (`ic_set_reduce_fifo`), a term reaches not only the
+same normal form but the same *interaction count*, across recursion, arithmetic,
+and DUP-sharing (54 terms). With order-independence pinned, the remaining step is
+the actual multithreaded reducer — atomic port operations or a work queue over
+the frontier of active pairs — which is the Bend-style payoff and deliberately
+last.
 
 
 ## 7. Honest list of the hard parts
@@ -471,13 +483,25 @@ system's actual evaluation path at `kt_normalize_gated` rather than calling
   16  net becomes the primary engine    STARTED src/net_eval.{c,h}, tests/net_eval_test.c:
                                               kt_eval_via_net runs a closed kernel term on the
                                               net and reads the result back as a kterm (Nat /
-                                              Bool); kt_normalize_gated selects net-vs-kt_whnf
-                                              behind a gate, falling back to the trusted reducer
-                                              when the net declines.  Validated against kt_whnf
-                                              (`make net-eval`).  Remaining: type-directed
-                                              dispatch (no explicit kind), richer result types,
-                                              and routing the system's main eval path through it.
-  17  parallel reduction                      Bend-style, last
+                                              Bool); kt_eval_via_net_auto INFERS the result kind
+                                              from kt_infer (type-directed dispatch -- no explicit
+                                              kind); kt_normalize_gated / kt_normalize_auto select
+                                              net-vs-kt_whnf behind a gate, falling back to the
+                                              trusted reducer when the net declines.  Validated
+                                              against kt_whnf (`make net-eval`).  Remaining: richer
+                                              result types, and routing the system's main eval
+                                              path through kt_normalize_auto (then the gate makes
+                                              the net the default).
+  17  parallel reduction              FOUNDATION src/ic.c (ic_set_reduce_fifo), tests/
+                                              ic_confluence_test.c: interaction nets are strongly
+                                              confluent, so a term reduced LIFO and FIFO reaches
+                                              the same normal form in the SAME interaction count --
+                                              checked over recursion, arithmetic, and DUP-sharing
+                                              (54 terms).  That order-independence is the property
+                                              parallel scheduling relies on; the actual
+                                              multithreaded reducer (atomic port ops / a work
+                                              queue over independent active pairs) is the
+                                              remaining Bend-style step.  `make ic-confluence`.
 ```
 
 The throughline: lizard already has every separate piece — a combinator runtime,

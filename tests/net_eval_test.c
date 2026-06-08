@@ -104,6 +104,46 @@ static void ckbool(const char *name, kterm_t *t, int want) {
   }
 }
 
+/* well-typed recursors (proper motives), needed because the auto path type-checks */
+static kterm_t *knatrec_typed(kterm_t *zc, kterm_t *sc, kterm_t *scrut) {
+  kterm_t *t = kmk(KT_NAT_REC);
+  t->data.nat_rec.motive    = kt_lam(H, "n", kt_nat(H), kt_nat(H));   /* lam n:Nat. Nat */
+  t->data.nat_rec.zero_case = zc; t->data.nat_rec.succ_case = sc; t->data.nat_rec.scrutinee = scrut;
+  return t;
+}
+static kterm_t *kif_typed(kterm_t *c, kterm_t *tc, kterm_t *fc) {
+  kterm_t *t = kmk(KT_BOOL_REC);
+  t->data.bool_rec.motive     = kt_lam(H, "b", kmk(KT_BOOL), kmk(KT_BOOL)); /* lam b:Bool. Bool */
+  t->data.bool_rec.true_case  = tc; t->data.bool_rec.false_case = fc; t->data.bool_rec.scrutinee = c;
+  return t;
+}
+
+/* type-directed dispatch: NO kind passed -- it is inferred from the term's type */
+static void cknat_auto(const char *name, kterm_t *t, long want) {
+  kterm_t *out = NULL;
+  long kn = kernel_nat(t), nv;
+  checks++;
+  if (!kt_eval_via_net_auto(H, CTX, t, &out)) {
+    fails++; printf("  FAIL %s: auto-dispatch declined\n", name); return;
+  }
+  nv = numeral_of(out);
+  if (nv != kn || kn != want) {
+    fails++; printf("  FAIL %s: net=%ld kernel=%ld want=%ld\n", name, nv, kn, want);
+  }
+}
+static void ckbool_auto(const char *name, kterm_t *t, int want) {
+  kterm_t *out = NULL;
+  int kb = kernel_bool(t), nv;
+  checks++;
+  if (!kt_eval_via_net_auto(H, CTX, t, &out)) {
+    fails++; printf("  FAIL %s: auto-dispatch declined\n", name); return;
+  }
+  nv = (out->tag == KT_TRUE) ? 1 : (out->tag == KT_FALSE) ? 0 : -1;
+  if (nv != kb || kb != want) {
+    fails++; printf("  FAIL %s: net=%d kernel=%d want=%d\n", name, nv, kb, want);
+  }
+}
+
 int main(void) {
   kterm_t *r_off, *r_on, *r_fallback, *decl = NULL;
   int declined;
@@ -123,6 +163,12 @@ int main(void) {
   ckbool("if true  then true else false  = true",  kif(ktrue(),  ktrue(), kfalse()), 1);
   ckbool("if false then false else true  = true",  kif(kfalse(), kfalse(), ktrue()), 1);
 
+  /* type-directed dispatch: the evaluator infers Nat vs Bool from kt_infer */
+  cknat_auto("auto: eval 7 (inferred Nat)",            num(7), 7);
+  cknat_auto("auto: natrec 2 (\\p r. succ r) 3 = 5",   knatrec_typed(num(2), succ_case_succ_r(), num(3)), 5);
+  ckbool_auto("auto: eval true (inferred Bool)",        ktrue(), 1);
+  ckbool_auto("auto: if false then false else true = true", kif_typed(kfalse(), kfalse(), ktrue()), 1);
+
   if (fails == 0) printf("ALL %ld NET-EVALUATOR CHECKS PASSED (net result == kernel)\n", checks);
   else            printf("%ld/%ld net-evaluator checks FAILED\n", fails, checks);
 
@@ -138,6 +184,12 @@ int main(void) {
   kt_net_eval_set_enabled(1);
   r_on = kt_normalize_gated(H, CTX, num(5), NET_RESULT_NAT);
   printf("  gate on  : normalize(5)    -> net value %ld\n", numeral_of(r_on));
+
+  /* fully automatic (no kind): kt_normalize_auto infers the type and routes */
+  {
+    kterm_t *ra = kt_normalize_auto(H, CTX, num(9));
+    printf("  gate on  : normalize_auto(9) [kind inferred] -> net value %ld\n", numeral_of(ra));
+  }
 
   /* fallback: a term outside the net's fragment (a sort) is declined, so the
    * gated path falls back to kt_whnf even with the gate on */

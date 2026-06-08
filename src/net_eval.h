@@ -30,6 +30,14 @@ typedef enum { NET_RESULT_NAT, NET_RESULT_BOOL } net_result_kind;
 int kt_eval_via_net(lizard_heap_t *heap, kctx_t *ctx, const kterm_t *t,
                     net_result_kind kind, kterm_t **out);
 
+/* As kt_eval_via_net, but infer the result kind from the term's type (via
+ * kt_infer, then a whnf of the inferred type) instead of being told it.  Returns
+ * 0 (declines) if the type cannot be inferred or is not a supported result type
+ * (currently Nat or Bool).  This is the type-directed dispatch that lets the net
+ * evaluator be called without an out-of-band kind. */
+int kt_eval_via_net_auto(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t,
+                         kterm_t **out);
+
 /* The gate (default: off). */
 void kt_net_eval_set_enabled(int on);
 int  kt_net_eval_enabled(void);
@@ -38,5 +46,10 @@ int  kt_net_eval_enabled(void);
  * the net's value; otherwise fall back to the trusted reducer kt_whnf. */
 kterm_t *kt_normalize_gated(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t,
                             net_result_kind kind);
+
+/* Fully automatic: infer the kind, then behave as kt_normalize_gated.  This is
+ * the entry the system's evaluator would call -- no kind, no manual routing;
+ * flip the gate and the net becomes the default, with kt_whnf as the fallback. */
+kterm_t *kt_normalize_auto(lizard_heap_t *heap, kctx_t *ctx, kterm_t *t);
 
 #endif /* NET_EVAL_H */

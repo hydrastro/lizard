@@ -94,9 +94,20 @@ static Port g_root;
 /* ---- allocators ------------------------------------------------------- */
 static unsigned long new_var(void);
 
+/* Reduction order.  The default is LIFO (a stack); setting FIFO consumes the
+ * redex queue front-to-back instead.  Interaction nets are strongly confluent
+ * (one-step diamond), so BOTH orders reach the same normal form in the same
+ * NUMBER of interactions — the property that makes parallel scheduling sound.
+ * tests/ic_confluence_test.c checks this empirically.  (FIFO does not reclaim
+ * consumed slots, so it is a validation mode for bounded reductions, not the
+ * production reducer.) */
+static int g_reduce_fifo = 0;
+static int g_rdx_head = 0;
+void ic_set_reduce_fifo(int on) { g_reduce_fifo = on ? 1 : 0; }
+
 static void ic_reset(void) {
   g_nnode = 0; g_nfree = 0; g_nvar = 0; g_nnum = 0;
-  g_nrdx = 0; g_inter = 0; g_oom = 0;
+  g_nrdx = 0; g_inter = 0; g_oom = 0; g_rdx_head = 0;
 }
 
 static int new_node(int tag, int lab) {
@@ -444,9 +455,15 @@ static void interact(Port a, Port b) {
 }
 
 static void reduce(void) {
-  while (g_nrdx > 0 && !g_oom && g_inter < STEP_LIMIT) {
-    Port a = g_ra[--g_nrdx];
-    Port b = g_rb[g_nrdx];
+  while (!g_oom && g_inter < STEP_LIMIT) {
+    Port a, b;
+    if (g_reduce_fifo) {                 /* consume the queue front-to-back */
+      if (g_rdx_head >= g_nrdx) break;
+      a = g_ra[g_rdx_head]; b = g_rb[g_rdx_head]; g_rdx_head++;
+    } else {                             /* default: LIFO stack (unchanged) */
+      if (g_nrdx <= 0) break;
+      a = g_ra[--g_nrdx]; b = g_rb[g_nrdx];
+    }
     interact(a, b);
   }
 }
