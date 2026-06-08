@@ -22,6 +22,8 @@ id_node *id_idty(id_node *A, id_node *x, id_node *y) { id_node *t = mk(ID_ID); t
 id_node *id_equiv(id_node *A, id_node *B)         { id_node *t = mk(ID_EQUIV); t->a = A; t->b = B; return t; }
 id_node *id_refl(id_node *x)                      { id_node *t = mk(ID_REFL);  t->a = x; return t; }
 id_node *id_transp(id_node *P, id_node *p, id_node *x) { id_node *t = mk(ID_TRANSP); t->a = P; t->b = p; t->c = x; return t; }
+id_node *id_if(id_node *c, id_node *th, id_node *el) { id_node *t = mk(ID_IF); t->a = c; t->b = th; t->c = el; return t; }
+id_node *id_ua(id_node *f) { id_node *t = mk(ID_UA); t->a = f; return t; }
 
 id_node *id_nat_lit(int n) {
   id_node *t = id_base(ID_ZERO);
@@ -53,6 +55,8 @@ static id_node *shift(const id_node *t, int d, int cutoff) {
     case ID_EQUIV: return id_equiv(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
     case ID_ID:    return id_idty(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_TRANSP:return id_transp(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
+    case ID_IF:    return id_if(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
+    case ID_UA:    return id_ua(shift(t->a, d, cutoff));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
     case ID_TRUE: case ID_FALSE: case ID_ZERO: case ID_STAR:
       return mk(t->kind);
@@ -82,6 +86,8 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
     case ID_EQUIV: return id_equiv(inst(body->a, depth, arg), inst(body->b, depth, arg));
     case ID_ID:    return id_idty(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_TRANSP:return id_transp(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
+    case ID_IF:    return id_if(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
+    case ID_UA:    return id_ua(inst(body->a, depth, arg));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
     case ID_TRUE: case ID_FALSE: case ID_ZERO: case ID_STAR:
       return mk(body->kind);
@@ -135,6 +141,19 @@ static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
 }
 
 /* ---------------------------------------------------------------- normaliser */
+/* does the de Bruijn variable `lvl` occur free in t?  Used to detect a constant
+ * type family: a family `lam X. body` whose body never mentions X, in which case
+ * transport in that family is the identity regardless of the path. */
+static int occurs(const id_node *t, int lvl) {
+  if (t == NULL) return 0;
+  switch (t->kind) {
+    case ID_VAR: return t->idx == lvl;
+    case ID_LAM: return occurs(t->a, lvl + 1);
+    case ID_PI:  return occurs(t->a, lvl) || occurs(t->b, lvl + 1);
+    default:     return occurs(t->a, lvl) || occurs(t->b, lvl) || occurs(t->c, lvl);
+  }
+}
+
 id_node *id_nf(const id_node *t) {
   if (t == NULL) return NULL;
   switch (t->kind) {
@@ -158,9 +177,31 @@ id_node *id_nf(const id_node *t) {
     }
     case ID_TRANSP: {
       id_node *P = id_nf(t->a), *p = id_nf(t->b), *x = id_nf(t->c);
-      if (p->kind == ID_REFL) { id_free(P); id_free(p); return x; }  /* transport refl x -> x */
-      return id_transp(P, p, x);
+      /* transport along refl is the identity, for ANY family */
+      if (p->kind == ID_REFL) { id_free(P); id_free(p); return x; }
+      if (P->kind == ID_LAM) {
+        /* constant family (the argument is unused): transport is the identity
+         * for any path -- this is why transport never intrudes in the simply-
+         * typed fragment, and why funext etc. need no transport corrections. */
+        if (!occurs(P->a, 0)) { id_free(P); id_free(p); return x; }
+        /* identity family  (lam X. X)  over the universe: this is the genuinely
+         * univalent case.  transport^(lam X.X) (ua f) x  =  f x. */
+        if (P->a->kind == ID_VAR && P->a->idx == 0 && p->kind == ID_UA) {
+          id_node *ap = id_app(id_copy(p->a), x);   /* x's ownership moves into ap */
+          id_node *r = id_nf(ap);
+          id_free(ap); id_free(P); id_free(p);
+          return r;
+        }
+      }
+      return id_transp(P, p, x);   /* structural family cases: documented extension */
     }
+    case ID_IF: {
+      id_node *c = id_nf(t->a), *th = id_nf(t->b), *el = id_nf(t->c);
+      if (c->kind == ID_TRUE)  { id_free(c); id_free(el); return th; }
+      if (c->kind == ID_FALSE) { id_free(c); id_free(th); return el; }
+      return id_if(c, th, el);     /* neutral */
+    }
+    case ID_UA: return id_ua(id_nf(t->a));
     case ID_ID: {
       id_node *A = id_nf(t->a), *x = id_nf(t->b), *y = id_nf(t->c), *r;
       r = observe(A, x, y);
@@ -208,5 +249,7 @@ void id_print(const id_node *t) {
     case ID_EQUIV: printf("Equiv "); id_print(t->a); printf(" "); id_print(t->b); break;
     case ID_ID:    printf("Id "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); break;
     case ID_TRANSP:printf("transport "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); break;
+    case ID_IF:    printf("(if "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); printf(")"); break;
+    case ID_UA:    printf("(ua "); id_print(t->a); printf(")"); break;
   }
 }

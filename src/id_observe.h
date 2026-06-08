@@ -38,7 +38,9 @@ typedef enum {
   ID_PROD, ID_ARR, ID_PI, ID_ID, ID_EQUIV,     /* type formers                  */
   ID_TRUE, ID_FALSE, ID_ZERO, ID_SUCC, ID_STAR,/* canonical terms               */
   ID_PAIR, ID_LAM, ID_VAR, ID_APP,             /* pairs / functions / variables */
-  ID_REFL, ID_TRANSP                           /* equality witnesses            */
+  ID_REFL, ID_TRANSP,                          /* equality witnesses            */
+  ID_IF,                                       /* if c then t else e  (Bool elim) */
+  ID_UA                                        /* ua f : a univalence path built from a forward map f */
 } id_kind;
 
 typedef struct id_node {
@@ -62,6 +64,8 @@ id_node *id_idty(id_node *A, id_node *x, id_node *y);   /* Id A x y */
 id_node *id_equiv(id_node *A, id_node *B);
 id_node *id_refl(id_node *x);
 id_node *id_transp(id_node *P, id_node *p, id_node *x);  /* transport^P p x */
+id_node *id_if(id_node *c, id_node *t, id_node *e);     /* if c then t else e */
+id_node *id_ua(id_node *f);                             /* univalence path from forward map f */
 
 id_node *id_nat_lit(int n);                  /* convenience: succ^n zero */
 id_node *id_copy(const id_node *t);          /* deep copy */

@@ -362,6 +362,19 @@ Parallelism is the Bend-style payoff and comes almost for free: interaction is
 local, so independent active pairs reduce concurrently. It is deliberately last
 — correctness and optimal readback first, throughput after.
 
+**Status (Phase 16, started).** The seam now exists: `src/net_eval.c` provides
+`kt_eval_via_net`, which runs a closed kernel term on the net and reads the
+result back into a `kterm_t` (the reify side of the reify-and-recheck gate above),
+and `kt_normalize_gated`, which chooses between the net and `kt_whnf` behind a
+gate (`kt_net_eval_set_enabled`), falling back to the trusted reducer whenever the
+net declines a term. So the third bullet — only trusting a net result once it is
+a `kterm_t` again — is realised for the current fragment, and the routing bullet
+has a concrete entry point to grow into. The net-evaluator is checked against
+`kt_whnf` (`make net-eval`). What remains is type-directed dispatch (so the result
+kind need not be passed in), reading back richer result types, and pointing the
+system's actual evaluation path at `kt_normalize_gated` rather than calling
+`kt_whnf` directly — at which point flipping the gate makes the net the default.
+
 
 ## 7. Honest list of the hard parts
 
@@ -443,8 +456,27 @@ local, so independent active pairs reduce concurrently. It is deliberately last
                                               implement; wiring it into the net as agents
                                               (Id meets Σ/Π/𝒰 in the graph), and the dependent
                                               cases, are the remaining 14c step.
-  15  transport as agent/type-former rewrite  validated against the cubical layer
-  16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
+  15  transport as type-former rewrite   DONE   src/id_observe.{c,h} (transport extended),
+      (semantics)                         (sem.)  tests/id_observe_test.c: transport reduces by
+                                              the structure of its type family — refl and any
+                                              constant family give the identity; the identity
+                                              family over 𝒰 gives the univalent rule
+                                              transport^(λX.X) (ua f) x = f x (e.g. negating a
+                                              Bool), 30 checks total.  `make id-observe`.  The
+                                              in-tree cross-check against the cubical layer
+                                              src/tt_equality.c (which carries the same
+                                              transport-refl + per-type-former rules) is the
+                                              remaining external validation, and the dependent
+                                              function/Σ family cases are the next extension.
+  16  net becomes the primary engine    STARTED src/net_eval.{c,h}, tests/net_eval_test.c:
+                                              kt_eval_via_net runs a closed kernel term on the
+                                              net and reads the result back as a kterm (Nat /
+                                              Bool); kt_normalize_gated selects net-vs-kt_whnf
+                                              behind a gate, falling back to the trusted reducer
+                                              when the net declines.  Validated against kt_whnf
+                                              (`make net-eval`).  Remaining: type-directed
+                                              dispatch (no explicit kind), richer result types,
+                                              and routing the system's main eval path through it.
   17  parallel reduction                      Bend-style, last
 ```
 

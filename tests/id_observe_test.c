@@ -32,6 +32,8 @@ static id_node *U_(void)     { return id_base(ID_U); }
 static id_node *T_(void)     { return id_base(ID_TRUE); }
 static id_node *F_(void)     { return id_base(ID_FALSE); }
 static id_node *Star_(void)  { return id_base(ID_STAR); }
+/* the Boolean negation map  lam b. if b then false else true  (an equivalence) */
+static id_node *Not_(void)   { return id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE))); }
 
 int main(void) {
   /* ---- inductive types: Id computes by structural recursion (observation) ---- */
@@ -79,6 +81,30 @@ int main(void) {
   check("transport (lam Nat) (refl 0) (succ 0)",
         id_transp(id_lam(Nat_()), id_refl(id_nat_lit(0)), id_nat_lit(1)),
         id_nat_lit(1));
+
+  /* ---- Phase 15: transport reduces by the structure of its type family ---- */
+  /* Bool elimination (needed below): if fires on a concrete scrutinee */
+  check("if true 1 2",  id_if(T_(), id_nat_lit(1), id_nat_lit(2)), id_nat_lit(1));
+  check("if false 1 2", id_if(F_(), id_nat_lit(1), id_nat_lit(2)), id_nat_lit(2));
+  check("not true",  id_app(Not_(), T_()), F_());
+  check("not false", id_app(Not_(), F_()), T_());
+
+  /* a CONSTANT family ignores the path: transport is the identity even along a
+   * non-trivial (univalence) path.  This is why transport never intrudes in the
+   * simply-typed fragment. */
+  check("transport (lam _. Nat) (ua not) (succ 0)  [constant family]",
+        id_transp(id_lam(Nat_()), id_ua(Not_()), id_nat_lit(1)),
+        id_nat_lit(1));
+
+  /* the IDENTITY family over the universe is the univalent case:
+   *   transport^(lam X. X) (ua f) x  =  f x
+   * transporting a Bool along the negation equivalence flips it. */
+  check("transport (lam X. X) refl true",
+        id_transp(id_lam(id_var(0)), id_refl(T_()), T_()), T_());
+  check("transport (lam X. X) (ua not) true   [univalence: negation]",
+        id_transp(id_lam(id_var(0)), id_ua(Not_()), T_()), F_());
+  check("transport (lam X. X) (ua not) false  [univalence: negation]",
+        id_transp(id_lam(id_var(0)), id_ua(Not_()), F_()), T_());
 
   /* ---- neutral cases: no canonicity on open terms (variables) ---- */
   check("Id Nat #0 #0 (neutral)",
