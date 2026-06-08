@@ -46,6 +46,7 @@ term   ::= NUM                                  ; exact integer, e.g. 0  -17  90
          | '(' 'pair' term term ')'             ; Σ introduction   (a , b)      [Phase 14]
          | '(' 'fst'  term ')'                  ; Σ first projection   π₁ p     [Phase 14]
          | '(' 'snd'  term ')'                  ; Σ second projection  π₂ p     [Phase 14]
+         | '(' 'transp' term ')'                ; transport / Id-by-observation [Phase 14b]
 
 app    ::= term { term }                        ; left-associated: (f a b) = ((f a) b)
 
@@ -56,8 +57,8 @@ NAME   ::= any token that is not a reserved word, a number, or a delimiter
 ```
 
 **Reserved words** (cannot be variable names): `lam` `op` `dup` `pair` `fst`
-`snd`. (`sup` is *not* a textual keyword — superpositions are written with
-braces, see below. It is only a keyword on the Scheme surface, §3.)
+`snd` `transp`. (`sup` is *not* a textual keyword — superpositions are written
+with braces, see below. It is only a keyword on the Scheme surface, §3.)
 
 ### The forms, one by one
 
@@ -76,6 +77,7 @@ braces, see below. It is only a keyword on the Scheme surface, §3.)
 | `(pair a b)` | dependent pair (Σ intro) | `(pair 3 4)` | `(pair 3 4)` |
 | `(fst p)` | first projection | `(fst (pair 3 4))` | `3` |
 | `(snd p)` | second projection | `(snd (pair 3 4))` | `4` |
+| `(transp v)` | transport / Id-by-observation (reflexive ⇒ identity) | `(transp 5)` | `5` |
 
 ### Arithmetic (`op`)
 
@@ -126,6 +128,27 @@ duplicates like anything else — a pair bound once and used twice flows through
 (fst {(pair 1 2) (pair 3 4)})               => {1 3}     ; projection over a superposition
 ```
 
+### Transport — Id-by-observation (Phase 14b, partial)
+
+`transp` is the transport agent. It computes by recursion on the value former it
+meets — over Σ componentwise, over Π pointwise, trivially on the base — which is
+the by-observation reduction of the identity type. Along a reflexivity path
+transport is the identity, so `(transp v)` reduces to `v`:
+
+```
+(transp 5)                          => 5            ; base type
+(transp (pair 3 4))                 => (pair 3 4)   ; Σ: transports each component
+((transp (lam x (op + x 1))) 5)     => 6            ; Π: transp(λx.b) = λx.transp(b)
+(transp {1 2})                      => {1 2}        ; distributes over a superposition
+```
+
+What is implemented now is this *structural, reflexive* core (and it is fuzz-
+checked: wrapping any subterm in `transp` never changes its value). The full
+identity type — transport along a *non-reflexive* path, the dependent second
+component of Id-over-Σ, function extensionality as the Π case, and univalence as
+the 𝒰 case — dispatches on the *type* former and is the remaining Phase 14b work,
+validated against the cubical layer. See `docs/INET_ENGINE_PLAN.md`.
+
 ---
 
 ## 2. What a program *is* (so the syntax is not misleading)
@@ -166,6 +189,7 @@ available. Each takes **one quoted datum** describing a term:
          | (pair <term> <term>)                   ; Σ introduction          [Phase 14]
          | (fst <term>)                           ; Σ first projection      [Phase 14]
          | (snd <term>)                           ; Σ second projection     [Phase 14]
+         | (transp <term>)                        ; transport / Id-by-obs.  [Phase 14b]
 ```
 
 Notes:

@@ -125,6 +125,12 @@ itself is already verified standalone via tests/ic_test.c and src/ic_demo.c.
 +        if (pp == NULL) return NULL;
 +        return (h[0] == 'f') ? ic_fst(pp) : ic_snd(pp);
 +      }
++      if (!strcmp(h, "transp")) {
++        /* (transp v) -- transport / Id-by-observation */
++        ic_term_t *vv = lz_ic_parse(lz_ic_nth(t, 1));
++        if (vv == NULL) return NULL;
++        return ic_transp(vv);
++      }
 +      if (!strcmp(h, "dup")) {
 +        /* (dup x y v body) or (dup L x y v body) */
 +        int base = 1, label = 0;

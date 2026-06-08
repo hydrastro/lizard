@@ -125,5 +125,14 @@ int main(void) {
   /* a projection distributes over a superposition of pairs (FST ~ SUP) */
   TEST_ASSERT(rb_eq(P("(fst {(pair 1 2) (pair 3 4)})"), "{1 3}"));
 
+  /* ---- transport (Id-by-observation); reflexive transport is the identity -- */
+  TEST_ASSERT(rb_eq(P("(transp 5)"), "5"));                       /* base */
+  TEST_ASSERT(rb_eq(P("(transp (pair 3 4))"), "(pair 3 4)"));     /* Σ componentwise */
+  TEST_ASSERT(rb_eq(P("(fst (transp (pair 3 4)))"), "3"));
+  TEST_ASSERT(rb_eq(P("((transp (lam x (op + x 1))) 5)"), "6"));  /* Π pointwise */
+  TEST_ASSERT(rb_eq(P("((transp (lam x (op + x x))) 5)"), "10")); /* Π + shared binder */
+  TEST_ASSERT(rb_eq(P("(transp {1 2})"), "{1 2}"));               /* over a superposition */
+  TEST_ASSERT(rb_eq(P("(transp (transp (pair 7 (op * 2 4))))"), "(pair 7 8)"));
+
   TEST_RETURN();
 }

@@ -28,6 +28,7 @@ typedef unsigned long Port;
 #define T_PAIR 9u           /* Σ pair constructor (binary)   */
 #define T_FST  10u          /* Σ first projection (eliminator) */
 #define T_SND  11u          /* Σ second projection (eliminator) */
+#define T_TRANSP 12u        /* transport / Id-by-observation (unary) */
 
 #define MKP(tag, val) ( ((Port)(val) << 4) | (Port)(tag) )
 #define PTAG(p)       ((unsigned)((p) & 15u))
@@ -40,7 +41,7 @@ typedef unsigned long Port;
 #define ISNUL(t) ((t) == T_ERA || (t) == T_NUM)
 /* an agent occupies a node (has a principal port); FST/SND are unary eliminators
  * handled explicitly, so they are not in ISBIN but are still agents. */
-#define ISAGENT(t) (ISBIN(t) || (t) == T_FST || (t) == T_SND)
+#define ISAGENT(t) (ISBIN(t) || (t) == T_FST || (t) == T_SND || (t) == T_TRANSP)
 
 /* family used by the annihilate/commute decision:
  *   CON         -> 0  (lambda / application / constructors)
@@ -259,6 +260,60 @@ static void do_proj(unsigned pt, unsigned long pi, unsigned xt, unsigned long xi
   return;
 }
 
+/* TRANSP is the transport / Id-by-observation agent (unary: principal faces the
+ * value, p1 = result, p2 an unused wire).  It computes by recursion on the value
+ * former it meets -- transport over Sigma is componentwise, over Pi is pointwise,
+ * trivial on the base -- which is exactly the by-observation reduction.  On a
+ * reflexivity path it is the identity, so transp(v) normalises to v; the typed
+ * version that dispatches on the *type* former and carries a real path sits on
+ * top of these same structural rules (see docs/INET_ENGINE_PLAN.md, Phase 14b). */
+static void do_transp(unsigned long ti, unsigned xt, unsigned long xi) {
+  if (xt == T_PAIR) {                          /* Sigma: transport each component */
+    int pr = new_node(T_PAIR, 0);
+    int t1 = new_node(T_TRANSP, 0);
+    int t2 = new_node(T_TRANSP, 0);
+    link_ports(MKP(T_TRANSP, (unsigned long)t1), g_p1[xi]);
+    link_ports(g_p1[t1], g_p1[pr]);
+    link_ports(g_p2[t1], P_ERAP);
+    link_ports(MKP(T_TRANSP, (unsigned long)t2), g_p2[xi]);
+    link_ports(g_p1[t2], g_p2[pr]);
+    link_ports(g_p2[t2], P_ERAP);
+    link_ports(g_p1[ti], MKP(T_PAIR, (unsigned long)pr));
+    free_node((int)ti); free_node((int)xi);
+    return;
+  }
+  if (xt == T_CON) {                           /* Pi: transp (\x.b) = \x. transp b */
+    int c  = new_node(T_CON, 0);
+    int tb = new_node(T_TRANSP, 0);
+    link_ports(g_p1[c], g_p1[xi]);             /* the new lambda shares the binder */
+    link_ports(MKP(T_TRANSP, (unsigned long)tb), g_p2[xi]);
+    link_ports(g_p1[tb], g_p2[c]);
+    link_ports(g_p2[tb], P_ERAP);
+    link_ports(g_p1[ti], MKP(T_CON, (unsigned long)c));
+    free_node((int)ti); free_node((int)xi);
+    return;
+  }
+  if (xt == T_DUP || xt == T_SUP) {            /* distribute over sharing/superposition */
+    int xn = new_node((int)xt, g_lab[xi]);
+    int t1 = new_node(T_TRANSP, 0);
+    int t2 = new_node(T_TRANSP, 0);
+    link_ports(g_p1[xi], MKP(T_TRANSP, (unsigned long)t1));
+    link_ports(g_p2[xi], MKP(T_TRANSP, (unsigned long)t2));
+    link_ports(g_p1[t1], g_p1[xn]);
+    link_ports(g_p1[t2], g_p2[xn]);
+    link_ports(g_p1[ti], MKP(xt, (unsigned long)xn));
+    link_ports(g_p2[t1], P_ERAP);
+    link_ports(g_p2[t2], P_ERAP);
+    free_node((int)ti); free_node((int)xi);
+    return;
+  }
+  if (xt == T_ERA) { link_ports(g_p1[ti], P_ERAP); free_node((int)ti); return; }
+  /* base type (NUM) or any other producer: transport is the identity. */
+  link_ports(g_p1[ti], MKP(xt, xi));
+  free_node((int)ti);
+  return;
+}
+
 static void interact(Port a, Port b) {
   unsigned ta = PTAG(a), tb = PTAG(b);
   unsigned long ia = PVAL(a), ib = PVAL(b);
@@ -268,6 +323,12 @@ static void interact(Port a, Port b) {
   if (ta == T_FST || ta == T_SND || tb == T_FST || tb == T_SND) {
     if (ta == T_FST || ta == T_SND) do_proj(ta, ia, tb, ib);
     else                            do_proj(tb, ib, ta, ia);
+    return;
+  }
+  /* transport (Id-by-observation), also unary. */
+  if (ta == T_TRANSP || tb == T_TRANSP) {
+    if (ta == T_TRANSP) do_transp(ia, tb, ib);
+    else                do_transp(ib, ta, ia);
     return;
   }
 
@@ -376,6 +437,7 @@ ic_term_t *ic_pair(ic_term_t *f, ic_term_t *s) {
 }
 ic_term_t *ic_fst(ic_term_t *p) { ic_term_t *t = talloc(IC_TFST); t->a = p; return t; }
 ic_term_t *ic_snd(ic_term_t *p) { ic_term_t *t = talloc(IC_TSND); t->a = p; return t; }
+ic_term_t *ic_transp(ic_term_t *v) { ic_term_t *t = talloc(IC_TTRANSP); t->a = v; return t; }
 
 void ic_term_free(ic_term_t *t) {
   if (!t) return;
@@ -414,7 +476,7 @@ static void frame_add_use(int idx, Port use) {
   if (f->n >= f->cap) {
     int nc = f->cap * 2;
     if (nc > MAXUSE) { g_oom = 1; return; }
-    f->uses = (Port *)realloc(f->uses, sizeof(Port) * nc);
+    f->uses = (Port *)realloc(f->uses, sizeof(Port) * (size_t)nc);
     f->cap = nc;
   }
   f->uses[f->n++] = use;
@@ -532,6 +594,13 @@ static Port compile(ic_term_t *t) {
       link_ports(MKP(T_SND, s), pout);
       link_ports(g_p2[s], P_ERAP);
       return g_p1[s];
+    }
+    case IC_TTRANSP: {
+      int tr = new_node(T_TRANSP, 0);
+      Port pout = compile(t->a);
+      link_ports(MKP(T_TRANSP, tr), pout); /* principal faces the value producer */
+      link_ports(g_p2[tr], P_ERAP);
+      return g_p1[tr];                     /* result */
     }
     case IC_TERA: {
       return P_ERAP;
@@ -716,6 +785,7 @@ static const char *tagname(int t) {
     case T_CON: return "CON"; case T_DUP: return "DUP"; case T_SUP: return "SUP";
     case T_OPR: return "OPR"; case T_OP1: return "OP1";
     case T_PAIR: return "PAIR"; case T_FST: return "FST"; case T_SND: return "SND";
+    case T_TRANSP: return "TRANSP";
     default: return "?";
   }
 }
@@ -935,6 +1005,13 @@ static ic_term_t *p_term(P *p) {
       if (p_peek(p) != ')') { p_err(p, "fst/snd: expected ')'"); ic_term_free(pr); return NULL; }
       p->i++;
       return first ? ic_fst(pr) : ic_snd(pr);
+    }
+    if (len && !strcmp(tok, "transp")) {
+      ic_term_t *v = p_term(p);
+      if (!v) return NULL;
+      if (p_peek(p) != ')') { p_err(p, "transp: expected ')'"); ic_term_free(v); return NULL; }
+      p->i++;
+      return ic_transp(v);
     }
     if (len && !strcmp(tok, "op")) {
       char ops[256]; int o; ic_term_t *l, *r;

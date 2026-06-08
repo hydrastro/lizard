@@ -352,9 +352,15 @@ local, so independent active pairs reduce concurrently. It is deliberately last
                                               (pair a b); ic_lower emits them and is
                                               cross-checked vs the Church encoding +
                                               oracle (270k terms, incl. shared pairs)
-  14b Id-by-observation on nets        next   Sigma componentwise, Pi pointwise, U by
-                                              equivalence; Id/transport agent dispatches
-                                              on the former it meets (Sigma rule reuses 14a)
+  14b Id-by-observation: transport     PART   src/ic.c (T_TRANSP, do_transp):
+      structural + reflexive core             transp meets a former and reduces by it
+                                              (Σ componentwise, Π pointwise, base trivial);
+                                              reflexive transport = identity, fuzz-checked
+                                              (transp wrap never changes a value)
+  14c Id-by-observation: typed         next   Id/REFL/J + type-former agents (Σ/Π/𝒰);
+                                              non-reflexive paths, dependent 2nd component
+                                              of Id-over-Σ, funext (Π), univalence (𝒰);
+                                              validated against tt_equality.c
   15  transport as agent/type-former rewrite  validated against the cubical layer
   16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
   17  parallel reduction                      Bend-style, last

@@ -71,6 +71,12 @@ static long oracle_op(int op, long a, long b) {
 /* build a random term of bounded depth; set *val to its true integer value */
 static ic_term_t *gen(int depth, Env *env, long *val) {
   int choice;
+  /* sometimes transport a subterm: transport along reflexivity is the identity,
+   * so this must not change the value -- it exercises transp over whatever former
+   * the subterm reduces to (numbers, pairs, lambdas, superpositions). */
+  if (depth > 0 && rint(9) == 0) {
+    return ic_transp(gen(depth - 1, env, val));
+  }
   /* at depth 0, or sometimes earlier, emit a leaf */
   if (depth <= 0) choice = rint(2);          /* 0=literal 1=variable */
   else            choice = rint(6);
@@ -150,6 +156,7 @@ static void show(ic_term_t *t) {
     case IC_TPAIR: printf("(pair "); show(t->a); printf(" "); show(t->b); printf(")"); break;
     case IC_TFST: printf("(fst "); show(t->a); printf(")"); break;
     case IC_TSND: printf("(snd "); show(t->a); printf(")"); break;
+    case IC_TTRANSP: printf("(transp "); show(t->a); printf(")"); break;
     case IC_TERA: printf("*"); break;
   }
 }

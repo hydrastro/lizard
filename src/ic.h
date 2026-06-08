@@ -62,7 +62,8 @@ typedef enum {
   IC_TERA,   /* *  — the eraser as a value          */
   IC_TPAIR,  /* (pair a b)  — Σ introduction        */
   IC_TFST,   /* (fst p)     — Σ first projection  π1 */
-  IC_TSND    /* (snd p)     — Σ second projection π2 */
+  IC_TSND,   /* (snd p)     — Σ second projection π2 */
+  IC_TTRANSP /* (transp v)  — transport / Id-by-observation (reflexive: identity) */
 } ic_tkind_t;
 
 /* binary numeric operators (same codes as inet) */
@@ -97,6 +98,7 @@ ic_term_t *ic_era(void);
 ic_term_t *ic_pair(ic_term_t *fst, ic_term_t *snd);  /* (a, b) */
 ic_term_t *ic_fst(ic_term_t *p);                     /* pi1 p  */
 ic_term_t *ic_snd(ic_term_t *p);                     /* pi2 p  */
+ic_term_t *ic_transp(ic_term_t *v);                  /* transport along refl = id */
 void ic_term_free(ic_term_t *t);
 
 /* ---- evaluation -------------------------------------------------------- */
@@ -141,10 +143,11 @@ int ic_dump_net(ic_term_t *t, char *buf, size_t cap, int reduce_first);
  *          | '(' 'pair' term term ')'            ; Σ introduction (a, b)
  *          | '(' 'fst' term ')'                  ; Σ first projection  π1
  *          | '(' 'snd' term ')'                  ; Σ second projection π2
+ *          | '(' 'transp' term ')'               ; transport / Id-by-observation
  *   app   := term term*                          ; left-associated application
  * Labels are optional and written ':'N (e.g. {:1 a b}, (dup :1 x y v body)); a
  * bare leading number is an ordinary element, so {2 3} is an unlabelled pair.
- * Reserved words (cannot be used as variable names): lam op dup pair fst snd.
+ * Reserved words (cannot be used as variable names): lam op dup pair fst snd transp.
  * Returns a heap term (free with ic_term_free) or NULL on parse error,
  * writing a short message to `err` (capacity `errcap`) when non-NULL. */
 ic_term_t *ic_parse(const char *src, char *err, size_t errcap);
