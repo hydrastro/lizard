@@ -638,6 +638,8 @@ static void rb_port(Port p) {
   if (ISBIN(tg)) { rb_putc('n'); rb_putint((int)PVAL(t)); }
   else if (tg == T_NUM) { rb_puts("#"); rb_putmpz(g_num[PVAL(t)]); }
   else if (tg == T_ERA) { rb_putc('*'); }
+  else if (tg == T_VARP) { rb_putc('v'); rb_putint((int)PVAL(t)); }  /* a wire junction */
+  else if (tg == T_EMP)  { rb_putc('~'); }                           /* open/free wire   */
   else rb_putc('?');
 }
 static void rb_net_dump(void) {
@@ -696,8 +698,32 @@ int ic_readback(ic_term_t *t, char *buf, size_t cap, long *interactions) {
   return 1;
 }
 
-/* ======================================================================= */
-/*  a tiny textual parser                                                  */
+/* Render the compiled net itself (the abstract syntax graph), optionally after
+ * reducing it.  Output is "<net n0:TAG[p1 p2]; n1:... >" where each nK is an
+ * agent node, TAG its kind (CON/DUP^L/SUP^L/OPR/OP1/ERA/NUM), and p1/p2 are its
+ * two auxiliary ports: "nK" means a wire to node K's principal port, "#n" a
+ * number, "*" an eraser.  Variables do not appear — a variable is a wire, and a
+ * shared value is reachable through a DUP node (so it is stored once, not
+ * copied).  Returns 1, 0 if the buffer was too small, -1 on resource exhaustion. */
+int ic_dump_net(ic_term_t *t, char *buf, size_t cap, int reduce_first) {
+  Port root;
+  if (cap == 0) return 0;
+  ic_reset();
+  g_sp = 0; g_label = 0;
+  root = compile(t);
+  g_root = MKP(T_VARP, new_var());
+  link_ports(g_root, root);
+  if (reduce_first) reduce();
+  if (g_oom) return -1;
+  rb_build_partners();          /* marks g_live[] (and readback scratch) */
+  g_rb_buf = buf; g_rb_cap = cap; g_rb_pos = 0; g_rb_of = 0;
+  rb_net_dump();
+  if (g_rb_of) return 0;
+  buf[g_rb_pos] = '\0';
+  return 1;
+}
+
+
 /* ======================================================================= */
 typedef struct { const char *s; size_t i, n; char *err; size_t errcap; } P;
 

@@ -116,6 +116,14 @@ int ic_readback(ic_term_t *t, char *buf, size_t cap, long *interactions);
 /* Live agent nodes after the last reduction (for tests / stats). */
 long ic_live_nodes(void);
 
+/* Render the compiled net (the abstract syntax graph) into buf, optionally after
+ * reducing.  Each "nK" is an agent node; its [p1 p2] are wires to other nodes'
+ * principal ports ("nK"), numbers ("#n"), or erasers ("*").  Variables are wires
+ * and do not appear; a shared value is reached through a DUP node, so it is
+ * represented once rather than duplicated.  Returns 1, 0 on small buffer,
+ * -1 on exhaustion. */
+int ic_dump_net(ic_term_t *t, char *buf, size_t cap, int reduce_first);
+
 /* ---- a tiny textual front-end (so ic is a real engine, not just an API) -
  * Grammar (whitespace-separated, parens/braces as shown):
  *   term  := NUM | NAME | '*' | '(' app ')' | '{' [':' INT] term term '}'

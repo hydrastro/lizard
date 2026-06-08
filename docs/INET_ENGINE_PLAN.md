@@ -25,10 +25,50 @@ is additive and independently testable; the net engine earns its way to the
 centre one verified layer at a time.
 
 
+## 0. Programs are graphs, not trees
+
+This is the load-bearing idea, so it is worth being concrete rather than
+aspirational. After compilation a program is *not* an abstract syntax tree; it
+is an abstract syntax graph — a flat arena of agent nodes joined by wires
+(`src/ic.c`: `g_p1`/`g_p2` are each node's two ports, `g_tag` its kind). Three
+properties make it a graph and not a tree, and all three are present today:
+
+- **Binding is an edge, not a name.** A variable compiles to a wire; `link_ports`
+  resolves the variable slot into a direct connection between the binder's port
+  and the use site. No variable name survives into the running graph — the
+  occurrence *is* the edge.
+- **Sharing is a DAG.** A value consumed in two places is not copied; it flows
+  into a `DUP` node whose two outputs fan to the two consumers, so the subgraph
+  is stored once and referenced from several edges. `((λx. x + x) 5)` compiles to
+  a graph containing a `DUP` that shares `x`; `((λx. x * x) (2 + 3))` shares the
+  *computed* `(2+3)` through a `DUP` so it is evaluated once. This is the whole
+  reason interaction reduction is Lévy-optimal.
+- **Computation is local graph rewriting.** Reduction rewrites active pairs in
+  place until none remain; there is no tree walk.
+
+You can see this directly: `ic_dump_net` renders the compiled graph
+(`tests/ic_graph_demo.c`, captured in `docs/ic_graph_output.txt`). A node prints
+as `nK:TAG[p1 p2]`; a port is a wire to another node (`nK`), a number (`#n`), an
+eraser (`*`), a wire junction (`vK`), or an open wire (`~`). The `DUP` nodes in
+that output are the sharing, made visible.
+
+Two honest qualifications. First, the *front end* — the parser, and the `core`
+IR that lowers to nets (`src/ic_lower.c`) — is still a tree; it is the notation a
+program is written in, and the graph is constructed from it at compile time. The
+claim is not that no tree exists anywhere, but that the thing which *runs* is the
+graph. Second, the current fragment is acyclic (a DAG). Genuine recursion —
+fixpoints, `letrec`, the `NAT_REC`/`LIST_REC` recursors in `kterm` — must be
+represented as a *cyclic* wire in the net (a back-edge), never by unfolding the
+definition into a tree. That is the one place where "graph, not tree" will be
+load-bearing in a way it is not yet, and it is called out again in the phase plan
+so the recursion work does not quietly reintroduce a tree.
+
+
 ## 1. Where lizard computes today
 
 There are three evaluators in the tree, and that multiplicity is the thing the
 rewrite is meant to collapse:
+
 
 - the Scheme core runs on an AST tree-walk plus a bytecode VM
   (`src/runtime.c`, `src/bytecode.c`);
@@ -278,12 +318,20 @@ local, so independent active pairs reduce concurrently. It is deliberately last
 - **HOTT equality coverage.** The Σ/Π/𝒰 rules above are the easy, definitional
   core; higher coherences and the full coherence theorem are a research effort,
   validated against the cubical layer as oracle.
-- **The build is currently broken.** `src/lizard_internal.h` includes `<ds.h>`,
-  which is not in the tree, so the full library does not link today. `ic.c` and
-  its tests are built standalone precisely so this work is not blocked by that;
-  restoring or vendoring `ds.h` is a prerequisite for wiring `ic` in through the
-  Makefile (the `ic` module is already registered in `LIB_OPTIONAL_SRCS`) and
-  applying `docs/ic_primitives.patch`.
+- **Recursion as cycles, not unfolding.** The fragment lowered so far is acyclic.
+  Fixpoints, `letrec`, and the `kterm` recursors (`NAT_REC`, `LIST_REC`,
+  `BOOL_REC`, `J`) must compile to a *cyclic* wire in the net — a back-edge that
+  the reducer unrolls on demand — not to an unfolded tree. Getting this right is
+  what keeps the "graph, not tree" property (section 0) true once the language
+  has real recursion; a naive recursor lowering would silently reintroduce trees.
+- **The build dependency.** The full library needs `ds` (the data-structures
+  library that supplies `<ds.h>`, included by `src/lizard_internal.h` and
+  `src/lizard.c`); with `ds` on the include/link path the project builds. `ic`,
+  `ic_lower`, and their tests are also built standalone (GMP + libc only) so this
+  work is independently verifiable; `ic` and `ic_lower` are registered in the
+  Makefile's `LIB_OPTIONAL_SRCS`, and `docs/ic_primitives.patch` wires `ic` into
+  the Scheme layer. With `ds` present, the typed cross-check (13b) against
+  `kt_whnf` is unblocked.
 
 
 ## 8. Phase summary
@@ -296,8 +344,8 @@ local, so independent active pairs reduce concurrently. It is deliberately last
   12  core_term -> net backend         DONE   src/ic_lower.{c,h}, tests/ic_lower_test.c
                                               negative + Sigma core + runtime frag;
                                               fuzzed vs oracle (pair/proj/let/deBruijn)
-  13b cross-check vs the kernel        next   needs <ds.h>; extend inet's check to
-                                              4 agents + Sigma/Pi on elaborated terms
+  13b cross-check vs the kernel        next   ds available -> unblocked; reduce
+                                              elaborated terms on kt_whnf and the net
       optimal (labelled) readback      hard   Lamping-Gonthier brackets
   14  Id-by-observation on nets        next   Sigma componentwise, Pi pointwise, U by equivalence;
                                               first-class PAIR/FST/SND agents land here

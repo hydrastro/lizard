@@ -1,0 +1,29 @@
+A program, compiled, is a graph of agent nodes joined by wires.
+Read [p1 p2] as the two ports of a node; nK is a wire to node K;
+#n is a number, * an eraser. Variables are wires, so they do not
+appear by name -- and a value used twice goes through a DUP.
+
+  term : (lam x (lam y x))
+         (K = \x.\y.x : two nested CON nodes, no reduction)
+  ASG  : <net  n0:CON[v4 n1]; n1:CON[* v4] >
+  =>   : <net  n0:CON[v4 n1]; n1:CON[* v4] >
+
+  term : ((lam x (op + x x)) 5)
+         (x used twice -> a DUP node shares it into both operands of +)
+  ASG  : <net  n0:CON[#5 v1]; n1:CON[n3 v5]; n2:OPR[v7 v5]; n3:DUP^1[n2 v7] >
+  =>   : <net >
+
+  term : ((lam x (op * x x)) (op + 2 3))
+         (the argument (2+3) is computed ONCE and shared by a DUP, not recomputed)
+  ASG  : <net  n0:CON[v11 v1]; n1:CON[n3 v5]; n2:OPR[v7 v5]; n3:DUP^1[n2 v7]; n4:OPR[#3 v11] >
+  =>   : <net >
+
+  term : (op + {10 20} {100 200})
+         (two superpositions: SUP nodes in the graph)
+  ASG  : <net  n0:OPR[n2 v1]; n1:SUP^0[#10 #20]; n2:SUP^0[#100 #200] >
+  =>   : <net  n6:SUP^0[#110 #220] >
+
+In each compiled graph the variable never appears as a leaf: it is the
+wire itself, and sharing is a DUP fan-out -- a directed acyclic graph,
+not a tree. Reduction rewrites this graph locally until no active pair
+remains. That is the sense in which the program *is* the net.

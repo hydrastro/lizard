@@ -19,9 +19,11 @@ src/ic_lower.c           the lowering implementation (Sigma + runtime fragment)
 tests/ic_test.c          the four-agent checks through the project's test harness
 tests/ic_fuzz.c          differential validator: net vs an independent integer oracle
 tests/ic_lower_test.c    lowering checks + a core-term fuzz vs the oracle
+tests/ic_graph_demo.c    prints a program as an abstract syntax GRAPH (shows sharing/DUP)
 Makefile                 your Makefile, with `ic` and `ic_lower` added to LIB_OPTIONAL_SRCS
 docs/INET_ENGINE_PLAN.md the staged rewrite plan (the duality + HOTT, mapped onto the engine)
 docs/ic_primitives.patch Scheme-facing primitives (ic-normalize/ic-cost/ic-reduce)
+docs/ic_graph_output.txt captured ASG dumps — variables as wires, sharing as DUP nodes
 docs/ic_demo_output.txt  captured output of ic_demo — all 17 checks passing
 docs/ic_fuzz_output.txt  captured output of ic_fuzz — random terms agreeing with the oracle
 scripts/tidy-structure.sh  cleanup #1: de-duplicate / un-nest the repo
