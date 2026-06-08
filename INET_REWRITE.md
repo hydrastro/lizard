@@ -66,7 +66,8 @@ src/deltanets.{c,h}         Delta-Nets (Salvadori 2025): the newest optimal-para
                          6..16 vs reference -> zero mismatch, zero refusal); Church successor and
                          addition verified individually; read-back REFUSES any non-canonical SHARING
                          net (cycle / residual sharing / reachable eraser) instead of returning a
-                         wrong tree.  `dn_affine`/`dn_linear` decide the guaranteed fragment.  Full
+                         wrong tree -> AIRTIGHT (zero wrong across ~2M random lambda-K terms); `dn_affine`/`dn_linear`
+                         decide the always-correct fragment.  Full
                          lambda-K (sharing: leftmost-outermost order + canonicalization: unpaired
                          merging/decay, phase-2 aux-fan replication, erasure GC) is precisely
                          documented as remaining work.

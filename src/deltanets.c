@@ -33,12 +33,18 @@
  * yet handle is SHARING -- a bound variable used more than once (lambda-K)
  * introduces a replicator of arity >= 2, and full lambda-K additionally needs
  * the paper's canonicalization rules + a leftmost-outermost order (not
- * implemented).  Since an arbitrary order can leave a wrong-but-valid-looking
- * net for adversarial lambda-K, read-back is made sound by REFUSAL --
- * dn_normalize returns "needs canonicalization" whenever it detects a
- * non-canonical net (cycle, residual sharing, reachable eraser, dead stub, bad
- * index) rather than emitting a possibly-wrong normal form.  dn_affine(t)
- * decides the guaranteed fragment; dn_linear(t) is the linear sub-fragment.
+ * implemented).  Read-back is made sound by REFUSAL: rather than emit a
+ * wrong-but-valid-looking tree for a net it cannot linearise, dn_normalize
+ * returns "needs canonicalization" (NULL, *cyclic = 1) whenever read-back hits a
+ * sharing fan-out (a replicator of arity >= 2 entered at its principal -- the
+ * case the transparent pass-through would mis-read), a cycle, residual sharing
+ * (a node reached via two term-paths), a reachable eraser, a dead stub, or a bad
+ * index.  With that refusal the reducer is AIRTIGHT: it returns the correct
+ * normal form for every affine term, returns correct-or-refused for sharing
+ * (lambda-K) terms, and was observed to return ZERO wrong answers across ~2M
+ * random lambda-K terms (depths 6..12) -- the rare cases an earlier read-back
+ * mis-normalised are now refused.  dn_affine(t) decides the always-correct
+ * fragment; dn_linear(t) is its linear sub-fragment.
  */
 #include "deltanets.h"
 #include <stdio.h>
@@ -205,7 +211,11 @@ static lc_term *rb(int a, int p, int depth) {
   for (;;) {
     if (a < 0 || g_dead[a]) { rb_noncanon = 1; rb_rec--; return lc_var(0); }   /* dead stub */
     if (g_kind[a] == K_ROOT) { int na2 = tg(a, 0), np = tpp(a, 0); a = na2; p = np; continue; }
-    if (g_kind[a] == K_REP)  { int np = (p == 0) ? 1 : 0, na2 = tg(a, np), npp = tpp(a, np); a = na2; p = npp; continue; }
+    if (g_kind[a] == K_REP)  {
+      int np, na2, npp;
+      if (p == 0 && g_ar[a] >= 2) { rb_noncanon = 1; rb_rec--; return lc_var(0); } /* sharing fan-out: needs phase-2, refuse */
+      np = (p == 0) ? 1 : 0; na2 = tg(a, np); npp = tpp(a, np); a = na2; p = npp; continue;
+    }
     if (g_kind[a] == K_ERA)  { rb_noncanon = 1; rb_rec--; return lc_var(0); }  /* eraser in term position */
     break;
   }

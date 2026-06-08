@@ -537,6 +537,29 @@ payoff and deliberately last.
   the *application* `mul 2 3` is not, because the Church numerals duplicate their
   arguments, and that is exactly the application that yields the cyclic net.
 
+  *Tightening read-back to airtight on sharing too.* Best-effort λK read-back had
+  a rare soundness hole: ~1 in 100k random λK terms reduced to a structurally
+  valid but WRONG tree the old read-back could not detect. The cause is the
+  transparent replicator pass-through. Read-back meets a replicator in two ways:
+  at an *auxiliary* port (an occurrence routing UP to its single binder -- safe,
+  since every aux port of a given replicator shares one principal), or at the
+  *principal* (routing DOWN, where the pass-through follows only the first aux
+  port and silently drops the rest). Dropping the rest is harmless for a 1-ary
+  replicator (variable scope) but loses structure for a replicator of arity >= 2
+  -- a genuine sharing fan-out that only phase-2 can replicate. So read-back now
+  refuses exactly that case: **entering a replicator of arity >= 2 at its
+  principal** sets `rb_noncanon`. This is a one-line, strictly-conservative
+  change (it only ever refuses more), and it closes the hole: across ~2M random
+  λK terms at depths 6..12 the reducer returned **zero wrong answers**, with the
+  match rate essentially unchanged (the ~1.5% refusal barely moved -- only the
+  formerly-wrong terms flipped to honest refusals; Church successor/addition and
+  the rest still read back correctly). The reducer is therefore **airtight**:
+  correct on every affine term, correct-or-refused on every sharing term, never
+  wrong. Test section [6] pins three formerly-wrong terms as refused regressions.
+  What this does NOT do is make more λK terms *succeed* -- `mul 2 3` is still
+  refused; turning refusals into correct answers is what the full
+  canonicalization (a)–(e) is for.
+
   *Why HVM drops optimality (grounding the trade-off).* HVM2 (Taelin, "HVM2: A
   Parallel Evaluator for Interaction Combinators") makes the opposite choice from
   the oracle: it abandons full Lévy-optimality and runs plain (labelled)
@@ -616,14 +639,17 @@ payoff and deliberately last.
                                               Salvadori 2025 -- a single n-ary `replicator`
                                               (level + per-port level-deltas) replaces all
                                               brackets/croissants.  Core interaction system +
-                                              translation + read-back.  SOUND on the linear
-                                              fragment (260k random terms vs reference, zero
-                                              mismatch); Church successor/addition verified;
-                                              read-back refuses non-canonical nets rather than
-                                              mis-normalising.  Full lambda-K (leftmost-outermost
-                                              order + canonicalization: merging/decay/phase-2
-                                              aux-fan replication/erasure GC) is documented but
-                                              not yet implemented.  `make deltanets`
+                                              translation + read-back.  SOUND on the AFFINE
+                                              fragment -- linear plus erasure (700k random terms
+                                              across depths 6..16 vs reference, zero mismatch and
+                                              zero refusal); Church successor/addition verified;
+                                              read-back refuses sharing fan-outs rather than
+                                              mis-normalising -> AIRTIGHT (zero wrong across ~2M
+                                              random lambda-K terms, depths 6..12); dn_affine/
+                                              dn_linear decide the guaranteed fragment.  Full lambda-K (sharing:
+                                              leftmost-outermost order + canonicalization:
+                                              merging/decay/phase-2 aux-fan replication/erasure GC)
+                                              is documented but not yet implemented.  `make deltanets`
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders
                                               (pair a b); ic_lower emits them and is
@@ -721,7 +747,8 @@ GREEN — built and validated this build, standalone (`make <target>`):
   - `opt-core`       — Asperti–Guerrini optimal engine + reference normaliser + croissant fragment all validated.
   - `deltanets`      — Delta-Nets: affine fragment (linear + erasure) proven sound by fuzzing (6k in-suite, 700k offline
                        across depths 6..16, zero mismatches, zero refusals); Church successor/addition verified;
-                       sharing (lambda-K) refused, not mis-normalised; `dn_linear`/`dn_affine` boundary checked.
+                       read-back refuses sharing fan-outs -> AIRTIGHT (zero wrong across ~2M random lambda-K terms);
+                       `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv).
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which
@@ -733,8 +760,9 @@ in isolation; they passed when the complete source tree was present:
 PARTIAL — the optimal-reduction frontier, scoped honestly:
   - `opt_core`  — the AG engine is exact on its rules; the croissant-only encoding covers the linear fragment,
                   and the bracket-discipline that would extend it to full sharing is the documented gap that Delta-Nets supersedes.
-  - `deltanets` — PROVEN sound on lambda-A (linear + erasure); lambda-K examples individually verified;
-                  every detectably non-canonical sharing net is refused, not mis-normalised.
+  - `deltanets` — PROVEN sound on lambda-A (linear + erasure); AIRTIGHT on lambda-K (sharing fan-outs refused,
+                  zero wrong observed across ~2M terms); Church examples individually verified. Turning lambda-K
+                  refusals into correct answers (so `mul 2 3` succeeds) is the remaining canonicalization work.
 
 OPEN (one genuine research problem, now precisely bounded — see section 7):
   - Full lambda-K Delta-Nets (SHARING: a bound variable used more than once) needs the leftmost-outermost

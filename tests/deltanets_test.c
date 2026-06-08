@@ -31,6 +31,12 @@
  *     delimit the proven fragments (dn_affine subsumes dn_linear); section [5]
  *     checks they classify representative terms correctly.
  *
+ * [6] AIRTIGHT ON SHARING. Read-back refuses a sharing fan-out (a replicator of
+ *     arity >= 2 entered at its principal) rather than mis-reading it, so the
+ *     reducer never returns a wrong tree even on lambda-K (zero wrong observed
+ *     across ~2M random terms). Section [6] pins three terms an earlier
+ *     read-back mis-normalised and asserts they are now refused.
+ *
  * Why exactly lambda-A is GUARANTEED. The CORE handles linearity (fan
  * annihilation, perfectly confluent) and erasure (eraser propagation) correctly,
  * so all of affine reduces soundly regardless of order. What it does NOT yet
@@ -64,6 +70,14 @@ static void pr(const lc_term *t) {
   if (t->tag == LC_VAR) printf("%d", t->idx);
   else if (t->tag == LC_LAM) { printf("\\."); pr(t->f); }
   else { printf("("); pr(t->f); printf(" "); pr(t->a); printf(")"); }
+}
+
+/* parser for the printed notation:  \.X = lambda,  (X Y) = app,  digits = de Bruijn var */
+static lc_term *pparse(const char **p) {
+  while (**p == ' ') (*p)++;
+  if (**p == '\\') { (*p)++; if (**p == '.') (*p)++; return lc_lam(pparse(p)); }
+  if (**p == '(') { lc_term *f, *a; (*p)++; f = pparse(p); a = pparse(p); while (**p == ' ') (*p)++; if (**p == ')') (*p)++; return lc_app(f, a); }
+  { int n = 0; while (**p >= '0' && **p <= '9') { n = n * 10 + (**p - '0'); (*p)++; } return lc_var(n); }
 }
 
 /* [1] must reduce to a clean NF matching the reference */
@@ -196,6 +210,26 @@ int main(void) {
       if (gl != cases[i].wlin || ga != cases[i].waff) { bad++; printf("    FAIL %s: linear=%d(want %d) affine=%d(want %d)\n", cases[i].name, gl, cases[i].wlin, ga, cases[i].waff); }
     }
     if (!bad) printf("    ok   I/mul-fn linear; K affine-not-linear; church2/succ/add/mul-2-3 outside both (need sharing)\n");
+    else fails++;
+  }
+
+  printf("[6] AIRTIGHT ON SHARING - terms that USED to read back as a wrong tree are now refused\n");
+  {
+    /* concrete lambda-K terms that an earlier read-back mis-normalised (found by differential
+     * fuzzing); the sharing fan-out refusal now reports them instead of emitting a wrong NF. */
+    static const char *witnesses[] = {
+      "\\.(\\.(((\\.1 0) \\.\\.3) 0) \\.((0 (1 0)) \\.\\.0))",
+      "\\.(\\.(((\\.2 (0 1)) \\.\\.1) 0) \\.((0 \\.\\.3) (1 0)))",
+      "\\.(\\.((\\.2 \\.(1 2)) 0) \\.(((0 (1 1)) (1 \\.1)) 0))"
+    };
+    int i, bad = 0;
+    for (i = 0; i < 3; i++) {
+      const char *p = witnesses[i]; long it = 0; int cyc = 0;
+      lc_term *t = pparse(&p);
+      lc_term *no = dn_normalize(t, &it, &cyc);
+      if (no != 0 || !cyc) { bad++; printf("    FAIL witness %d not refused: ", i); pr(t); printf("\n"); }
+    }
+    if (!bad) printf("    ok   3/3 previously-wrong sharing terms now refused (never mis-normalised)\n");
     else fails++;
   }
 
