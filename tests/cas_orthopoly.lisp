@@ -1,0 +1,5 @@
+(import "cas/orthopoly.lisp")
+(define (allc f lo hi) (allc-go f lo hi #t))
+(define (allc-go f k hi acc) (if (> k hi) acc (allc-go f (+ k 1) hi (if (f k) acc #f))))
+(display (cheb-T 5)) (newline) (display (leg-P 4)) (newline)
+(display (allc cheb-T-certify 0 10)) (display " ") (display (allc leg-P-certify 0 10)) (display " ") (display (allc herm-H-certify 0 10)) (display " ") (display (allc lag-L-certify 0 10)) (newline)

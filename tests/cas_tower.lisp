@@ -1,0 +1,10 @@
+(import "cas/tower.lisp")
+(define LOG (list 'log)) (define EXP1 (list 'exp (list 0 1)))
+(define (xinv) (rat-make (list 1) (list 0 1)))
+(define (I f mono) (display (tower-result->string (integrate-tower f mono) mono)) (newline))
+(I (tr-make (rf-const (xinv)) (rf-theta)) LOG)                                  ; 1/(x log x)
+(I (tr-make (rf-theta) (list (rat-one) (rat-one))) EXP1)                        ; e^x/(e^x+1)
+(I (tr-make (rf-const (rat-from-poly (list 0 2))) (rf-const (rat-from-poly (list 1 0 1)))) LOG) ; 2x/(x^2+1)
+(I (tr-make (rf-const (xinv)) (rfpoly-monomial (rat-one) 2)) LOG)               ; 1/(x (log x)^2)
+(I (tr-make (rf-const (xinv)) (rfpoly-monomial (rat-one) 3)) LOG)               ; 1/(x (log x)^3)
+(I (tr-make (rf-const (rat-one)) (rf-theta)) LOG)                               ; 1/log x  -> declined

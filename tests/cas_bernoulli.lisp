@@ -1,0 +1,8 @@
+(import "cas/bernoulli.lisp")
+(display (map bernoulli (prange 0 10))) (newline)
+(display (faulhaber->string 1)) (newline)
+(display (faulhaber->string 2)) (newline)
+(display (faulhaber->string 3)) (newline)
+(display (faulhaber->string 4)) (newline)
+(display (list (poly-eval (faulhaber-poly 3) 10) (poly-eval (faulhaber-poly 2) 100))) (newline)
+(display (list (faulhaber-ok? 1) (faulhaber-ok? 2) (faulhaber-ok? 3) (faulhaber-ok? 4) (faulhaber-ok? 5) (faulhaber-ok? 6))) (newline)

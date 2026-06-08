@@ -1,0 +1,8 @@
+(import "cas/numthy2.lisp")
+(display (moebius 1)) (display " ") (display (moebius 6)) (display " ") (display (moebius 12)) (display " ") (display (moebius 30)) (newline)
+(display (dirichlet moebius n2-one 1)) (display " ") (display (dirichlet moebius n2-one 12)) (display " ") (display (dirichlet moebius n2-one 100)) (newline)
+(display (perfect? 6)) (display " ") (display (perfect? 28)) (display " ") (display (perfect? 496)) (display " ") (display (perfect? 12)) (newline)
+(display (amicable? 220 284)) (newline)
+(display (frobenius2 3 5)) (display " ") (display (frobenius-list (list 6 9 20))) (display " ") (display (frobenius-list (list 5 8 9))) (newline)
+(display (sb-mediant 1 2 1 1)) (newline)
+(display (farey-neighbours? 1 3 1 2)) (display " ") (display (farey-neighbours? 1 3 2 3)) (newline)

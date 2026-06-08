@@ -1,0 +1,7 @@
+S(n) = ( 1/2*n - 1/2 ) * t(n)
+S(n) = ( 1/3*n^2 - 1/2*n + 1/6 ) / ( n ) * t(n)
+S(n) = ( 1 ) / ( n ) * t(n)
+S(n) = ( -n - 1 ) * t(n)
+no hypergeometric antidifference (proved)
+no hypergeometric antidifference (proved)
+no hypergeometric antidifference (proved)

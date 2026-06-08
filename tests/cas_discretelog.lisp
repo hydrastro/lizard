@@ -1,0 +1,8 @@
+(import "cas/discretelog.lisp")
+(display (list (primitive-root 7) (primitive-root 11) (primitive-root 13) (primitive-root 17) (primitive-root 23) (primitive-root 41))) (newline)
+(display (list (discrete-log 3 5 7) (discrete-log 2 9 11) (discrete-log 3 1 7) (discrete-log 5 3 23) (discrete-log 6 7 41))) (newline)
+(display (discrete-log 4 3 7)) (newline)
+(define g (primitive-root 1009))
+(define h (mod-exp g 123 1009))
+(display (list g h (discrete-log g h 1009))) (newline)
+(display (list (primitive-root-ok? 41) (discrete-log-ok? 5 3 23) (discrete-log-ok? 4 3 7) (is-primitive-root? 5 11))) (newline)

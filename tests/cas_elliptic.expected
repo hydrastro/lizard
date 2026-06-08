@@ -1,0 +1,11 @@
+#t
+(1)
+#t
+non-elementary
+non-elementary
+non-elementary
+non-elementary
+inconclusive
+(split (1) (1))
+#t
+(split (0 2/5) (3/5))

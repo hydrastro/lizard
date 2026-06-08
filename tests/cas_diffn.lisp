@@ -1,0 +1,6 @@
+(import "cas/diffn-cert.lisp")
+(display (list (certify-chain (cas '(exp x)) 3) (certify-chain (cas '(sin x)) 3) (certify-chain (cas '(cos x)) 2) (certify-chain (cas '(* x x)) 3) (certify-chain (cas '(sin (* x x))) 2))) (newline)
+(display (list (true-derivative-accepted? (cas '(exp x))) (true-derivative-accepted? (cas '(* x x))) (true-derivative-accepted? (cas '(sin x))))) (newline)
+(display (list (wrong-derivative-rejected? (cas '(* x x)) 'x) (wrong-derivative-rejected? (cas '(* x x)) 'oneR) (wrong-derivative-rejected? (cas '(sin x)) (kapp 'sin 'x)))) (newline)
+(display (list (kernel-check 'der_sin (Der 'sin 'cos)) (kernel-check 'der_sin (Der 'sin 'sin)) (kernel-check 'der_exp (Der 'exp 'exp)) (kernel-check 'der_exp (Der 'exp 'sin)))) (newline)
+(display (nth-derivative (cas '(* x x)) 1)) (newline)

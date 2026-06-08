@@ -1,0 +1,8 @@
+(import "cas/rischtowern.lisp")
+(define t1 (list (list (quote exp) (rat-from-poly (list 0 1)))))
+(display (te-equal? t1 1 (te-deriv t1 1 (list (rat-zero) (rat-one))) (list (rat-zero) (rat-one)))) (newline)
+(define t1log (list (list (quote log) (rat-from-poly (list 0 1)))))
+(display (rat-equal? (te-coeff 1 (te-deriv t1log 1 (list (rat-zero) (rat-one))) 0) (rat-make (list 1) (list 0 1)))) (newline)
+(define t2 (list (list (quote exp) (rat-from-poly (list 0 1))) (list (quote exp) (list (rat-zero) (rat-one)))))
+(define eta (list (te-zero 1) (te-one 1)))
+(display (te-equal? t2 1 (te-coeff 2 (te-deriv t2 2 eta) 1) (list (rat-zero) (rat-one)))) (newline)

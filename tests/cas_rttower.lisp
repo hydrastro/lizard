@@ -1,0 +1,6 @@
+(import "cas/rt-tower.lisp")
+(display (tower-result->string (int-tower-log (list 1) (list -1 0 1)))) (newline)
+(display (tower-result->string (int-tower-log (list 1) (list 1 0 1)))) (newline)
+(display (tower-result->string (int-tower-log (list 1) (list -2 0 1)))) (newline)
+(display (tower-result->string (int-tower-log (list 0 0 1) (list -2 0 1)))) (newline)
+(display (tower-certified? (int-tower-log (list 1) (list -2 0 1)))) (newline)

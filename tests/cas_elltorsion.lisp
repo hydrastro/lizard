@@ -1,0 +1,8 @@
+(import "cas/elltorsion.lisp")
+(display (elt-order (cons 0 1) 0 0)) (display " ")
+(display (elt-order (cons 2 3) 0 0)) (display " ")
+(display (elt-order (cons 3 5) 0 0)) (newline)
+(display (car (elt-decide (rat-from-poly (list 1 0 0 1)) 0))) (display " ")
+(display (car (elt-decide (rat-from-poly (list -2 0 0 1)) 3))) (display " ")
+(display (car (elt-decide (rat-from-poly (list 4 0 0 1)) 0))) (display " ")
+(display (car (elt-decide (rat-from-poly (list 1 0 0 1)) 1))) (newline)

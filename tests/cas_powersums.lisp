@@ -1,0 +1,8 @@
+(import "cas/powersums.lisp")
+(display (list->string (e-list (list -6 11 -6 1)))) (newline)
+(display (power-sums->string (list -6 11 -6 1) 5)) (newline)
+(display (power-sums->string (list -1 -1 1) 7)) (newline)
+(display (power-sums->string (list 1 0 1) 5)) (newline)
+(display (power-sums->string (list -2 0 1) 6)) (newline)
+(display (list (power-sum (list -6 11 -6 1) 2) (power-sum (list -1 -1 1) 0))) (newline)
+(display (list (power-sums-ok? (list -6 11 -6 1)) (power-sums-ok? (list -1 -1 1)) (power-sums-ok? (list 1 0 1)))) (newline)

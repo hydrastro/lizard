@@ -1,0 +1,8 @@
+(import "cas/hyperell.lisp")
+(define p3 (list 1 0 0 1))
+(define p5 (list 1 0 0 0 0 1))
+(display (car (he-integrate (list 1) p3))) (display " ")
+(display (he-integrate-certify (list 0 0 (/ 3 2)) p3)) (newline)
+(display (he-integrate-certify (list 1 0 0 (/ 5 2)) p3)) (newline)
+(display (car (he-integrate (list 1) p5))) (display " ")
+(display (he-integrate-certify (list 0 0 0 0 (/ 5 2)) p5)) (newline)

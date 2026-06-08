@@ -1,0 +1,6 @@
+(import "cas/dirichlet.lisp")
+(display (dir-lemma-A-cert 1.0)) (display " ") (display (dir-lemma-A-cert 2.0)) (newline)
+(display (dir-lemma-A-value-cert 1.0)) (display " ") (display (dir-lemma-A-value-cert 3.0)) (newline)
+(display (dir-lemma-B-cert 1.0)) (display " ") (display (dir-lemma-B-cert 0.5)) (newline)
+(display (dir-approx (dir-value) (/ dir-pi 2))) (newline)
+(display (dir-recheck (dir-prove))) (newline)

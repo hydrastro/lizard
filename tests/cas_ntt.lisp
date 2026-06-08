@@ -1,0 +1,8 @@
+(import "cas/ntt.lisp")
+(define w (nth-root 17 8))
+(display (vec->string (ntt (list 1 2 3 4 0 0 0 0) w 17))) (newline)
+(display (vec->string (intt (ntt (list 1 2 3 4 0 0 0 0) w 17) w 17))) (newline)
+(display (vec->string (ntt-polymul (list 1 2 3) (list 4 5 6) w 17 8))) (newline)
+(display (list (nth-root 17 8) (nth-root 97 16))) (newline)
+(display (list (ntt-roundtrip-ok? (list 5 0 9 2 7 1 3 8) 17 8) (ntt-convolution-ok? (list 1 2 3 4) (list 5 6 7 8) 17 8) (ntt-polymul-ok? (list 1 2 3) (list 4 5 6) 17 8))) (newline)
+(display (list (ntt-roundtrip-ok? (list 1 2 3 4 5 6 7) 97 16) (ntt-polymul-ok? (list 1 2 3 4 5 6 7 8) (list 8 7 6 5 4 3 2 1) 97 16))) (newline)

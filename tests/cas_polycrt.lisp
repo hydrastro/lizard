@@ -1,0 +1,8 @@
+(import "cas/polycrt.lisp")
+(define p 5)
+(display (poly->string (poly-crt (list (list 1 1) (list 2)) (list (list 2 0 1) (list 1 1)) p))) (newline)
+(display (crt->string (list (list 1 1) (list 4) (list 2)) (list (list 1 1 1) (list 2 1) (list 0 1)) p)) (newline)
+(display (poly->string (poly-crt (list (list 1 2) (list 5 1)) (list (list 1 0 1) (list 3 1 1)) 7))) (newline)
+(display (crt->string (list (list 1) (list 2) (list 3)) (linmods (list 0 1 2) p) p)) (newline)
+(display (crt->string (map list (list 0 1 4 4 1)) (linmods (list 0 1 2 3 4) p) p)) (newline)
+(display (list (poly-crt-ok? (list (list 1 1) (list 2)) (list (list 2 0 1) (list 1 1)) p) (poly-crt-ok? (list (list 1 1) (list 4) (list 2)) (list (list 1 1 1) (list 2 1) (list 0 1)) p) (interp-ok? (list 0 1 2 3 4) (list 2 3 0 1 4) p) (interp-ok? (list 1 2 3 4 5 6) (list 1 4 2 0 4 1) 7))) (newline)

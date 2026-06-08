@@ -1,0 +1,5 @@
+(elementary (0 0 1))
+(1 0 3 3 0 5)
+(elementary (0 1 0 1))
+(elementary (1))
+(non-elementary-first-kind (1))

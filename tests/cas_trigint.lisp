@@ -1,0 +1,6 @@
+(import "cas/trigint.lisp")
+(display (ti-show (ti-integrate 3 0))) (newline)
+(display (ti-show (ti-integrate 2 1))) (newline)
+(display (ti-show (ti-integrate 0 2))) (newline)
+(display (ti-show (ti-integrate 2 2))) (newline)
+(display (ti-certify 4 0)) (display " ") (display (ti-certify 0 5)) (display " ") (display (ti-certify 3 3)) (display " ") (display (ti-certify 5 2)) (display " ") (display (ti-certify 4 4)) (newline)

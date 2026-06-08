@@ -240,6 +240,221 @@ kterm_t *lizard_kernel_sexp_to_kterm(lizard_heap_t *heap, lizard_ast_node_t *e) 
         if (A && a && b) return kt_path(heap, A, a, b);
         return NULL;
       }
+      /* (Equiv A B) — type of equivalences between A and B (univalence) */
+      if (strcmp(name, "Equiv") == 0 && parts != NULL) {
+        kterm_t *A = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *B = sexp_nth_kterm(heap, parts, 1);
+        if (A && B) return kt_equiv(heap, A, B);
+        return NULL;
+      }
+      /* (ua e) — univalence: an equivalence yields a path/identity in the universe */
+      if (strcmp(name, "ua") == 0 && parts != NULL) {
+        kterm_t *e = sexp_nth_kterm(heap, parts, 0);
+        if (e) return kt_ua(heap, e);
+        return NULL;
+      }
+      /* (transp line base) — transport: line is a plam <i> A(i), base : A(i0), result : A(i1) */
+      if (strcmp(name, "transp") == 0 && parts != NULL) {
+        kterm_t *line = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *base = sexp_nth_kterm(heap, parts, 1);
+        if (line && base) return kt_transp(heap, line, base);
+        return NULL;
+      }
+      /* (ineg r) — interval negation ~r */
+      if (strcmp(name, "ineg") == 0 && parts != NULL) {
+        kterm_t *r = sexp_nth_kterm(heap, parts, 0);
+        if (r) return kt_ineg(heap, r);
+        return NULL;
+      }
+      /* (imeet r s) — interval meet (min) */
+      if (strcmp(name, "imeet") == 0 && parts != NULL) {
+        kterm_t *l = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *r = sexp_nth_kterm(heap, parts, 1);
+        if (l && r) return kt_imeet(heap, l, r);
+        return NULL;
+      }
+      /* (ijoin r s) — interval join (max) */
+      if (strcmp(name, "ijoin") == 0 && parts != NULL) {
+        kterm_t *l = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *r = sexp_nth_kterm(heap, parts, 1);
+        if (l && r) return kt_ijoin(heap, l, r);
+        return NULL;
+      }
+      /* (id-equiv A) — the identity equivalence : Equiv A A */
+      if (strcmp(name, "id-equiv") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        if (a) return kt_id_equiv(heap, a);
+        return NULL;
+      }
+      /* (hcomp A u0) — empty-system homogeneous composition : A, reduces to u0 */
+      if (strcmp(name, "hcomp") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *u0 = sexp_nth_kterm(heap, parts, 1);
+        if (a && u0) return kt_hcomp(heap, a, u0);
+        return NULL;
+      }
+      /* (cofib r b) — a single cofibration (r = b) */
+      if (strcmp(name, "cofib") == 0 && parts != NULL) {
+        kterm_t *r = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *b = sexp_nth_kterm(heap, parts, 1);
+        if (r && b) return kt_cofib(heap, r, b);
+        return NULL;
+      }
+      /* (cofib-or c1 c2) — disjunction of two cofibrations */
+      if (strcmp(name, "cofib-or") == 0 && parts != NULL) {
+        kterm_t *c1 = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *c2 = sexp_nth_kterm(heap, parts, 1);
+        if (c1 && c2) return kt_cofib_or(heap, c1, c2);
+        return NULL;
+      }
+      /* (cofib-forall i phi) — the forall-face quantifier; binds i over the cofibration phi */
+      if (strcmp(name, "cofib-forall") == 0 && parts != NULL) {
+        lz_list_node_t *bn = parts->head->next;
+        lizard_ast_node_t *nm;
+        const char *iname;
+        if (bn == parts->nil) return NULL;
+        nm = ((lizard_ast_list_node_t *)bn)->ast;
+        if (nm->type != AST_SYMBOL) return NULL;
+        iname = nm->data.variable;
+        if (bn->next == parts->nil) return NULL;
+        {
+          kterm_t *body = to_kt_under(heap,
+              ((lizard_ast_list_node_t *)bn->next)->ast, iname);
+          return body ? kt_cofib_forall(heap, body) : NULL;
+        }
+      }
+      /* (hcomp1 A cof u u0) — single-face homogeneous composition */
+      if (strcmp(name, "hcomp1") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *u = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *u0 = sexp_nth_kterm(heap, parts, 3);
+        if (a && cf && u && u0) return kt_hcomp1(heap, a, cf, u, u0);
+        return NULL;
+      }
+      /* (comp line cof u u0) — heterogeneous composition along a type line */
+      if (strcmp(name, "comp") == 0 && parts != NULL) {
+        kterm_t *ln = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *u = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *u0 = sexp_nth_kterm(heap, parts, 3);
+        if (ln && cf && u && u0) return kt_comp(heap, ln, cf, u, u0);
+        return NULL;
+      }
+      /* (comp2 line cof1 u1 cof2 u2 u0) — two-face composition along a type line with i-varying
+       * line partials u1, u2.  The disjunction-system Kan brick for Path-type-line transport. */
+      if (strcmp(name, "comp2") == 0 && parts != NULL) {
+        kterm_t *ln = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *c1 = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *u1 = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *c2 = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *u2 = sexp_nth_kterm(heap, parts, 4);
+        kterm_t *u0 = sexp_nth_kterm(heap, parts, 5);
+        if (ln && c1 && u1 && c2 && u2 && u0) return kt_comp2(heap, ln, c1, u1, c2, u2, u0);
+        return NULL;
+      }
+      /* (hcomp2 A cof1 u1 cof2 u2 u0) — two-face homogeneous composition */
+      if (strcmp(name, "hcomp2") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *c1 = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *u1 = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *c2 = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *u2 = sexp_nth_kterm(heap, parts, 4);
+        kterm_t *u0 = sexp_nth_kterm(heap, parts, 5);
+        if (a && c1 && u1 && c2 && u2 && u0) return kt_hcomp2(heap, a, c1, u1, c2, u2, u0);
+        return NULL;
+      }
+      /* (Glue A cof T e) — single-face Glue type */
+      if (strcmp(name, "Glue") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *gt = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *e = sexp_nth_kterm(heap, parts, 3);
+        if (a && cf && gt && e) return kt_glue(heap, a, cf, gt, e);
+        return NULL;
+      }
+      /* (Partial cof A) — the type of partial elements of A on the face */
+      if (strcmp(name, "Partial") == 0 && parts != NULL) {
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *a = sexp_nth_kterm(heap, parts, 1);
+        if (cf && a) return kt_partial(heap, cf, a);
+        return NULL;
+      }
+      /* (psys cof A a) — a single-face system [phi -> a] : Partial cof A (the partial-element intro) */
+      if (strcmp(name, "psys") == 0 && parts != NULL) {
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *a = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *el = sexp_nth_kterm(heap, parts, 2);
+        if (cf && a && el) return kt_psys(heap, cf, a, el);
+        return NULL;
+      }
+      /* (equiv-fun e) — forward map of an equivalence */
+      if (strcmp(name, "equiv-fun") == 0 && parts != NULL) {
+        kterm_t *e = sexp_nth_kterm(heap, parts, 0);
+        if (e) return kt_equiv_fun(heap, e);
+        return NULL;
+      }
+      /* (equiv-inv e) — inverse map of an equivalence */
+      if (strcmp(name, "equiv-inv") == 0 && parts != NULL) {
+        kterm_t *e = sexp_nth_kterm(heap, parts, 0);
+        if (e) return kt_equiv_inv(heap, e);
+        return NULL;
+      }
+      /* (mk-equiv T A f g eta eps) — general equivalence from its four parts */
+      if (strcmp(name, "mk-equiv") == 0 && parts != NULL) {
+        kterm_t *gt = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *bt = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *f = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *g = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *eta = sexp_nth_kterm(heap, parts, 4);
+        kterm_t *eps = sexp_nth_kterm(heap, parts, 5);
+        if (gt && bt && f && g && eta && eps) return kt_mk_equiv(heap, gt, bt, f, g, eta, eps);
+        return NULL;
+      }
+      /* (equiv-eta e) — retraction coherence */
+      if (strcmp(name, "equiv-eta") == 0 && parts != NULL) {
+        kterm_t *e = sexp_nth_kterm(heap, parts, 0);
+        if (e) return kt_equiv_eta(heap, e);
+        return NULL;
+      }
+      /* (equiv-eps e) — section coherence */
+      if (strcmp(name, "equiv-eps") == 0 && parts != NULL) {
+        kterm_t *e = sexp_nth_kterm(heap, parts, 0);
+        if (e) return kt_equiv_eps(heap, e);
+        return NULL;
+      }
+      /* (unglue A cof T e g) — Glue eliminator */
+      if (strcmp(name, "unglue") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *gt = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *e = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *g = sexp_nth_kterm(heap, parts, 4);
+        if (a && cf && gt && e && g) return kt_unglue(heap, a, cf, gt, e, g);
+        return NULL;
+      }
+      /* (glue A cof T e u a) — Glue INTRODUCTION : Glue A cof T e.  On the face u : T is the
+       * T-component and a : A the base; the coherence (equiv-fun e) u == a holds on the face. */
+      if (strcmp(name, "glue") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *gt = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *e = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *u = sexp_nth_kterm(heap, parts, 4);
+        kterm_t *ba = sexp_nth_kterm(heap, parts, 5);
+        if (a && cf && gt && e && u && ba) return kt_glue_elem(heap, a, cf, gt, e, u, ba);
+        return NULL;
+      }
+      /* (gtransp A cof T e g0) — Glue transport (sound fragment) */
+      if (strcmp(name, "gtransp") == 0 && parts != NULL) {
+        kterm_t *a = sexp_nth_kterm(heap, parts, 0);
+        kterm_t *cf = sexp_nth_kterm(heap, parts, 1);
+        kterm_t *gt = sexp_nth_kterm(heap, parts, 2);
+        kterm_t *e = sexp_nth_kterm(heap, parts, 3);
+        kterm_t *g0 = sexp_nth_kterm(heap, parts, 4);
+        if (a && cf && gt && e && g0) return kt_gtransp(heap, a, cf, gt, e, g0);
+        return NULL;
+      }
       /* (papp p r) — path application p @ r */
       if (strcmp(name, "papp") == 0 && parts != NULL) {
         kterm_t *p = sexp_nth_kterm(heap, parts, 0);

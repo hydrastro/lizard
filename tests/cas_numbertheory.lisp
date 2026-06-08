@@ -1,0 +1,7 @@
+(import "cas/numbertheory.lisp")
+(display (factor-int->string (factor-int 360))) (newline)
+(display (factor-int->string (factor-int 1234567))) (newline)
+(display (factor-int->string (factor-int 1000000))) (newline)
+(display (list (prime? 97) (prime? 561) (prime? 2147483647) (prime? 1729))) (newline)
+(display (list (totient 360) (num-divisors 360) (sigma1 360))) (newline)
+(display (list (mod-inverse 3 11) (crt2 2 3 3 5) (order-mod 2 7) (mod-exp 7 256 13))) (newline)

@@ -1,0 +1,7 @@
+(import "cas/hamming.lisp")
+(define cw (hamming-encode (list 1 0 1 1) 3))
+(display (bits->string cw)) (newline)
+(display (list (hamming-syndrome cw 3) (hamming-syndrome (flip-bit cw 5) 3))) (newline)
+(display (bits->string (hamming-decode (flip-bit cw 5) 3))) (newline)
+(display (list (hamming-clean-ok? (list 1 0 1 1) 3) (hamming-corrects-ok? (list 1 0 1 1) 3))) (newline)
+(display (list (hamming-clean-ok? (list 1 0 1 1 0 0 1 0 1 1 0) 4) (hamming-corrects-ok? (list 1 0 1 1 0 0 1 0 1 1 0) 4))) (newline)

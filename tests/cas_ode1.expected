@@ -1,0 +1,7 @@
+log(y) = x + C
+(-1)/(y) = x + C
+arctan(y) = x + C
+log(y) = 1/2*x^2 + C
+1/2*y^2 = 1/2*x^2 + C
+arctan(y) = log(x) + C
+#t

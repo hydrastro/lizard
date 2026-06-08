@@ -1,0 +1,8 @@
+(import "cas/tower2exp.lisp")
+(define EXP1 (list 'exp (list 0 1)))
+(define uprime (list (list (rat-zero) (rat-one)) (list (rat-one))))
+(define th2sq (list (k1-zero) (k1-zero) (k1-one)))
+(display (h2-equal? (h2-norm (t2e-deriv th2sq uprime EXP1)) (h2-norm (list (k1-zero) (k1-zero) (k1-iscale 2 uprime))))) (newline)
+(define P (list (k1-zero) (k1-iscale 5 uprime) (k1-iscale 6 uprime)))
+(display (t2e-integrable? P uprime EXP1)) (newline)
+(display (t2e-int-verify P uprime EXP1)) (newline)

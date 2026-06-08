@@ -1,0 +1,10 @@
+(import "cas/elem.lisp")
+(define (PL num den) (display (elem-result->string (integrate-primitive-log num den))) (newline))
+(define (EX num den) (display (elem-result->string (integrate-exp-rational num den))) (newline))
+(PL (list 1) (list 0 1))        ; 1/(x log x)
+(PL (list 0 0 1) (list 1))      ; (log x)^2/x
+(PL (list 1) (list -1 0 1))     ; 1/(x((log x)^2-1))
+(PL (list 1) (list 1 0 1))      ; 1/(x((log x)^2+1))
+(EX (list 0 1) (list 1 1))      ; e^x/(e^x+1)
+(EX (list 0 1) (list 1 0 1))    ; e^x/(e^(2x)+1)
+(EX (list 1) (list 1 1))        ; 1/(e^x+1)

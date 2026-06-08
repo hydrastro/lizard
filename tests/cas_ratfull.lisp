@@ -1,0 +1,7 @@
+(import "cas/ratfull.lisp")
+(define r (rat-integrate-full (list 0 0 0 1) (list -1 0 1)))
+(display (rif-polypart r)) (newline)
+(display (rat-integrate-full-verify (list 0 0 0 1) (list -1 0 1))) (newline)
+(display (rat-integrate-full-verify (list 1 2 1) (list -2))) (newline)
+(display (rat-integrate-full-verify (list 0 -1 0 1) (list -1 1))) (newline)
+(display (rat-integrate-full-rational-ok? (list 0 0 1) (list 1 0 1))) (newline)

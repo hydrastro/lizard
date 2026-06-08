@@ -1,0 +1,6 @@
+(import "cas/algthird.lisp")
+(display (at3-verify (rat-from-poly (list 1 0 1)) 0)) (display " ")
+(display (at3-verify (rat-from-poly (list 3 0 1)) 1)) (newline)
+(display (at3-verify (rat-from-poly (list 5 -4 1)) 2)) (newline)
+(display (car (at3-logpart (rat-from-poly (list 2 0 1)) 0))) (display " ")
+(display (car (at3-logpart (rat-from-poly (list -1 0 1)) 1))) (newline)

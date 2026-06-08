@@ -1,0 +1,7 @@
+(import "cas/eccrypto.lisp")
+(define G (cons 5 1)) (define a 2) (define p 17) (define ell 19)
+(display (list (pt->string (ec-pub 7 G a p)) (pt->string (ec-pub 11 G a p)) (pt->string (ecdh-shared 7 (ec-pub 11 G a p) a p)))) (newline)
+(display (ecdh-agrees? 7 11 G a p)) (newline)
+(display (sig->string (ecdsa-sign 9 13 5 G a p ell))) (newline)
+(display (list (ecdsa-ok? 9 13 5 G a p ell) (ecdsa-ok? 2 8 15 G a p ell) (ecdsa-ok? 11 17 6 G a p ell) (ecdsa-ok? 18 2 9 G a p ell))) (newline)
+(display (list (ecdsa-rejects-msg? 9 10 13 5 G a p ell) (ecdsa-rejects-sig? 9 13 5 G a p ell) (ecdsa-rejects-sig? 11 17 6 G a p ell))) (newline)

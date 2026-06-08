@@ -1,0 +1,8 @@
+(import "cas/tower2rt.lisp")
+(define (kc n) (k1-from-int n))
+(define f  (list (kc 2) (kc -3) (kc 0) (kc 1)))
+(define g  (list (kc 1) (kc 1) (kc 2)))
+(display (= (k1-to-rational (h2-resultant f g)) (resultant (list 2 -3 0 1) (list 1 1 2)))) (newline)
+(define f2 (list (kc 1) (kc 0) (kc -2) (kc 1)))
+(define g2 (list (kc -1) (kc 3) (kc 1)))
+(display (= (k1-to-rational (h2-resultant f2 g2)) (resultant (list 1 0 -2 1) (list -1 3 1)))) (newline)

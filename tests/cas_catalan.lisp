@@ -1,0 +1,8 @@
+(import "cas/catalan.lisp")
+(define (all? l) (cond ((null? l) #t) ((car l) (all? (cdr l))) (else #f)))
+(display (list (binom 5 2) (binom 10 3) (binom 52 5) (binom 0 0) (binom 6 7))) (newline)
+(display (catalan-list 10)) (newline)
+(display (all? (map catalan-conv-ok? (range 0 15)))) (newline)
+(display (all? (map catalan-ratio-ok? (range 0 15)))) (newline)
+(display (list (rowsum-ok? 20) (altsum-ok? 15) (pascal-ok? 10 4))) (newline)
+(display (list (vandermonde-ok? 7 5 4) (vandermonde-ok? 12 9 7) (hockey-ok? 10 3) (hockey-ok? 15 5))) (newline)

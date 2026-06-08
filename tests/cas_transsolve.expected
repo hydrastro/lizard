@@ -1,0 +1,6 @@
+(2 1)
+((x=log 2) (x=log 1))
+((x=log 3) (no-real-x-for-u -2))
+((x=exp -1) (x=exp 1))
+((x=root 2 4) (x=root 2 1))
+#t

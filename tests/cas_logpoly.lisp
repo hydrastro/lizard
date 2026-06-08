@@ -1,0 +1,6 @@
+(import "cas/logpoly.lisp")
+(display (int-log-poly (list (list 0) (list 0) (list 1)))) (newline)
+(display (int-log-poly (list (list 0) (list 0 1)))) (newline)
+(display (int-log-poly-verify (list (list 0) (list 1)))) (newline)
+(display (int-log-poly-verify (list (list 0) (list 0) (list 0) (list 1)))) (newline)
+(display (int-log-poly-verify (list (list 1) (list 0 1) (list 0 0 1)))) (newline)

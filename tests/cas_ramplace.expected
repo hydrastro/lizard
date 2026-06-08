@@ -1,0 +1,6 @@
+3 2 3
+#t (elt 1) (0 1) #t
+(elt 2) (0 1) #t
+(-1 1) #t
+split (1) #t
+0 unramified-regular no-new-element

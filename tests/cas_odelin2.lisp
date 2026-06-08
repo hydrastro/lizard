@@ -1,0 +1,8 @@
+(import "cas/odelin2.lisp")
+(display (o2-particular 0 1 (list 0 0 1))) (newline)
+(display (o2-particular 0 -1 (list 0 1))) (newline)
+(display (o2-particular 3 2 (list 0 1))) (newline)
+(display (o2-particular 0 1 (list 0 -2 0 1))) (newline)
+(display (o2-particular 0 0 (list 1))) (newline)
+(display (o2-certify 3 2 (list 0 1) (list (/ -3 4) (/ 1 2)))) (newline)
+(display (o2-solve 0 1 (list 0 0 1))) (newline)

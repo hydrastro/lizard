@@ -1,0 +1,8 @@
+(torsion 1)
+(torsion 2)
+(torsion 5)
+(elementary torsion 2)
+(elementary torsion 5)
+(no-torsion-up-to 2)
+undecided-up-to
+(torsion 2)

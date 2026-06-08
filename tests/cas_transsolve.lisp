@@ -1,0 +1,7 @@
+(import "cas/transsolve.lisp")
+(display (ts-uroots (list 2 -3 1))) (newline)
+(display (ts-solve-exp (list 2 -3 1))) (newline)
+(display (ts-solve-exp (list -6 -1 1))) (newline)
+(display (ts-solve-log (list -1 0 1))) (newline)
+(display (ts-solve-pow 2 (list 4 -5 1))) (newline)
+(display (ts-verify (list 2 -3 1) 2)) (newline)

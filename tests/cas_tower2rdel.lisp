@@ -1,0 +1,8 @@
+(import "cas/tower2exprde.lisp")
+(define EXP1 (list 'exp (list 0 1)))
+(define t1    (list (list (rat-zero) (rat-one)) (list (rat-one))))
+(define t1inv (list (list (rat-one)) (list (rat-zero) (rat-one))))
+(define a (k1-sub (k1-one) t1inv))
+(define b (exp-rde-laurent a 1 t1 EXP1))
+(display (tr-equal? (tr-reduce b) (tr-reduce t1inv))) (newline)
+(display (exp-rde-check a 1 t1 b EXP1)) (newline)

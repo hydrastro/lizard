@@ -1,0 +1,8 @@
+(ok 0 1 (log 1 0))
+#t
+(ok 1/2 0 (log 1 0))
+(ok 1 3 (log 1 0))
+(ok 0 1 (arcsin -1 0 16))
+(ok 0 1 (arcsin -1 0 4))
+(no-real-form no-real-arch)
+-4 16

@@ -1,0 +1,7 @@
+(import "cas/frobenius.lisp")
+(display (list (frobenius (list 3 5)) (frobenius (list 4 7)) (frobenius (list 11 13)))) (newline)
+(display (frobenius (list 6 9 20))) (newline)
+(display (frobenius (list 5 8 12))) (newline)
+(display (list (genus (list 3 5)) (genus (list 4 7)) (genus (list 6 9 20)) (genus (list 5 8 12)))) (newline)
+(display (map (lambda (n) (representable? n (list 6 9 20))) (list 41 42 43 44 45 46 47 48))) (newline)
+(display (list (frobenius-two-ok? 8 15) (frobenius-two-ok? 17 19) (frobenius-gap-ok? (list 6 9 20)) (genus-count-ok? (list 7 11 13)))) (newline)

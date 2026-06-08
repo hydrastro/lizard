@@ -1,0 +1,7 @@
+(import "cas/weierstrass.lisp")
+(display (ws-gaps 2)) (display " ") (display (ws-semigroup-gens 2)) (display " ") (display (ws-num-gaps 2)) (newline)
+(display (ws-is-pole-number? 2 2)) (display " ") (display (ws-is-pole-number? 2 4)) (display " ") (display (ws-is-pole-number? 2 5)) (newline)
+(display (ws-is-gap? 2 1)) (display " ") (display (ws-is-gap? 2 3)) (display " ") (display (ws-is-gap? 2 6)) (newline)
+(display (ws-frobenius 2)) (newline)
+(display (ws-gaps 3)) (display " ") (display (ws-semigroup-gens 3)) (newline)
+(display (ws-genus-from-gaps 1)) (display " ") (display (ws-genus-from-gaps 4)) (display " ") (display (ws-genus-from-gaps 5)) (newline)
