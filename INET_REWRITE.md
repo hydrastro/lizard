@@ -50,6 +50,13 @@ tests/ic_sharing_test.c     sharing / optimal reduction: measures that labelled 
                          VALUES optimally (expensive work done once) while a duplicated LAMBDA body
                          is copied per application (the bracket/croissant oracle is the gap).
                          `make ic-sharing`
+src/opt_core.{c,h}          optimal reduction (Asperti-Guerrini sharing graphs), staged & standalone
+                         (libc only): a reference normal-order beta-normaliser (ground truth for the
+                         lambda fragment) + the indexed-agent interaction engine (lambda/@/fan/
+                         croissant/bracket, all rules self-tested) + an encode/read-back pipeline
+                         validated vs the reference on a fragment that includes function duplication.
+                         The fully general index-correct encoding (matched brackets) is the remaining
+                         hard part.  tests/opt_core_test.c, `make opt-core`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

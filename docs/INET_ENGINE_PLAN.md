@@ -412,9 +412,27 @@ payoff and deliberately last.
   (1990) / Asperti–Guerrini, which tracks the *level* of each fan so nested
   duplicators pair up correctly. It is the classic hard problem of this field,
   and the same boundary HVM lives at (its labelled fans are optimal on the
-  fragment they cover, not on every term). Concrete next step: add bracket and
-  croissant agents carrying a level, and the level-aware fan rules, validated by
-  re-running this test and watching the duplicated-λ marginal cost collapse.
+  fragment they cover, not on every term).
+
+  *Progress (`src/opt_core.{c,h}`, `make opt-core`).* Three pieces of the oracle
+  are now built and validated independently. (a) A **reference normal-order
+  β-normaliser** — ground truth for the λ-fragment, since the kernel does not
+  normalise open λ-terms (it passes Church `succ`/`add`/`mul`). (b) The
+  **Asperti–Guerrini interaction engine** — indexed agents λᵢ, @ᵢ, fan δᵢ,
+  croissant ∩ᵢ, bracket ⊔ᵢ, eraser, with the exact annihilation and propagation
+  rules; a rule-level self test checks all of them (β wiring; δᵢ duplicates a
+  λⱼ when i<j; ⊔ᵢ increments and ∩ᵢ decrements the index of a higher agent; δ–δ
+  same-index annihilation; eraser propagation). (c) An **encode + read-back
+  pipeline** validated against the reference on a fragment that *includes
+  function duplication* — `I`, `I I`, `church2`, `(λg.g g) I`, `K I I` all read
+  back to the correct normal form. The remaining hard step is exactly the
+  **fully general index-correct encoding**: with croissants alone, deeper nesting
+  (Church numerals, reducible-body duplication chains) produces same-index /
+  different-type active pairs that no rule covers — these are precisely what the
+  matched **bracket** placement (the famous bookkeeping) must rule out by
+  construction. `make opt-core` prints those terms as the documented gap rather
+  than guessing a result. Refs: Lévy 1980; Lamping POPL 1990; Asperti–Guerrini
+  CUP 1998, pp. 39–42; Salikhmetov, arXiv:1609.03644 (the rule set).
 - **Optimal readback.** Affine readback is done; the general labelled-bracket
   bookkeeping is not. Until it exists, compound shared normal forms render as
   faithful net dumps, never as guessed trees.
@@ -467,6 +485,15 @@ payoff and deliberately last.
                                               work-optimal.  Full Lévy-optimality needs the
                                               bracket/croissant oracle (Lamping/Asperti-Guerrini),
                                               the classic hard problem.  `make ic-sharing`
+      optimal reduction (oracle)       PART   src/opt_core.{c,h}, tests/opt_core_test.c:
+                                              reference normal-order normaliser (ground truth,
+                                              Church arithmetic) + Asperti-Guerrini interaction
+                                              engine (indexed lambda/@/fan/croissant/bracket;
+                                              all rules self-tested) + encode/read-back validated
+                                              vs the reference on a fragment INCLUDING function
+                                              duplication ((\g.gg)I).  The fully general index-
+                                              correct encoding (matched brackets) is the
+                                              remaining hard step.  `make opt-core`
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders
                                               (pair a b); ic_lower emits them and is
