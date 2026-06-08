@@ -1,0 +1,5 @@
+$ ./ic_lower_test
+  lowering fuzz: all 20000 random core terms agree
+
+$ ./ic_lower_test 50000 101
+  lowering fuzz: all 50000 random core terms agree

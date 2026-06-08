@@ -3,9 +3,10 @@
 This bundle is the first concrete stage of turning lizard into an HVM/Bend-style
 interaction-net machine, plus the two repo-cleanup scripts. Files are laid out at
 repo-relative paths, so unzipping this archive at the repository root drops each
-file into the directory it belongs in. Nothing here overwrites an existing lizard
-file — every path is new (this orientation file is `INET_REWRITE.md`, not
-`README.md`, precisely so it leaves your `README.md` alone).
+file into the directory it belongs in. The only file that replaces an existing
+one is `Makefile` — and that copy is your Makefile plus a single addition (`ic`
+and `ic_lower` in `LIB_OPTIONAL_SRCS`); every other path is new. This orientation
+file is `INET_REWRITE.md`, not `README.md`, so it leaves your `README.md` alone.
 
 ## What's here
 
@@ -13,10 +14,16 @@ file — every path is new (this orientation file is `INET_REWRITE.md`, not
 src/ic.h                 the interaction-calculus core: header + agent/rule docs
 src/ic.c                 the implementation — all FOUR agents (adds SUP to inet.c's three)
 src/ic_demo.c            standalone driver / self-test (no project build needed)
-tests/ic_test.c          the same checks through the project's test harness
+src/ic_lower.h           core_term-shaped IR + lowering to nets (Phase 12)
+src/ic_lower.c           the lowering implementation (Sigma + runtime fragment)
+tests/ic_test.c          the four-agent checks through the project's test harness
+tests/ic_fuzz.c          differential validator: net vs an independent integer oracle
+tests/ic_lower_test.c    lowering checks + a core-term fuzz vs the oracle
+Makefile                 your Makefile, with `ic` and `ic_lower` added to LIB_OPTIONAL_SRCS
 docs/INET_ENGINE_PLAN.md the staged rewrite plan (the duality + HOTT, mapped onto the engine)
 docs/ic_primitives.patch Scheme-facing primitives (ic-normalize/ic-cost/ic-reduce)
 docs/ic_demo_output.txt  captured output of ic_demo — all 17 checks passing
+docs/ic_fuzz_output.txt  captured output of ic_fuzz — random terms agreeing with the oracle
 scripts/tidy-structure.sh  cleanup #1: de-duplicate / un-nest the repo
 scripts/tidy-artifacts.sh  cleanup #2: build & dev hygiene
 ```
@@ -51,6 +58,14 @@ It exercises three things at once — sharing (the P / construction side, linear
 interaction counts), search (the NP / observation side, computations distributing
 over superpositions), and the label semantics that connect them. See
 `docs/ic_demo_output.txt` for the expected output.
+
+And the differential validator (this is roadmap item 13a — see the plan), which
+builds random terms with a known integer value and checks the net agrees:
+
+```
+cc -std=c89 -O2 -Wall -Wextra -Isrc tests/ic_fuzz.c src/ic.c -lgmp -o ic_fuzz
+./ic_fuzz 100000          # optional: ./ic_fuzz <iterations> <seed>
+```
 
 A note on scope: `ic.c` is built **standalone** on purpose. The full library does
 not currently link — `src/lizard_internal.h` includes `<ds.h>`, which is missing

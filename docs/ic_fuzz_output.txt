@@ -1,0 +1,9 @@
+ic_fuzz: 20000 random terms, seed=1
+----------------------------------------------------------
+max interactions in one term: 61
+ALL 20000 TERMS AGREE WITH THE ORACLE
+
+ic_fuzz: 20000 random terms, seed=12345
+----------------------------------------------------------
+max interactions in one term: 60
+ALL 20000 TERMS AGREE WITH THE ORACLE

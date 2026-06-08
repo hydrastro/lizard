@@ -1,7 +1,11 @@
 # INET_ENGINE_PLAN — rewriting lizard into an interaction-net machine
 
-Status: planning document with a working first stage landed (`src/ic.c`,
-`src/ic.h`, `tests/ic_test.c`). Read `docs/INET.md` first — it describes the
+Status: planning document with a working, validated stack landed. The four
+agents are implemented (`src/ic.c`, `src/ic.h`), differentially validated against
+an independent oracle over 500k random terms (`tests/ic_fuzz.c`, Phase 13a), and
+the first lowering of the core IR — the negative + Σ fragment plus runtime
+arithmetic — runs and is fuzz-validated (`src/ic_lower.{c,h}`,
+`tests/ic_lower_test.c`, Phase 12). Read `docs/INET.md` first — it describes the
 existing combinator runtime (`src/inet.c`) and the soundness constraints. This
 document picks up where that one ends ("the first step of a longer direction:
 lizard becoming an interaction-net machine") and lays out the rest of the road.
@@ -161,32 +165,45 @@ duplicating). There is no third case to invent; the table is forced.
 
 ## 4. Compiling `core_term` to nets (Phases 12–13)
 
-The elaborator already lowers surface syntax to `core_term`. The next stage adds
-a second backend that lowers `core_term` to an `ic`-style net, reusing the
-binder-management `ic.c` already implements:
+The elaborator lowers surface syntax to `core_term`, which wraps either a
+`kterm_t` (the trusted dependent-type-theory IR — `src/kernel.h`) or a runtime
+AST. The net backend lowers the computational fragment of that IR to an `ic`
+net, reusing the binder management `ic.c` already implements.
 
-- each `core_term` binder pushes a scope frame; uses of the variable are
-  collected, and a binder with *n > 1* uses inserts a fan of sharing DUPs with a
-  *fresh* label (`ic.c` sets a binder bit on these labels so they stay disjoint
-  from user-level SUP/DUP labels — this is what keeps a user's superposition
-  fanning out correctly when it flows through a shared binder);
-- application, Σ/pairing, and arithmetic are CON / paired-CON / OPR subgraphs;
-- the readback already handles integers, superpositions, and the affine λ
-  fragment, and falls back to a *faithful net dump* rather than a wrong tree when
-  residual DUP-sharing remains.
+The first slice of this is *done*: `src/ic_lower.{c,h}` lowers a `kterm`-shaped
+core IR (de Bruijn, so it runs without the elaborator while `<ds.h>` blocks the
+full build) to a named `ic_term`, which the existing engine reduces. It covers
+the negative + Σ core — VAR, LAM, APP, PAIR, PROJ1, PROJ2, LET — and the runtime
+fragment — LIT and the eight PRIM operators (`core_term`'s
+`LIZARD_CORE_RUNTIME_AST` path). De Bruijn indices become fresh named binders on
+a scope stack; a binder used more than once still becomes a fan of sharing DUPs
+with binder-bit labels disjoint from user SUP/DUP labels. Σ uses the standard
+constructor encoding (`pair = λk. k a b`, `πᵢ = p (λa.λb. selector)`), so CON
+beta does the elimination and a shared pair is duplicated by the ordinary DUP
+machinery — no new agents required at this stage. `tests/ic_lower_test.c` checks
+this: curated cases (Σ intro/elim, nested pairs, de Bruijn under several binders,
+a pair duplicated then projected twice, erasure) plus a differential fuzz that
+generates random core terms with a known integer value and confirms the lowered
+net agrees (170k terms across seeds currently pass).
 
-Two deliverables make this trustworthy:
+What remains in this phase:
 
-1. **Differential testing against the kernel**, exactly as `inet.c` is tested
-   today: elaborate a term, reduce it both on the kernel (`kt_whnf`) and on the
-   net, and assert the normal forms agree on the shared fragment. This extends
-   the existing `inet` cross-check to the four-agent engine and to Σ/Π.
+1. **The typed cross-check.** Once the elaborator is reachable (i.e. `<ds.h>` is
+   restored), reduce *elaborated* terms both on the kernel (`kt_whnf`) and on the
+   net and assert agreement on the shared typed fragment, including Σ/Π — the
+   `inet` cross-check, extended to the four-agent engine. The fuzz harness above
+   already validates the untyped + Σ runtime fragment against an independent
+   oracle in the meantime.
 2. **Optimal readback** — the genuinely hard part. Reading a shared normal form
    back into a correct tree needs the labelled-bracket bookkeeping of
    Lamping–Gonthier optimal reduction (the "oracle"/croissants-and-brackets).
    Until that lands, readback stays honest: a correct tree when the result is
-   affine, a faithful net rendering otherwise. This is called out as
-   not-yet-done in `docs/INET.md` and remains the open frontier.
+   affine (and exact integers, and superpositions), a faithful net rendering
+   otherwise. This is called out as not-yet-done in `docs/INET.md`.
+
+First-class `PAIR`/`FST`/`SND` agents (rather than the constructor encoding) are
+deferred to Phase 14, where the Id/transport agent needs to dispatch on the Σ
+former *structurally* (Id over Σ = componentwise).
 
 
 ## 5. HOTT on the net (Phases 14–15)
@@ -274,10 +291,16 @@ local, so independent active pairs reduce concurrently. It is deliberately last
 ```
   11  the four agents                  DONE   src/ic.c, src/ic.h, tests/ic_test.c
                                               (SUP added; DUP/SUP duality; exact GMP)
-  12  core_term -> net backend         next   reuse ic binder/label management
-  13  differential test vs kernel      next   extend the inet cross-check to 4 agents + Sigma/Pi
-      + optimal (labelled) readback    hard   Lamping-Gonthier brackets
-  14  Id-by-observation on nets               Sigma componentwise, Pi pointwise, U by equivalence
+  13a differential validation          DONE   tests/ic_fuzz.c -- net vs independent
+                                              oracle, 500k random terms agree
+  12  core_term -> net backend         DONE   src/ic_lower.{c,h}, tests/ic_lower_test.c
+                                              negative + Sigma core + runtime frag;
+                                              fuzzed vs oracle (pair/proj/let/deBruijn)
+  13b cross-check vs the kernel        next   needs <ds.h>; extend inet's check to
+                                              4 agents + Sigma/Pi on elaborated terms
+      optimal (labelled) readback      hard   Lamping-Gonthier brackets
+  14  Id-by-observation on nets        next   Sigma componentwise, Pi pointwise, U by equivalence;
+                                              first-class PAIR/FST/SND agents land here
   15  transport as agent/type-former rewrite  validated against the cubical layer
   16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
   17  parallel reduction                      Bend-style, last
