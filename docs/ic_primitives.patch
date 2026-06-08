@@ -1,0 +1,257 @@
+ic — Lisp-facing primitives (mirror of the existing inet primitives)
+====================================================================
+
+This patch exposes the ic interaction-calculus core (src/ic.c, src/ic.h) to the
+Scheme layer, exactly the way inet is exposed today:
+
+    (ic-normalize '<term>)   reduce on the net, return the integer normal form
+    (ic-cost      '<term>)   return the number of interactions (graph rewrites)
+    (ic-reduce    '<term>)   return the normal form read back as a string
+                             (integers, and superpositions like "{2 3}")
+
+The surface datum grammar adds two forms over the inet lowering, for the new
+agent:
+
+    (sup a b)         a superposition (label 0)
+    (sup L a b)       a superposition with integer label L
+    (dup x y v body)  dup x y = v in body          (label 0)
+    (dup L x y v b)   dup with integer label L
+
+Everything else — (lambda (x ...) body), (op + a b), application, numbers,
+symbols — lowers exactly as in lz_inet_parse.
+
+NOTE: the full library does not currently build (src/lizard_internal.h includes
+<ds.h>, which is absent from the tree), so this patch cannot be compiled in
+isolation yet.  It is written to match the established inet pattern line-for-line
+so it is correct by construction; apply it once ds.h is restored.  The engine
+itself is already verified standalone via tests/ic_test.c and src/ic_demo.c.
+
+--------------------------------------------------------------------------------
+--- a/src/primitives.c
++++ b/src/primitives.c
+@@ -2,6 +2,7 @@
+ #include <math.h>
+ #include <float.h>
+ #include "pvector.h"
+ #include "inet.h"
++#include "ic.h"
+ #include "prims_shared.h"
+ #include "env.h"
+ #include "errors.h"
+
+@@ after lizard_primitive_inet_reduce(), before lizard_install_primitives():
+
++/* ---- ic: the interaction-calculus core (the four agents) ----------------
++ * Same surface as inet, plus (sup ...) and (dup ...) for the superposition
++ * agent and the dup/sup duality.  See src/ic.h. */
++static int lz_ic_opcode(const char *s) {
++  if (!strcmp(s, "+")) return IC_ADD;
++  if (!strcmp(s, "-")) return IC_SUB;
++  if (!strcmp(s, "*")) return IC_MUL;
++  if (!strcmp(s, "/")) return IC_DIV;
++  if (!strcmp(s, "%")) return IC_MOD;
++  if (!strcmp(s, "=")) return IC_EQ;
++  if (!strcmp(s, "<")) return IC_LT;
++  if (!strcmp(s, ">")) return IC_GT;
++  return -1;
++}
++
++static lizard_ast_node_t *lz_ic_nth(lizard_ast_node_t *lst, int k) {
++  while (k > 0 && lst != NULL && lst->type == AST_PAIR) {
++    lst = lst->data.pair.cdr;
++    k--;
++  }
++  if (lst != NULL && lst->type == AST_PAIR) return lst->data.pair.car;
++  return NULL;
++}
++
++static ic_term_t *lz_ic_parse(lizard_ast_node_t *t) {
++  if (t == NULL) return NULL;
++  if (t->type == AST_NUMBER) return ic_num_z(t->data.number);
++  if (t->type == AST_SYMBOL) return ic_var(t->data.variable);
++  if (t->type == AST_PAIR) {
++    lizard_ast_node_t *head = t->data.pair.car;
++    if (head && head->type == AST_SYMBOL) {
++      const char *h = head->data.variable;
++      int opc;
++      if (!strcmp(h, "lambda") || !strcmp(h, "lam")) {
++        lizard_ast_node_t *params = lz_ic_nth(t, 1);
++        lizard_ast_node_t *bodyn  = lz_ic_nth(t, 2);
++        ic_term_t *body;
++        const char *names[64];
++        int n = 0, i;
++        /* params may be a single symbol or a list of symbols */
++        if (params && params->type == AST_SYMBOL) {
++          names[n++] = params->data.variable;
++        } else {
++          lizard_ast_node_t *p = params;
++          while (p && p->type == AST_PAIR && n < 64) {
++            lizard_ast_node_t *c = p->data.pair.car;
++            if (c && c->type == AST_SYMBOL) names[n++] = c->data.variable;
++            p = p->data.pair.cdr;
++          }
++        }
++        body = lz_ic_parse(bodyn);
++        if (body == NULL) return NULL;
++        for (i = n - 1; i >= 0; i--) body = ic_lam(names[i], body);
++        return body;
++      }
++      if (!strcmp(h, "sup")) {
++        /* (sup a b) or (sup L a b) */
++        lizard_ast_node_t *a1 = lz_ic_nth(t, 1);
++        lizard_ast_node_t *a2 = lz_ic_nth(t, 2);
++        lizard_ast_node_t *a3 = lz_ic_nth(t, 3);
++        int label = 0;
++        ic_term_t *lt, *rt;
++        if (a3 != NULL && a1 && a1->type == AST_NUMBER) {
++          label = (int)mpz_get_si(a1->data.number);
++          lt = lz_ic_parse(a2); rt = lz_ic_parse(a3);
++        } else {
++          lt = lz_ic_parse(a1); rt = lz_ic_parse(a2);
++        }
++        if (lt == NULL || rt == NULL) { ic_term_free(lt); ic_term_free(rt); return NULL; }
++        return ic_sup(label, lt, rt);
++      }
++      if (!strcmp(h, "dup")) {
++        /* (dup x y v body) or (dup L x y v body) */
++        int base = 1, label = 0;
++        lizard_ast_node_t *maybe = lz_ic_nth(t, 1);
++        lizard_ast_node_t *xn, *yn, *vn, *bn;
++        ic_term_t *v, *body;
++        if (maybe && maybe->type == AST_NUMBER) {
++          label = (int)mpz_get_si(maybe->data.number);
++          base = 2;
++        }
++        xn = lz_ic_nth(t, base + 0);
++        yn = lz_ic_nth(t, base + 1);
++        vn = lz_ic_nth(t, base + 2);
++        bn = lz_ic_nth(t, base + 3);
++        if (!xn || xn->type != AST_SYMBOL || !yn || yn->type != AST_SYMBOL)
++          return NULL;
++        v = lz_ic_parse(vn); if (v == NULL) return NULL;
++        body = lz_ic_parse(bn); if (body == NULL) { ic_term_free(v); return NULL; }
++        return ic_dup(label, xn->data.variable, yn->data.variable, v, body);
++      }
++      opc = lz_ic_opcode(h);
++      if (!strcmp(h, "op")) {
++        /* (op OP a b) */
++        lizard_ast_node_t *on = lz_ic_nth(t, 1);
++        lizard_ast_node_t *ln = lz_ic_nth(t, 2);
++        lizard_ast_node_t *rn = lz_ic_nth(t, 3);
++        ic_term_t *lt, *rt;
++        int o = (on && on->type == AST_SYMBOL) ? lz_ic_opcode(on->data.variable) : -1;
++        if (o < 0) return NULL;
++        lt = lz_ic_parse(ln); rt = lz_ic_parse(rn);
++        if (lt == NULL || rt == NULL) { ic_term_free(lt); ic_term_free(rt); return NULL; }
++        return ic_op(o, lt, rt);
++      }
++      if (opc >= 0) {
++        /* (+ a b) shorthand */
++        lizard_ast_node_t *ln = lz_ic_nth(t, 1);
++        lizard_ast_node_t *rn = lz_ic_nth(t, 2);
++        ic_term_t *lt = lz_ic_parse(ln), *rt = lz_ic_parse(rn);
++        if (lt == NULL || rt == NULL) { ic_term_free(lt); ic_term_free(rt); return NULL; }
++        return ic_op(opc, lt, rt);
++      }
++    }
++    /* otherwise: application, left-associated */
++    {
++      ic_term_t *acc = lz_ic_parse(t->data.pair.car);
++      lizard_ast_node_t *r = t->data.pair.cdr;
++      if (acc == NULL) return NULL;
++      while (r && r->type == AST_PAIR) {
++        ic_term_t *arg = lz_ic_parse(r->data.pair.car);
++        if (arg == NULL) { ic_term_free(acc); return NULL; }
++        acc = ic_app(acc, arg);
++        r = r->data.pair.cdr;
++      }
++      return acc;
++    }
++  }
++  return NULL;
++}
++
++static lizard_ast_node_t *lz_ic_run(lz_list_t *args, lizard_heap_t *heap,
++                                    int want_cost) {
++  lizard_ast_list_node_t *node;
++  lizard_ast_node_t *out;
++  ic_term_t *t;
++  mpz_t res;
++  long inter = 0;
++  int st;
++  if (args->head == args->nil || args->head->next != args->nil) {
++    return lizard_make_error(heap, LIZARD_ERROR_INVALID_PARAMETER);
++  }
++  node = (lizard_ast_list_node_t *)args->head;
++  t = lz_ic_parse(node->ast);
++  if (t == NULL) return lizard_make_bool(heap, false);
++  mpz_init(res);
++  st = ic_normalize_int(t, res, &inter);
++  ic_term_free(t);
++  if (want_cost) {
++    mpz_clear(res);
++    if (st < 0) return lizard_make_bool(heap, false);
++    out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
++    out->type = AST_NUMBER;
++    mpz_init_set_si(out->data.number, inter);
++    return out;
++  }
++  if (st != 1) {
++    mpz_clear(res);
++    return lizard_make_bool(heap, false);
++  }
++  out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
++  out->type = AST_NUMBER;
++  mpz_init_set(out->data.number, res);
++  mpz_clear(res);
++  return out;
++}
++
++static lizard_ast_node_t *lizard_primitive_ic_normalize(lz_list_t *args,
++                                                 lizard_env_t *env,
++                                                 lizard_heap_t *heap) {
++  (void)env; return lz_ic_run(args, heap, 0);
++}
++static lizard_ast_node_t *lizard_primitive_ic_cost(lz_list_t *args,
++                                            lizard_env_t *env,
++                                            lizard_heap_t *heap) {
++  (void)env; return lz_ic_run(args, heap, 1);
++}
++
++/* (ic-reduce '<term>) -> normal form read back as a string ("42", "{2 3}",
++ * "(lam #0)", or a faithful "<net: ...>" dump when sharing remains), or #f. */
++static lizard_ast_node_t *lizard_primitive_ic_reduce(lz_list_t *args,
++                                              lizard_env_t *env,
++                                              lizard_heap_t *heap) {
++  lizard_ast_list_node_t *node;
++  lizard_ast_node_t *out;
++  ic_term_t *t;
++  char *buf;
++  long inter = 0;
++  int st;
++  size_t cap = (size_t)1 << 16;
++  (void)env;
++  if (args->head == args->nil || args->head->next != args->nil) {
++    return lizard_make_error(heap, LIZARD_ERROR_INVALID_PARAMETER);
++  }
++  node = (lizard_ast_list_node_t *)args->head;
++  t = lz_ic_parse(node->ast);
++  if (t == NULL) return lizard_make_bool(heap, false);
++  buf = lizard_heap_alloc(cap);
++  st = ic_readback(t, buf, cap, &inter);
++  ic_term_free(t);
++  if (st != 1) return lizard_make_bool(heap, false);
++  out = lizard_heap_alloc(sizeof(lizard_ast_node_t));
++  out->type = AST_STRING;
++  out->data.string = lizard_heap_strdup(heap, buf);
++  return out;
++}
+
+@@ inside lizard_install_primitives(), right after the inet installs:
+
+   install_one(heap, env, "inet-normalize", lizard_primitive_inet_normalize);
+   install_one(heap, env, "inet-cost",      lizard_primitive_inet_cost);
+   install_one(heap, env, "inet-reduce",    lizard_primitive_inet_reduce);
++  install_one(heap, env, "ic-normalize",   lizard_primitive_ic_normalize);
++  install_one(heap, env, "ic-cost",        lizard_primitive_ic_cost);
++  install_one(heap, env, "ic-reduce",      lizard_primitive_ic_reduce);

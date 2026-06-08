@@ -1,0 +1,293 @@
+# INET_ENGINE_PLAN — rewriting lizard into an interaction-net machine
+
+Status: planning document with a working first stage landed (`src/ic.c`,
+`src/ic.h`, `tests/ic_test.c`). Read `docs/INET.md` first — it describes the
+existing combinator runtime (`src/inet.c`) and the soundness constraints. This
+document picks up where that one ends ("the first step of a longer direction:
+lizard becoming an interaction-net machine") and lays out the rest of the road.
+
+The goal is the one you set: make lizard reduce the way HVM and Bend do — by
+local graph rewriting on an interaction net — and do it so that the engine is
+not an accessory but *the* evaluator, with the type theory expressed in the same
+substrate. Two ideas govern the design: your directional construction/observation
+duality, and Higher Observational Type Theory. They are not decoration; they
+each pin down a concrete piece of the machine, and this document tries to show
+exactly where.
+
+This is staged on purpose. The trusted kernel is currently sound (the kernel
+audit tracks a 198/0 figure), and nothing here is allowed to regress that until
+a typed net can be reified back into a kernel term and re-checked. Every phase
+is additive and independently testable; the net engine earns its way to the
+centre one verified layer at a time.
+
+
+## 1. Where lizard computes today
+
+There are three evaluators in the tree, and that multiplicity is the thing the
+rewrite is meant to collapse:
+
+- the Scheme core runs on an AST tree-walk plus a bytecode VM
+  (`src/runtime.c`, `src/bytecode.c`);
+- the trusted type theory reduces `kterm_t` in `src/kernel.c` (`kt_whnf`,
+  bidirectional infer/check, the universe lattice, inductives, unification);
+- the cubical layer reduces `lizard_ast_node_t` through the "six descent
+  operations" in `src/tt_equality.c` (interval, paths, faces, Kan composition,
+  Glue, `ua`).
+
+`include/core_term.h` is the elaborator's output IR — the bridge from surface
+syntax to the kernel. It is the natural seam to compile *from*: elaborate once,
+then lower `core_term` to a net instead of to a tree.
+
+Alongside these sits `src/inet.c`: a correct Lafont interaction-combinator
+runtime (CON for λ/application, DUP for sharing, ERA, exact-GMP OPR/OP1),
+reachable from Scheme via `inet-normalize` / `inet-cost` / `inet-reduce`, and
+differentially cross-checked against the trusted kernel on the shared untyped
+λ-fragment. It is real and it works — but it is an *oracle*, used to validate
+the kernel, not to run the language. It is also missing the fourth agent, and
+its readback gives up on shared compound normal forms.
+
+
+## 2. The four agents (Phase 11 — landed in `src/ic.c`)
+
+Your design names four 3-arrow agents (one principal port, two auxiliary),
+in four polarity patterns: λ, application, duplication, and superposition.
+`inet.c` had three of them. `ic.c` is the self-contained successor that adds the
+fourth and makes the duality computational:
+
+```
+   nulls     (0 aux)   ERA            the eraser / terminal
+   numbers   (0 aux)   NUM            an exact GMP integer
+   3-arrow agents (1 principal + 2 aux), labelled:
+             CON                      lambda / application   (the CON dual pair)
+             DUP                      duplication            (the construction reading)
+             SUP                      superposition          (the observation reading)
+             OPR / OP1                exact binary arithmetic
+```
+
+DUP and SUP are the *same* combinator read in the two dual directions, so the
+entire computational content of the duality is one line of the rule table:
+
+```
+   DUP{L} ~ SUP{L}   (same label)   -> ANNIHILATE   the superposed values flow
+                                                    straight to the two consumers;
+                                                    the search collapses to a pair
+   DUP{L} ~ SUP{K}   (L != K)       -> COMMUTE      the alternatives cross and
+                                                    multiply; the search fans out
+```
+
+Everything else is the standard interaction-combinator table: `CON~CON` is beta;
+same family and same label annihilate, otherwise commute; `ERA` erases; `NUM`
+meeting `OPR`/`OP1` computes; `NUM` meeting `DUP`/`SUP` copies the number into
+both wires. Numbers are exact GMP integers (not 24-bit), and the reducer counts
+interactions, both inherited from `inet.c`.
+
+`ic.c` builds and tests in isolation (GMP + libc only), exactly like `inet.c`,
+which matters because the full library does not currently link — `src/lizard_internal.h`
+includes `<ds.h>`, a header absent from the tree. The standalone driver
+(`src/ic_demo.c`) and the harness test (`tests/ic_test.c`) both pass; the
+Scheme-facing primitives (`ic-normalize` / `ic-cost` / `ic-reduce`) are written
+as `docs/ic_primitives.patch`, ready to apply once `ds.h` is restored.
+
+What the tests already demonstrate, in the language of your duality:
+
+- *Construction / sharing / P.* A λ that uses its argument many times reduces
+  it once via DUP; the interaction count stays linear. `S K K 5 = 5` in ten
+  interactions; `(λx. x+x+x) 7 = 21` in seven.
+- *Observation / search / NP.* A computation distributes over a superposition,
+  running on every alternative. `(op + 1 {2 3})` → `{3 4}`.
+- *The duality itself, via labels.* Matching DUP/SUP labels collapse the search
+  (`(dup :7 x y {:7 10 20} (op + x y))` → `30`); equal-label superpositions stay
+  correlated — one shared choice (`(op + {10 20} {100 200})` → `{110 220}`);
+  distinct-label superpositions form the outer product — independent choices
+  (`(op + {:1 10 20} {:2 100 200})` → `{{110 210} {120 220}}`).
+
+That last group is the operational heart of the whole picture: **sharing is the
+construction side, search is the observation side, and the label is what decides
+whether a duplication collapses or fans out.** P sitting inside NP is the
+statement that a DUP (checking a shared witness) is the same machine as a SUP
+(searching alternatives), distinguished only by whether its label matches.
+
+
+## 3. The duality, mapped onto the machine
+
+Your framework is a *directional* (adjoint, contravariant) duality: not a
+symmetry, but a pairing in which one side implies the other —
+construction ⊢ observation, syntax ⊢ semantics, checking ⊢ searching, P ⊆ NP,
+static ⊢ dynamic. The net realises this with a fixed handedness, which is why it
+is the right substrate for it.
+
+- **Principal-port orientation is the handedness.** An active pair reduces in
+  exactly one direction; there is no symmetric rule. Construction agents
+  (introductions: λ, DUP, NUM, SUP-as-value) present a value on their principal
+  port; observation agents (eliminations: application, OPR, DUP-as-consumer)
+  consume on theirs. Beta, projection, and arithmetic all fire only when a
+  constructor meets its matching destructor, never the reverse — the adjunction
+  made physical.
+
+- **Two lattices, paired by the turnstile.** You describe a *universe* lattice
+  on the construction side (`a : A : 𝒰₀ : 𝒰₁ : …`) paired with a *co-universe*
+  lattice on the observation side (variables : bindings : contexts :
+  contexts-of-contexts), with `Γ ⊢ a : A` being the *pairing* of an element of
+  one with an element of the other. On the net this is literal: a closed term is
+  a subgraph whose free wires are its *context interface*. The construction
+  lattice is the tower of agents producing values; the co-universe lattice is
+  the tower of *binders and ports* consuming them. The turnstile is a wiring —
+  `link_ports` joining a value's principal port to a context's free port. The
+  kernel's existing universe lattice (`src/tt_lattice.c`) supplies the
+  construction tower; the co-universe tower is the binder/port structure the
+  compiler in §4 already has to track.
+
+- **Substitution is contravariant, by construction.** In the categorical
+  semantics, substitution acts on contexts the opposite way it acts on terms;
+  that is the fixed handedness, "not a real symmetry." On the net, substitution
+  *is* DUP commuting a value out along the wires of the context — and the
+  direction of that commutation is fixed by which port is principal. The
+  contravariance is not enforced by a side condition; it is the only way the
+  wires can be joined.
+
+- **Checking ⊢ searching is DUP ⊢ SUP.** This is §2's rule table read as a
+  thesis. Verifying a shared witness (one value threaded to many consumers) is a
+  DUP; exploring alternatives (many values offered to one consumer) is a SUP.
+  They are one combinator. A solver built on this engine *searches* by emitting
+  SUP and *checks* by emitting DUP, and a matching label is exactly the moment a
+  search result is pinned to a single construction.
+
+The interaction rules you said "naturally arise from the system" are, concretely,
+the annihilate/commute decision in `ic.c`'s `interact()`: same family + same
+label → annihilate (the constructor meets its dual observation and the pair
+resolves), otherwise commute (the two structures pass through each other,
+duplicating). There is no third case to invent; the table is forced.
+
+
+## 4. Compiling `core_term` to nets (Phases 12–13)
+
+The elaborator already lowers surface syntax to `core_term`. The next stage adds
+a second backend that lowers `core_term` to an `ic`-style net, reusing the
+binder-management `ic.c` already implements:
+
+- each `core_term` binder pushes a scope frame; uses of the variable are
+  collected, and a binder with *n > 1* uses inserts a fan of sharing DUPs with a
+  *fresh* label (`ic.c` sets a binder bit on these labels so they stay disjoint
+  from user-level SUP/DUP labels — this is what keeps a user's superposition
+  fanning out correctly when it flows through a shared binder);
+- application, Σ/pairing, and arithmetic are CON / paired-CON / OPR subgraphs;
+- the readback already handles integers, superpositions, and the affine λ
+  fragment, and falls back to a *faithful net dump* rather than a wrong tree when
+  residual DUP-sharing remains.
+
+Two deliverables make this trustworthy:
+
+1. **Differential testing against the kernel**, exactly as `inet.c` is tested
+   today: elaborate a term, reduce it both on the kernel (`kt_whnf`) and on the
+   net, and assert the normal forms agree on the shared fragment. This extends
+   the existing `inet` cross-check to the four-agent engine and to Σ/Π.
+2. **Optimal readback** — the genuinely hard part. Reading a shared normal form
+   back into a correct tree needs the labelled-bracket bookkeeping of
+   Lamping–Gonthier optimal reduction (the "oracle"/croissants-and-brackets).
+   Until that lands, readback stays honest: a correct tree when the result is
+   affine, a faithful net rendering otherwise. This is called out as
+   not-yet-done in `docs/INET.md` and remains the open frontier.
+
+
+## 5. HOTT on the net (Phases 14–15)
+
+Higher Observational Type Theory is the third-generation answer to univalence:
+instead of an interval and a primitive path type, the identity type `Id_A(x,y)`
+is *defined by recursion on the structure of A*. That is the same
+construction/observation duality again — **a type is characterised by how it is
+observed**, and equality is read off the type's structure:
+
+- `Id` over `Σ` is componentwise equality;
+- `Id` over `Π` is pointwise equality — which gives function extensionality
+  *definitionally*, not as an axiom;
+- `Id` over a universe `𝒰` is equivalence — which gives univalence *by
+  computation*.
+
+This maps onto the engine cleanly because "recursion on the structure of A" is
+precisely what an interaction net does when an agent meets a type-former agent:
+
+- represent `Id` / `transport` as an agent whose principal port faces a *type*;
+- when that agent meets a Σ-former, it reduces to the componentwise rule (two
+  smaller `Id` agents on the components);
+- when it meets a Π-former, it reduces to the pointwise rule (an `Id` agent
+  under a binder);
+- when it meets a universe, it reduces to the equivalence/`ua` rule — and an
+  equivalence is itself a pair of functions with coherence, i.e. more net.
+
+In other words, transport is not a global operation interpreted by a separate
+reducer (as in the cubical `tt_equality.c` descents); it is *driven by the
+type-former agent it collides with*, one local rewrite at a time. HOTT is the
+type theory that makes this possible, because it is the one whose equality is
+already defined by observation rather than by an interval that would have to be
+threaded through every rule. The existing cubical machinery becomes the
+reference oracle to validate these rewrites against, the same way the kernel
+validates the untyped fragment.
+
+The DUP/SUP labelled pair reappears here too: definitional `Id` computation is
+the *checking* direction (a constructed equality meeting its observation and
+collapsing), while proof *search* for an equality is the SUP direction. The same
+agent set carries both.
+
+
+## 6. Making the net the engine (Phases 16–17)
+
+Once `core_term → net` is verified on the typed fragment and HOTT equality runs
+as net interaction, the net becomes the primary evaluator:
+
+- route the Scheme core and the elaborated kernel terms through the net instead
+  of the bytecode VM and `kt_whnf`, keeping the tree-walk as a reference oracle
+  behind a flag;
+- retire `src/bytecode.c` / `src/runtime.c` as the default path once the net
+  reaches parity (correctness *and* the interaction-count budget) on the test
+  suite;
+- keep the kernel's reify-and-recheck gate in place: a net result is only
+  trusted once it can be read back into a `kterm_t` and re-checked, so soundness
+  is never taken on faith.
+
+Parallelism is the Bend-style payoff and comes almost for free: interaction is
+local, so independent active pairs reduce concurrently. It is deliberately last
+— correctness and optimal readback first, throughput after.
+
+
+## 7. Honest list of the hard parts
+
+- **Optimal readback.** Affine readback is done; the general labelled-bracket
+  bookkeeping is not, and it is the classic hard problem of this field. Until it
+  exists, compound shared normal forms render as faithful net dumps, never as
+  guessed trees.
+- **Typed nets.** Reifying a *typed* net back into a kernel term — the thing
+  that lets the engine replace `kt_whnf` without risking soundness — is the open
+  research frontier already flagged in `docs/INET.md`.
+- **HOTT equality coverage.** The Σ/Π/𝒰 rules above are the easy, definitional
+  core; higher coherences and the full coherence theorem are a research effort,
+  validated against the cubical layer as oracle.
+- **The build is currently broken.** `src/lizard_internal.h` includes `<ds.h>`,
+  which is not in the tree, so the full library does not link today. `ic.c` and
+  its tests are built standalone precisely so this work is not blocked by that;
+  restoring or vendoring `ds.h` is a prerequisite for wiring `ic` in through the
+  Makefile (the `ic` module is already registered in `LIB_OPTIONAL_SRCS`) and
+  applying `docs/ic_primitives.patch`.
+
+
+## 8. Phase summary
+
+```
+  11  the four agents                  DONE   src/ic.c, src/ic.h, tests/ic_test.c
+                                              (SUP added; DUP/SUP duality; exact GMP)
+  12  core_term -> net backend         next   reuse ic binder/label management
+  13  differential test vs kernel      next   extend the inet cross-check to 4 agents + Sigma/Pi
+      + optimal (labelled) readback    hard   Lamping-Gonthier brackets
+  14  Id-by-observation on nets               Sigma componentwise, Pi pointwise, U by equivalence
+  15  transport as agent/type-former rewrite  validated against the cubical layer
+  16  net becomes the primary engine          retire bytecode VM / kt_whnf as defaults, behind a gate
+  17  parallel reduction                      Bend-style, last
+```
+
+The throughline: lizard already has every separate piece — a combinator runtime,
+a universe lattice, a cubical equality engine, an elaborator IR. The rewrite is
+not new machinery so much as *unifying* them on one substrate, where your
+construction/observation duality is the principal-port handedness, the two
+lattices are paired by wiring, and HOTT's observation-defined equality is what
+lets the type theory run as interaction. The fourth agent was the missing piece
+of the dynamics; it is now in place, tested, and waiting for the build to be
+made whole so it can move from oracle to engine.

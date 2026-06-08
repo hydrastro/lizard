@@ -1,0 +1,41 @@
+== arithmetic (exact GMP, must match inet baseline) ==
+  ok    (op + 3 4)                         => 7                  (2 interactions)
+  ok    (op * 12 (op + 3 4))               => 84                 (4 interactions)
+  ok    (op - 100 1)                       => 99                 (2 interactions)
+  ok    (op * 123 123)                     => 15129              (2 interactions)
+
+== lambda / application (affine readback) ==
+  ok    ((lam x x) 99)                     => 99                 (1 interactions)
+  ok    ((lam x (op + x (op + x x))) 7)    => 21                 (7 interactions)
+  ok    ((lam x (op + x x)) ((lam x (op + x x)) 10)) => 40                 (8 interactions)
+
+== Church-style combinators ==
+  ok    ((((lam f (lam g (lam x ((f x) (g x))))) (lam a (lam b a))) (lam c (lam d c))) 5) => 5                  (10 interactions)
+
+== superposition: bare pairs read back faithfully ==
+  ok    {2 3}                              => {2 3}              (0 interactions)
+  ok    {10 {20 30}}                       => {10 {20 30}}       (0 interactions)
+  ok    {:1 2 3}                           => {2 3}              (0 interactions)
+
+== a computation distributes over a superposition (search) ==
+  ok    (op + 1 {2 3})                     => {3 4}              (5 interactions)
+  ok    (op * {2 3} 10)                    => {20 30}            (6 interactions)
+  ok    ((lam x (op + x x)) {2 3})         => {4 6}              (10 interactions)
+
+== DUP meets SUP: collapse when labels match ==
+  ok    (dup :7 x y {:7 10 20} (op + x y)) => 30                 (3 interactions)
+
+== same label = one shared choice (correlated / zip) ==
+  ok    (op + {10 20} {100 200})           => {110 220}          (6 interactions)
+
+== different labels = independent choices (outer product) ==
+  ok    (op + {:1 10 20} {:2 100 200})     => {{110 210} {120 220}} (14 interactions)
+
+== sharing (P) vs search (NP): interaction counts ==
+  shared           ((lam x (op + x x)) 21)            => 42                 cost=4 live=0
+  correlated       ((lam x (op + x x)) {20 21})       => {40 42}            cost=10 live=1
+  independent      (op + {:1 20 21} {:2 20 21})       => {{40 41} {41 42}}  cost=14 live=3
+  wide search      ((lam x (op + x x)) {18 {19 {20 21}}}) => {36 {38 {40 42}}}  cost=22 live=3
+
+----------------------------------------------------------
+ALL 17 CHECKS PASSED

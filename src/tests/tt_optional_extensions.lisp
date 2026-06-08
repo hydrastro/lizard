@@ -1,7 +1,0 @@
-(set-logic 'proof-scaffold)
-(S1)
-(base)
-(loop)
-(Trunc 0 (S1))
-(trunc (base))
-(theory-extension 'my-rule (S1) (Trunc 0 (S1)))
