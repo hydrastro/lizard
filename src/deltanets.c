@@ -147,6 +147,45 @@ static void reduce(void) {
   }
 }
 
+/* Wavefront (parallel-frontier) reduction: each round reduces the WHOLE set of
+ * currently-active pairs as one batch, then re-scans. Active pairs never share an
+ * agent (each agent has one principal, so it is in at most one pair), and an
+ * interaction only rewrites its two agents' local region, so a batch is mutually
+ * independent -- a GPU would fire it in one parallel step. We apply the batch
+ * sequentially here, which by perfect confluence yields the SAME net as reduce();
+ * the point is to MEASURE parallelism: depth = #rounds (critical path),
+ * maxwidth = peak simultaneous redexes. work (= g_inter) / depth = avg parallelism. */
+static int g_batch[MAXA];
+static void reduce_rounds(long *depth, long *maxwidth) {
+  long rounds = 0, mw = 0, steps = 0;
+  for (;;) {
+    int a, nb = 0, i;
+    for (a = 0; a < g_n; a++) {
+      int b;
+      if (g_dead[a] || g_kind[a] == K_ROOT) continue;
+      b = tg(a, 0);
+      if (b < 0 || g_dead[b] || g_kind[b] == K_ROOT) continue;
+      if (tpp(a, 0) == 0 && tg(b, 0) == a && tpp(b, 0) == 0 && a < b) {
+        if (nb < MAXA) g_batch[nb] = a;
+        nb++;
+      }
+    }
+    if (nb == 0) break;
+    rounds++;
+    if (nb > mw) mw = nb;
+    for (i = 0; i < nb && i < MAXA; i++) {
+      int a2 = g_batch[i], b2;
+      if (g_dead[a2] || g_kind[a2] == K_ROOT) continue;
+      b2 = tg(a2, 0);
+      if (b2 < 0 || g_dead[b2] || g_kind[b2] == K_ROOT) continue;
+      if (tpp(a2, 0) == 0 && tg(b2, 0) == a2 && tpp(b2, 0) == 0) {
+        if (interact(a2, b2)) { if (++steps > 3000000L) { *depth = rounds; *maxwidth = mw; return; } }
+      }
+    }
+  }
+  *depth = rounds; *maxwidth = mw;
+}
+
 /* ---- translation: term -> net (name-based wiring) ---- */
 static int w_a[MAXW], w_p[MAXW], w_c[MAXW];
 static int g_wn;
@@ -248,6 +287,32 @@ lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic) {
   R = na(K_ROOT, 0, 0); att(rw, R, 0);
   reduce();
   if (interactions) *interactions = g_inter;
+  if (g_bad) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  for (d = 0; d < g_n; d++) rb_seen[d] = 0;
+  no = rb(tg(R, 0), tpp(R, 0), 0);
+  if (rb_cyc || rb_noncanon) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  if (cyclic) *cyclic = 0;
+  return no;
+}
+
+/* Like dn_normalize, but reduces by the wavefront scheduler and reports the
+ * parallelism profile: *depth = rounds (parallel critical path), *maxwidth =
+ * peak simultaneous redexes. The returned term is identical to dn_normalize's
+ * (perfect confluence); *interactions is the total work, so work/depth is the
+ * average parallelism a data-parallel (e.g. OpenCL) backend could exploit. */
+lc_term *dn_parallel(const lc_term *t, long *interactions, long *depth, long *maxwidth, int *cyclic) {
+  int rw, R, d;
+  lc_term *no;
+  long dep = 0, mw = 0;
+  g_n = 0; g_inter = 0; g_bad = 0; g_wn = 0;
+  for (d = 0; d < MAXD; d++) occ_n[d] = 0;
+  rb_rec = 0; rb_cyc = 0; rb_noncanon = 0;
+  rw = enc(t, 0, 0);
+  R = na(K_ROOT, 0, 0); att(rw, R, 0);
+  reduce_rounds(&dep, &mw);
+  if (interactions) *interactions = g_inter;
+  if (depth) *depth = dep;
+  if (maxwidth) *maxwidth = mw;
   if (g_bad) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
   for (d = 0; d < g_n; d++) rb_seen[d] = 0;
   no = rb(tg(R, 0), tpp(R, 0), 0);

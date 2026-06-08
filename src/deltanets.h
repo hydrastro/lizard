@@ -60,4 +60,11 @@ int dn_linear(const lc_term *t);
  * canonicalization layer in docs/INET_ENGINE_PLAN.md, section 7. */
 int dn_affine(const lc_term *t);
 
+/* Wavefront variant of dn_normalize: returns the same normal form (perfect
+ * confluence) but reduces each generation of independent redexes as one batch,
+ * reporting *depth (parallel rounds / critical path) and *maxwidth (peak
+ * simultaneous redexes). work (*interactions) / depth is the average parallelism
+ * a data-parallel backend (e.g. OpenCL) could exploit. */
+lc_term *dn_parallel(const lc_term *t, long *interactions, long *depth, long *maxwidth, int *cyclic);
+
 #endif

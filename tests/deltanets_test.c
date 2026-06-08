@@ -37,6 +37,12 @@
  *     across ~2M random terms). Section [6] pins three terms an earlier
  *     read-back mis-normalised and asserts they are now refused.
  *
+ * [7] PARALLELISM. dn_parallel reduces each generation of independent redexes as
+ *     one batch (the work a GPU would fire at once) and reports work / depth /
+ *     width; the wavefront result is checked equal to the sequential result and
+ *     the reference. The optimal reducer's parallelism profile (e.g. mul 3 3:
+ *     work 20, depth 5, width 8) is the on-ramp to a data-parallel backend.
+ *
  * Why exactly lambda-A is GUARANTEED. The CORE handles linearity (fan
  * annihilation, perfectly confluent) and erasure (eraser propagation) correctly,
  * so all of affine reduces soundly regardless of order. What it does NOT yet
@@ -231,6 +237,32 @@ int main(void) {
     }
     if (!bad) printf("    ok   3/3 previously-wrong sharing terms now refused (never mis-normalised)\n");
     else fails++;
+  }
+
+  printf("[7] PARALLELISM - wavefront reduction matches sequential, and reports work/depth\n");
+  {
+    struct { const char *name; lc_term *t; int readable; } cs[5];
+    int i, bad = 0;
+    cs[0].name = "succ 2";    cs[0].t = lc_app(c_succ(), church(2));                       cs[0].readable = 1;
+    cs[1].name = "add 2 3";   cs[1].t = lc_app(lc_app(c_add(), church(2)), church(3));      cs[1].readable = 1;
+    cs[2].name = "add 3 4";   cs[2].t = lc_app(lc_app(c_add(), church(3)), church(4));      cs[2].readable = 1;
+    cs[3].name = "mul 2 3";   cs[3].t = lc_app(lc_app(c_mul(), church(2)), church(3));      cs[3].readable = 0; /* refused, but reduction still measured */
+    cs[4].name = "mul 3 3";   cs[4].t = lc_app(lc_app(c_mul(), church(3)), church(3));      cs[4].readable = 0;
+    for (i = 0; i < 5; i++) {
+      long wk = 0, dep = 0, mw = 0, wk2 = 0; int cp = 0, cs2 = 0;
+      lc_term *par = dn_parallel(cs[i].t, &wk, &dep, &mw, &cp);
+      lc_term *seq = dn_normalize(cs[i].t, &wk2, &cs2);
+      double par_ratio = dep ? (double)wk / (double)dep : 0.0;
+      if (cs[i].readable) {
+        lc_term *ref = lc_nf_ref(cs[i].t);
+        if (!par || !seq || !lc_eq(par, seq) || !lc_eq(par, ref)) { bad++; printf("    FAIL %s: wavefront != sequential/reference\n", cs[i].name); continue; }
+      } else {
+        if (par || seq || !cp || !cs2) { bad++; printf("    FAIL %s: expected refusal in both modes\n", cs[i].name); continue; }
+      }
+      printf("    %-9s work=%-4ld depth=%-3ld width=%-3ld  parallelism=%.1fx%s\n",
+             cs[i].name, wk, dep, mw, par_ratio, cs[i].readable ? "" : "  (reduction measured; read-back refused)");
+    }
+    if (bad) fails++;
   }
 
   printf(fails ? "\n%d checks FAILED\n"

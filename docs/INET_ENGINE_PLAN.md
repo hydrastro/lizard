@@ -748,7 +748,8 @@ GREEN — built and validated this build, standalone (`make <target>`):
   - `deltanets`      — Delta-Nets: affine fragment (linear + erasure) proven sound by fuzzing (6k in-suite, 700k offline
                        across depths 6..16, zero mismatches, zero refusals); Church successor/addition verified;
                        read-back refuses sharing fan-outs -> AIRTIGHT (zero wrong across ~2M random lambda-K terms);
-                       `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions.
+                       `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions;
+                       wavefront reducer (`dn_parallel`) reports work/depth, validated equal to sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv).
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which
