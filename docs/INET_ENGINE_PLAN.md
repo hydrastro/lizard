@@ -228,12 +228,22 @@ net agrees (170k terms across seeds currently pass).
 
 What remains in this phase:
 
-1. **The typed cross-check.** Once the elaborator is reachable (i.e. `<ds.h>` is
-   restored), reduce *elaborated* terms both on the kernel (`kt_whnf`) and on the
-   net and assert agreement on the shared typed fragment, including Σ/Π — the
-   `inet` cross-check, extended to the four-agent engine. The fuzz harness above
-   already validates the untyped + Σ runtime fragment against an independent
-   oracle in the meantime.
+1. **The cross-check against the kernel (Phase 13b — done).** Random closed terms
+   are reduced both on the trusted kernel (`kt_whnf`) and on the net and asserted
+   to agree. The bridge `src/kt_to_core.c` translates the shared fragment —
+   λ/app, Σ pairs/projections, `let`, and `Bool` via the Church encoding — from
+   the kernel's `kterm_t` into the core IR, which lowers to the net. The
+   observable is a `Bool`: the kernel reduces a closed term to `true`/`false`,
+   and the net evaluates the same term (translated, applied to `1` and `0`) to
+   `1`/`0`; `tests/ic_kernel_diff_test.c` checks `oracle == kernel == net` over
+   150k+ terms (`make ic-kernel-diff`). This pins the net's beta / Σ / sharing
+   reduction to the reducer the type theory's soundness already depends on,
+   rather than only to an independent in-test oracle. The kernel allocates through
+   `lizard_heap_alloc`; in the full build that is `mem.c`'s arena, and the kernel
+   uses no GC or runtime, so the test links against `liblizard.a` directly.
+   Extending the cross-check to the *typed* fragment (Nat via the recursor, and Id)
+   waits on Nat-as-cycles and the typed-Id work (14c) — the net does not yet have
+   those formers, so the shared fragment is the honest boundary today.
 2. **Optimal readback** — the genuinely hard part. Reading a shared normal form
    back into a correct tree needs the labelled-bracket bookkeeping of
    Lamping–Gonthier optimal reduction (the "oracle"/croissants-and-brackets).
@@ -344,8 +354,12 @@ local, so independent active pairs reduce concurrently. It is deliberately last
   12  core_term -> net backend         DONE   src/ic_lower.{c,h}, tests/ic_lower_test.c
                                               negative + Sigma core + runtime frag;
                                               fuzzed vs oracle (pair/proj/let/deBruijn)
-  13b cross-check vs the kernel        next   ds available -> unblocked; reduce
-                                              elaborated terms on kt_whnf and the net
+  13b cross-check vs the kernel        DONE   src/kt_to_core.{c,h}, tests/ic_kernel_diff_test.c:
+                                              random closed Bool terms reduced on the trusted
+                                              kt_whnf AND on the net (via kt_to_core) agree with
+                                              each other and an oracle (150k+); covers beta, Σ
+                                              pairs/projections, bool_rec, bound vars.
+                                              `make ic-kernel-diff`
       optimal (labelled) readback      hard   Lamping-Gonthier brackets
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders

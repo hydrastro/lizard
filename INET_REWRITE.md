@@ -20,6 +20,9 @@ tests/ic_test.c          the four-agent checks through the project's test harnes
 tests/ic_fuzz.c          differential validator: net vs an independent integer oracle
 tests/ic_lower_test.c    lowering checks + a core-term fuzz vs the oracle
 tests/ic_graph_demo.c    prints a program as an abstract syntax GRAPH (shows sharing/DUP)
+src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
+tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random Bool terms
+                         (run with `make ic-kernel-diff`)
 Makefile                 your Makefile, with `ic` and `ic_lower` added to LIB_OPTIONAL_SRCS
 docs/INET_ENGINE_PLAN.md the staged rewrite plan (the duality + HOTT, mapped onto the engine)
 docs/IC_SYNTAX.md        full syntax of the primitives (textual + Scheme surfaces)

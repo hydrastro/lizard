@@ -85,7 +85,7 @@ endif
 # modules present in src/.  This prevents scaffold/test modules from compiling
 # against headers whose .c file was accidentally left out of liblizard.a.
 LIB_CORE_SRCS := runtime lizard env mem parser primitives tokenizer printer tt_equality tt_check gc bytecode kernel tactics
-LIB_OPTIONAL_SRCS := prims_tt tt_check_modal tt_check_hit tt_check_fresh tt_check_cubical tt_logic tt_faces prims_syntax prims_bytecode prims_gc prims_lists prims_modules prims_logic prims_collections prims_persistent prims_string prims_kernel diagnostics object_model gc_metadata hamt pvector lzrt inet ic ic_lower report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice elaborator
+LIB_OPTIONAL_SRCS := prims_tt tt_check_modal tt_check_hit tt_check_fresh tt_check_cubical tt_logic tt_faces prims_syntax prims_bytecode prims_gc prims_lists prims_modules prims_logic prims_collections prims_persistent prims_string prims_kernel diagnostics object_model gc_metadata hamt pvector lzrt inet ic ic_lower kt_to_core report_writer report_schema diagnostic_report expansion_trace_report syntax_expansion_report surface_term expansion_context syntax_expander core_term kernel_sexp tt_glue tt_lattice elaborator
 EXISTING_OPTIONAL_LIB_SRCS := $(foreach m,$(LIB_OPTIONAL_SRCS),$(if $(wildcard $(SRC_DIR)/$(m).c),$(m)))
 LIB_SRCS := $(LIB_CORE_SRCS) $(filter-out $(LIB_CORE_SRCS),$(EXISTING_OPTIONAL_LIB_SRCS))
 LIB_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(LIB_SRCS)))
@@ -124,6 +124,16 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 
 $(LIB_STATIC): $(LIB_OBJS)
 	$(AR) rcs $@ $^
+
+# Phase 13b: cross-check the interaction net against the trusted kernel kt_whnf.
+# Builds the differential test against liblizard.a (which provides the kernel,
+# the heap, and the net) and runs it.  Override the count: make ic-kernel-diff N=50000
+N ?= 20000
+.PHONY: ic-kernel-diff
+ic-kernel-diff: $(LIB_STATIC)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) -Iinclude \
+	    tests/ic_kernel_diff_test.c $(LIB_STATIC) $(LDLIBS) -lgmp -o $(BUILD_DIR)/ic_kernel_diff_test
+	$(BUILD_DIR)/ic_kernel_diff_test $(N) 1
 
 $(LIB_SHARED): $(LIB_OBJS)
 	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)
