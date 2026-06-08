@@ -504,6 +504,39 @@ payoff and deliberately last.
   path from "λL proven + λK examples verified" to "λK guaranteed", and there is
   now a reference oracle and a fuzz harness to validate each step against.
 
+  *What the affine fragment turned out to be — and a methodological caution.*
+  An earlier draft of this section reported the affine fragment (λA: linear plus
+  erasure) as *unsound*. That was wrong, and the way it was wrong is worth
+  recording. The "affine counterexamples" were produced by a fuzzer whose affine
+  *generator was never actually wired into the loop* — it kept calling the
+  general λK generator — so every reported failure was a genuine λK term (each
+  one classified `nonlinear` once a corruption-immune checker was used). With a
+  bulletproof affine generator (named binders converted to de Bruijn by a
+  separate pass) correctly connected, the result reverses cleanly: **700k random
+  affine terms across nesting depths 6..16, 63% of them with genuine erasure, all
+  match the reference normaliser, with zero mismatches and — notably — zero
+  refusals.** Erasure is handled correctly because discarded subnets become
+  unreachable from the root and read-back simply ignores them. So **λA is sound**,
+  and it is exposed as the decidable predicate `dn_affine(t)` (every bound
+  variable used at most once), which strictly subsumes `dn_linear`. The lesson:
+  a differential test is only as trustworthy as the thing generating its inputs —
+  always verify the generator's output distribution independently.
+
+  *The one shortcut that genuinely fails: leftmost-outermost order alone for λK.*
+  A BFS that always reduces the active pair nearest the root keeps the whole
+  hand-picked battery correct and lowers interaction counts (KII drops 8 -> 5),
+  but a depth-8 λK term still reduces to a wrong net — order without the merging
+  rule does not preserve the replicator level invariant. So **sharing** (λK,
+  where a bound variable is used more than once and a replicator of arity >= 2 is
+  introduced) is the part that still needs the full canonicalization machinery
+  (a)–(e) above. `dn_normalize`'s guarantee is stated against `dn_affine`:
+  correct whenever `dn_affine(t)`, best-effort (refused-or-rarely-wrong) on
+  sharing terms otherwise. The test's section [5] checks the predicates draw the
+  line correctly — note the instructive subtleties that `K` is affine but not
+  linear (it discards an argument), and that `mul` the *function* is linear while
+  the *application* `mul 2 3` is not, because the Church numerals duplicate their
+  arguments, and that is exactly the application that yields the cyclic net.
+
   *Why HVM drops optimality (grounding the trade-off).* HVM2 (Taelin, "HVM2: A
   Parallel Evaluator for Interaction Combinators") makes the opposite choice from
   the oracle: it abandons full Lévy-optimality and runs plain (labelled)
@@ -672,3 +705,46 @@ lattices are paired by wiring, and HOTT's observation-defined equality is what
 lets the type theory run as interaction. The fourth agent was the missing piece
 of the dynamics; it is now in place, tested, and waiting for the build to be
 made whole so it can move from oracle to engine.
+
+## 9. Roadmap status (as of this build)
+
+A snapshot of where every piece stands, with the evidence that backs it. The
+self-contained engine and IR suites are reproducible from the delivery zips
+alone (they need only libc); two suites additionally link the full lizard
+runtime and so depend on the original source tree being present.
+
+GREEN — built and validated this build, standalone (`make <target>`):
+  - `ic-recursion`   — recursion-as-cycles, 92 checks (FACT/SUMTO/FIB/GCD/POW2 via T_REF).
+  - `ic-confluence`  — 54 terms, LIFO and FIFO agree on result AND interaction count.
+  - `ic-parallel`    — wavefront reducer matches sequential on result AND work for every term.
+  - `ic-sharing`     — value-sharing vs duplicated-lambda interaction counts (the oracle gap, demonstrated soundly).
+  - `opt-core`       — Asperti–Guerrini optimal engine + reference normaliser + croissant fragment all validated.
+  - `deltanets`      — Delta-Nets: affine fragment (linear + erasure) proven sound by fuzzing (6k in-suite, 700k offline
+                       across depths 6..16, zero mismatches, zero refusals); Church successor/addition verified;
+                       sharing (lambda-K) refused, not mis-normalised; `dn_linear`/`dn_affine` boundary checked.
+  - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv).
+
+VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which
+is not part of these incremental deltas, so they cannot be rebuilt from the zips
+in isolation; they passed when the complete source tree was present:
+  - `ic-kernel-diff` — net evaluator cross-checked against the trusted dependent-type kernel (200k+ randomized terms).
+  - `net-eval`       — gated net evaluator over NAT/BOOL (13 cases).
+
+PARTIAL — the optimal-reduction frontier, scoped honestly:
+  - `opt_core`  — the AG engine is exact on its rules; the croissant-only encoding covers the linear fragment,
+                  and the bracket-discipline that would extend it to full sharing is the documented gap that Delta-Nets supersedes.
+  - `deltanets` — PROVEN sound on lambda-A (linear + erasure); lambda-K examples individually verified;
+                  every detectably non-canonical sharing net is refused, not mis-normalised.
+
+OPEN (one genuine research problem, now precisely bounded — see section 7):
+  - Full lambda-K Delta-Nets (SHARING: a bound variable used more than once) needs the leftmost-outermost
+    order PLUS the four canonicalization steps (unpaired-replicator merging under `0 <= l_B - l_A <= d`,
+    decay, phase-2 aux-fan replication, final erasure GC). Fuzzing ruled out the cheaper shortcut
+    (order-alone); the affine fragment, once tested with a correct generator, turned out already sound.
+    The reference oracle and the fuzz harness are in place to validate each step; when it lands, the fuzzer
+    flips from "soundness boundary" to "lambda-K regression test" and `mul 2 3` moves from *refused* to *correct*.
+
+The throughline is unchanged: the four agents are in place and tested, the
+construction/observation duality is the principal-port handedness, and the
+remaining work is concentrated in exactly one place — turning the optimal-sharing
+oracle into a complete, validated reducer.

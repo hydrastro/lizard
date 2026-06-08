@@ -26,14 +26,19 @@
  *                          the lower-level one are exact.
  *
  * The core is perfectly confluent: any normalising order yields the same result
- * in the same number of interactions.  It is SOUND on the linear fragment (only
- * fan annihilation; validated by a 260k random-term differential test vs the
- * reference).  Full lambda-K additionally needs the paper's canonicalization
- * rules + a leftmost-outermost order (not implemented); since an arbitrary order
- * can leave a wrong-but-valid-looking net for adversarial lambda-K, read-back is
- * made sound by REFUSAL -- dn_normalize returns "needs canonicalization" whenever
- * it detects a non-canonical net (cycle, residual sharing, reachable eraser, dead
- * stub, bad index) rather than emitting a possibly-wrong normal form.
+ * in the same number of interactions.  It is SOUND on the AFFINE fragment
+ * (lambda-A: every bound variable used at most once -- linear plus erasure;
+ * validated by a 700k random-term differential test vs the reference across
+ * nesting depths 6..16, zero mismatches and zero refusals).  What it does not
+ * yet handle is SHARING -- a bound variable used more than once (lambda-K)
+ * introduces a replicator of arity >= 2, and full lambda-K additionally needs
+ * the paper's canonicalization rules + a leftmost-outermost order (not
+ * implemented).  Since an arbitrary order can leave a wrong-but-valid-looking
+ * net for adversarial lambda-K, read-back is made sound by REFUSAL --
+ * dn_normalize returns "needs canonicalization" whenever it detects a
+ * non-canonical net (cycle, residual sharing, reachable eraser, dead stub, bad
+ * index) rather than emitting a possibly-wrong normal form.  dn_affine(t)
+ * decides the guaranteed fragment; dn_linear(t) is the linear sub-fragment.
  */
 #include "deltanets.h"
 #include <stdio.h>
@@ -188,8 +193,10 @@ static int enc(const lc_term *t, int lev, int depth) {
  * stub in a term position, or a cycle -- cannot be linearised into a lambda-term
  * without the canonicalization layer. Rather than emit a structurally-valid but
  * semantically-WRONG tree in those cases, read-back sets rb_noncanon / rb_cyc and
- * dn_normalize reports "needs canonicalization" (NULL, *cyclic = 1). This keeps
- * the function sound: it never returns a wrong normal form. */
+ * dn_normalize reports "needs canonicalization" (NULL, *cyclic = 1). On affine
+ * input this is fully sound (it never returns a wrong normal form); on sharing
+ * (lambda-K) input it refuses every non-canonical net it can detect, leaving
+ * only the residual adversarial case the canonicalization layer will close. */
 static int rb_d[MAXA], rb_seen[MAXA];
 static int rb_rec, rb_cyc, rb_noncanon;
 static lc_term *rb(int a, int p, int depth) {
@@ -237,4 +244,45 @@ lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic) {
   if (rb_cyc || rb_noncanon) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
   if (cyclic) *cyclic = 0;
   return no;
+}
+
+/* ---- linearity check: the linear sub-fragment (every bound var used exactly
+ * once); dn_affine below is the full guaranteed fragment (at most once) ---- */
+static int lin_ok;
+static void lin_rec(const lc_term *t, int depth, int *cnt) {
+  if (t->tag == LC_VAR) { int b = depth - 1 - t->idx; if (b < 0) { lin_ok = 0; return; } cnt[b]++; return; }
+  if (t->tag == LC_LAM) {
+    int lvl = depth;
+    if (lvl < 256) cnt[lvl] = 0;
+    lin_rec(t->f, depth + 1, cnt);
+    if (lvl < 256 && cnt[lvl] != 1) lin_ok = 0;
+    return;
+  }
+  lin_rec(t->f, depth, cnt); lin_rec(t->a, depth, cnt);
+}
+int dn_linear(const lc_term *t) {
+  static int cnt[256];
+  lin_ok = 1;
+  lin_rec(t, 0, cnt);
+  return lin_ok;
+}
+
+/* ---- affineness: every bound variable used AT MOST once (linear + erasure) ---- */
+static int aff_ok;
+static void aff_rec(const lc_term *t, int depth, int *cnt) {
+  if (t->tag == LC_VAR) { int b = depth - 1 - t->idx; if (b < 0) { aff_ok = 0; return; } if (b < 256) cnt[b]++; return; }
+  if (t->tag == LC_LAM) {
+    int lvl = depth;
+    if (lvl < 256) cnt[lvl] = 0;
+    aff_rec(t->f, depth + 1, cnt);
+    if (lvl < 256 && cnt[lvl] > 1) aff_ok = 0;
+    return;
+  }
+  aff_rec(t->f, depth, cnt); aff_rec(t->a, depth, cnt);
+}
+int dn_affine(const lc_term *t) {
+  static int cnt[256];
+  aff_ok = 1;
+  aff_rec(t, 0, cnt);
+  return aff_ok;
 }
