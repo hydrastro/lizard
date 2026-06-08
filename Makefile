@@ -169,6 +169,16 @@ ic-parallel:
 	    tests/ic_parallel_test.c $(SRC_DIR)/ic.c -lgmp -o $(BUILD_DIR)/ic_parallel_test
 	$(BUILD_DIR)/ic_parallel_test
 
+# Sharing / optimal reduction: measures that the labelled DUP fans share VALUES
+# optimally (expensive work done once) while a duplicated LAMBDA body is copied
+# per application -- the bracket/croissant oracle is the remaining gap.
+.PHONY: ic-sharing
+ic-sharing:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) -Iinclude \
+	    tests/ic_sharing_test.c $(SRC_DIR)/ic.c -lgmp -o $(BUILD_DIR)/ic_sharing_test
+	$(BUILD_DIR)/ic_sharing_test
+
 # Phase 14c: the by-observation identity reduction system and its executable
 # specification.  Id_A(x,y) computes by recursion on the structure of A (Bool/Nat
 # structurally, product componentwise, function pointwise/funext, universe by

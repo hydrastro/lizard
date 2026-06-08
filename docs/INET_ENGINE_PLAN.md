@@ -41,8 +41,13 @@ properties make it a graph and not a tree, and all three are present today:
   into a `DUP` node whose two outputs fan to the two consumers, so the subgraph
   is stored once and referenced from several edges. `((λx. x + x) 5)` compiles to
   a graph containing a `DUP` that shares `x`; `((λx. x * x) (2 + 3))` shares the
-  *computed* `(2+3)` through a `DUP` so it is evaluated once. This is the whole
-  reason interaction reduction is Lévy-optimal.
+  *computed* `(2+3)` through a `DUP` so it is evaluated once. This value sharing
+  is optimal and `tests/ic_sharing_test.c` measures it: duplicating an argument
+  that reduces to a value adds only a small constant cost per use (the expensive
+  work is done once), whereas naive copying would multiply it. Full
+  *Lévy*-optimality — sharing reduction *inside a duplicated λ* as well — additionally
+  needs the bracket/croissant oracle of §7; the same test shows that case is
+  currently sound but not yet work-optimal.
 - **Computation is local graph rewriting.** Reduction rewrites active pairs in
   place until none remain; there is no tree walk.
 
@@ -395,10 +400,24 @@ payoff and deliberately last.
 
 ## 7. Honest list of the hard parts
 
+- **Optimal reduction (the oracle).** The labelled fans already share *values*
+  optimally — `tests/ic_sharing_test.c` measures it: duplicating an argument that
+  reduces to a value costs ~3 interactions per extra use regardless of how
+  expensive the argument was (the work is done once), where copying would cost
+  ~one full reduction per use. What is *not* yet work-optimal is sharing
+  reduction *inside a duplicated λ*: the same test shows a duplicated lambda's
+  body is re-reduced per application (~25/use here), because the fan commutes
+  through the abstraction and copies it. Closing that — genuine Lévy-optimality
+  for the general untyped case — needs the bracket/croissant "oracle" of Lamping
+  (1990) / Asperti–Guerrini, which tracks the *level* of each fan so nested
+  duplicators pair up correctly. It is the classic hard problem of this field,
+  and the same boundary HVM lives at (its labelled fans are optimal on the
+  fragment they cover, not on every term). Concrete next step: add bracket and
+  croissant agents carrying a level, and the level-aware fan rules, validated by
+  re-running this test and watching the duplicated-λ marginal cost collapse.
 - **Optimal readback.** Affine readback is done; the general labelled-bracket
-  bookkeeping is not, and it is the classic hard problem of this field. Until it
-  exists, compound shared normal forms render as faithful net dumps, never as
-  guessed trees.
+  bookkeeping is not. Until it exists, compound shared normal forms render as
+  faithful net dumps, never as guessed trees.
 - **Typed nets.** Reifying a *typed* net back into a kernel term — the thing
   that lets the engine replace `kt_whnf` without risking soundness — is the open
   research frontier already flagged in `docs/INET.md`.
@@ -440,7 +459,14 @@ payoff and deliberately last.
                                               nat_rec, list_rec, and J on refl.  i.e. the whole
                                               computational fragment, including structural
                                               recursion, is validated.  `make ic-kernel-diff`
-      optimal (labelled) readback      hard   Lamping-Gonthier brackets
+      sharing / optimal reduction      PART   src/ic.c (labelled DUP fans), tests/
+                                              ic_sharing_test.c: VALUES are shared optimally
+                                              (expensive arg reduced once, ~3 interactions per
+                                              extra use), duplicated LAMBDA bodies are copied
+                                              per application (~25/use) -- sound, not yet
+                                              work-optimal.  Full Lévy-optimality needs the
+                                              bracket/croissant oracle (Lamping/Asperti-Guerrini),
+                                              the classic hard problem.  `make ic-sharing`
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders
                                               (pair a b); ic_lower emits them and is

@@ -46,6 +46,10 @@ tests/ic_parallel_test.c    phase 17 (beyond): wavefront reduction (ic_set_reduc
                          each generation of disjoint active pairs at once and reports parallel
                          depth/width -- branching recursion is highly parallel, tail recursion is
                          sequential; validated vs sequential.  `make ic-parallel`
+tests/ic_sharing_test.c     sharing / optimal reduction: measures that labelled DUP fans share
+                         VALUES optimally (expensive work done once) while a duplicated LAMBDA body
+                         is copied per application (the bracket/croissant oracle is the gap).
+                         `make ic-sharing`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,
