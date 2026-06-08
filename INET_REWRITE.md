@@ -57,6 +57,15 @@ src/opt_core.{c,h}          optimal reduction (Asperti-Guerrini sharing graphs),
                          validated vs the reference on a fragment that includes function duplication.
                          The fully general index-correct encoding (matched brackets) is the remaining
                          hard part.  tests/opt_core_test.c, `make opt-core`
+src/deltanets.{c,h}         Delta-Nets (Salvadori 2025): the newest optimal-parallel-reduction model.
+                         A single n-ary `replicator` (level + per-port level-deltas) replaces ALL
+                         brackets/croissants, so delimiters never accumulate.  Implements the core
+                         interaction system (fan/eraser/replicator) + the lambda<->net translation +
+                         read-back, reusing opt_core's term type + reference oracle.  Validated on a
+                         LARGER fragment than opt_core -- function duplication, Church successor AND
+                         addition -- with no uncovered-pair case.  Church multiplication leaves a
+                         cyclic net (the documented limitation: needs canonicalization + a global
+                         reduction order).  tests/deltanets_test.c, `make deltanets`
 src/kt_to_core.{c,h}     bridge: trusted-kernel terms (kterm_t) -> core IR -> net
 tests/ic_kernel_diff_test.c  Phase 13b: kt_whnf vs the net agree on random closed terms over
                          the kernel's computational fragment — beta, Sigma, Bool, coproducts,

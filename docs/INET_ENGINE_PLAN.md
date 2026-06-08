@@ -433,6 +433,50 @@ payoff and deliberately last.
   construction. `make opt-core` prints those terms as the documented gap rather
   than guessing a result. Refs: Lévy 1980; Lamping POPL 1990; Asperti–Guerrini
   CUP 1998, pp. 39–42; Salikhmetov, arXiv:1609.03644 (the rule set).
+
+  *Newer result — Δ-Nets (`src/deltanets.{c,h}`, `make deltanets`).* The reason
+  classical optimal reducers (Lamping, Asperti–Guerrini, Lambdascope) are slow in
+  practice is that their delimiters — brackets and croissants — *accumulate*
+  during reduction until delimiter interactions swamp the actual fan
+  interactions. Δ-Nets (Salvadori, arXiv:2505.20314, 2025) removes them entirely:
+  sharing is carried by a single n-ary agent, the **replicator**, holding a
+  non-negative *level* and one integer *level-delta* per auxiliary port (negative
+  deltas do the croissant's job, positive deltas the bracket's, all in one node,
+  so nothing accumulates). Both abstraction and application are plain **fans** and
+  β is fan annihilation — the same combinator core as HVM. This unit implements
+  the Δ-Nets *core* interaction system (fan / eraser / replicator with the
+  annihilation, erasure and level-delta commutation rules) plus the λ↔net
+  translation φ and read-back, validated against the reference normaliser. It
+  reduces a strictly larger fragment than `opt_core`: identity, application, K,
+  duplicated functions (`(λg.g g) I`), Church **successor**, and Church
+  **addition** (`add 2 3 = 5`) all read back correctly — terms on which the
+  croissant-only `opt_core` encoding already hit uncovered pairs. Crucially,
+  Δ-Nets has **no uncovered-pair case at all**: every principal-principal pair is
+  covered by {annihilate, erase, commute}. The honest boundary is different and
+  narrower than `opt_core`'s: the *core* is perfectly confluent but the full
+  λK case needs the paper's **non-interaction canonicalization rules plus a
+  global reduction order**, which are not implemented here. Without them, a
+  genuinely nonlinear term like Church multiplication reduces cleanly (no bad
+  pairs) but leaves a **cyclic net** whose naive read-back does not terminate;
+  `dn_normalize` detects this and reports it as cyclic rather than returning a
+  wrong normal form (`make deltanets` prints `mul 2 3` / `mul 3 3` as the
+  documented limitation). Closing it — the canonicalization layer + global order —
+  is the next concrete step, now with a reference oracle to validate against.
+
+  *Why HVM drops optimality (grounding the trade-off).* HVM2 (Taelin, "HVM2: A
+  Parallel Evaluator for Interaction Combinators") makes the opposite choice from
+  the oracle: it abandons full Lévy-optimality and runs plain (labelled)
+  interaction combinators, whose rules are all O(1), local and strongly
+  confluent, which is what lets it scale to a GPU (the paper reports ~400 MIPS on
+  one M3-Max thread, ~5,200 MIPS on 16, ~74,000 MIPS on an RTX 4090). The price
+  is a precise, narrow limitation, in the paper's words: a higher-order lambda
+  that clones its own variable cannot itself be cloned — amendable by adding more
+  duplicator nodes, and not a restriction on cloning data, loops, recursion or
+  pattern matching. So the design space has two poles, and this repo now has a
+  validated reducer at each: `opt_core` (the classical oracle, correct on its
+  fragment, with the delimiter cost) and `deltanets` (the 2025 replicator model,
+  no delimiters, no uncovered pairs, canonicalization still to come), against the
+  practical HVM point (no oracle, maximal parallel speed, the cloning caveat).
 - **Optimal readback.** Affine readback is done; the general labelled-bracket
   bookkeeping is not. Until it exists, compound shared normal forms render as
   faithful net dumps, never as guessed trees.
@@ -494,6 +538,17 @@ payoff and deliberately last.
                                               duplication ((\g.gg)I).  The fully general index-
                                               correct encoding (matched brackets) is the
                                               remaining hard step.  `make opt-core`
+      optimal reduction (Delta-Nets)   PART   src/deltanets.{c,h}, tests/deltanets_test.c:
+                                              Salvadori 2025 -- a single n-ary `replicator`
+                                              (level + per-port level-deltas) replaces all
+                                              brackets/croissants.  Core interaction system +
+                                              translation + read-back validated vs the reference
+                                              on a LARGER fragment than opt_core: function
+                                              duplication, Church successor AND addition; no
+                                              uncovered-pair case.  Full lambda-K (e.g. Church
+                                              multiplication -> cyclic net) needs the paper's
+                                              canonicalization rules + a global order (not yet).
+                                              `make deltanets`
   14a first-class PAIR/FST/SND agents  DONE   src/ic.c (PAIR/FST/SND, do_proj),
                                               syntax (pair/fst/snd), readback renders
                                               (pair a b); ic_lower emits them and is
