@@ -35,10 +35,10 @@
 
 typedef enum {
   ID_BOOL, ID_NAT, ID_UNIT, ID_EMPTY, ID_U,    /* base types and the universe   */
-  ID_PROD, ID_ARR, ID_PI, ID_SIGMA, ID_ID, ID_EQUIV,     /* type formers                  */
+  ID_PROD, ID_ARR, ID_PI, ID_SIGMA, ID_LIST, ID_SUM, ID_ID, ID_EQUIV, /* type formers; ID_LIST A=List A, ID_SUM A B=A+B */
   ID_TRUE, ID_FALSE, ID_ZERO, ID_SUCC, ID_STAR,/* canonical terms               */
-  ID_PAIR, ID_LAM, ID_VAR, ID_APP,             /* pairs / functions / variables */
-  ID_REFL, ID_TRANSP,                          /* equality witnesses            */
+  ID_PAIR, ID_NIL, ID_CONS, ID_INL, ID_INR, ID_LAM, ID_VAR, ID_APP, /* pairs / list ctors / sum ctors / functions / vars */
+  ID_REFL, ID_REC, ID_LISTREC, ID_CASE, ID_TRANSP, /* witnesses; ID_REC=Nat rec, ID_LISTREC=foldr, ID_CASE=sum elim */
   ID_IF,                                       /* if c then t else e  (Bool elim) */
   ID_UA                                        /* ua f : a univalence path built from a forward map f */
 } id_kind;
@@ -53,6 +53,10 @@ typedef struct id_node {
  * Children are taken by ownership (they become part of the returned tree). */
 id_node *id_base(id_kind k);                 /* nullary: BOOL/NAT/UNIT/EMPTY/U/TRUE/FALSE/ZERO/STAR */
 id_node *id_succ(id_node *n);
+id_node *id_nil(void);                           /* nil : List A */
+id_node *id_cons(id_node *head, id_node *tail);  /* cons head tail : List A */
+id_node *id_inl(id_node *x);                     /* inl x : A + B */
+id_node *id_inr(id_node *y);                     /* inr y : A + B */
 id_node *id_var(int i);
 id_node *id_pair(id_node *x, id_node *y);
 id_node *id_lam(id_node *body);
@@ -61,11 +65,16 @@ id_node *id_prod(id_node *A, id_node *B);
 id_node *id_arr(id_node *A, id_node *B);
 id_node *id_pi(id_node *dom, id_node *body);
 id_node *id_sigma(id_node *dom, id_node *body);  /* dependent pair type Sigma x:dom. body */
+id_node *id_list(id_node *A);                    /* List A */
+id_node *id_sum(id_node *A, id_node *B);         /* A + B (coproduct) */
 id_node *id_idty(id_node *A, id_node *x, id_node *y);   /* Id A x y */
 id_node *id_equiv(id_node *A, id_node *B);
 id_node *id_refl(id_node *x);
 id_node *id_transp(id_node *P, id_node *p, id_node *x);  /* transport^P p x */
 id_node *id_if(id_node *c, id_node *t, id_node *e);     /* if c then t else e */
+id_node *id_rec(id_node *z, id_node *s, id_node *n);    /* Nat recursor: rec z s n  (z:base, s: step lam n.lam r..., n:scrutinee) */
+id_node *id_listrec(id_node *z, id_node *s, id_node *xs); /* List recursor (foldr): foldr z s xs (s: step lam head.lam r...) */
+id_node *id_case(id_node *scrut, id_node *f, id_node *g); /* case scrut f g : sum eliminator (f:A->C, g:B->C) */
 id_node *id_ua(id_node *f);                             /* univalence path from forward map f */
 
 id_node *id_nat_lit(int n);                  /* convenience: succ^n zero */

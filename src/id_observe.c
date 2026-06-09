@@ -17,12 +17,21 @@ id_node *id_lam(id_node *body)                    { id_node *t = mk(ID_LAM);   t
 id_node *id_app(id_node *f, id_node *x)           { id_node *t = mk(ID_APP);   t->a = f; t->b = x; return t; }
 id_node *id_prod(id_node *A, id_node *B)          { id_node *t = mk(ID_PROD);  t->a = A; t->b = B; return t; }
 id_node *id_sigma(id_node *A, id_node *B)         { id_node *t = mk(ID_SIGMA); t->a = A; t->b = B; return t; }
+id_node *id_list(id_node *A)                      { id_node *t = mk(ID_LIST);  t->a = A; return t; }
+id_node *id_nil(void)                             { return mk(ID_NIL); }
+id_node *id_cons(id_node *h, id_node *tl)         { id_node *t = mk(ID_CONS);  t->a = h; t->b = tl; return t; }
+id_node *id_sum(id_node *A, id_node *B)           { id_node *t = mk(ID_SUM);   t->a = A; t->b = B; return t; }
+id_node *id_inl(id_node *x)                       { id_node *t = mk(ID_INL);   t->a = x; return t; }
+id_node *id_inr(id_node *y)                       { id_node *t = mk(ID_INR);   t->a = y; return t; }
 id_node *id_arr(id_node *A, id_node *B)           { id_node *t = mk(ID_ARR);   t->a = A; t->b = B; return t; }
 id_node *id_pi(id_node *dom, id_node *body)       { id_node *t = mk(ID_PI);    t->a = dom; t->b = body; return t; }
 id_node *id_idty(id_node *A, id_node *x, id_node *y) { id_node *t = mk(ID_ID); t->a = A; t->b = x; t->c = y; return t; }
 id_node *id_equiv(id_node *A, id_node *B)         { id_node *t = mk(ID_EQUIV); t->a = A; t->b = B; return t; }
 id_node *id_refl(id_node *x)                      { id_node *t = mk(ID_REFL);  t->a = x; return t; }
 id_node *id_transp(id_node *P, id_node *p, id_node *x) { id_node *t = mk(ID_TRANSP); t->a = P; t->b = p; t->c = x; return t; }
+id_node *id_rec(id_node *z, id_node *s, id_node *n)    { id_node *t = mk(ID_REC);    t->a = z; t->b = s; t->c = n; return t; }
+id_node *id_listrec(id_node *z, id_node *s, id_node *xs){ id_node *t = mk(ID_LISTREC);t->a = z; t->b = s; t->c = xs; return t; }
+id_node *id_case(id_node *sc, id_node *f, id_node *g)  { id_node *t = mk(ID_CASE);   t->a = sc; t->b = f; t->c = g; return t; }
 id_node *id_if(id_node *c, id_node *th, id_node *el) { id_node *t = mk(ID_IF); t->a = c; t->b = th; t->c = el; return t; }
 id_node *id_ua(id_node *f) { id_node *t = mk(ID_UA); t->a = f; return t; }
 
@@ -48,6 +57,14 @@ static id_node *shift(const id_node *t, int d, int cutoff) {
     case ID_LAM:   return id_lam(shift(t->a, d, cutoff + 1));
     case ID_PI:    return id_pi(shift(t->a, d, cutoff), shift(t->b, d, cutoff + 1));
     case ID_SIGMA: return id_sigma(shift(t->a, d, cutoff), shift(t->b, d, cutoff + 1));
+    case ID_LIST:  return id_list(shift(t->a, d, cutoff));
+    case ID_NIL:   return id_nil();
+    case ID_CONS:  return id_cons(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
+    case ID_LISTREC:return id_listrec(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
+    case ID_SUM:   return id_sum(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
+    case ID_INL:   return id_inl(shift(t->a, d, cutoff));
+    case ID_INR:   return id_inr(shift(t->a, d, cutoff));
+    case ID_CASE:  return id_case(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_SUCC:  return id_succ(shift(t->a, d, cutoff));
     case ID_REFL:  return id_refl(shift(t->a, d, cutoff));
     case ID_PAIR:  return id_pair(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
@@ -57,6 +74,7 @@ static id_node *shift(const id_node *t, int d, int cutoff) {
     case ID_EQUIV: return id_equiv(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
     case ID_ID:    return id_idty(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_TRANSP:return id_transp(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
+    case ID_REC:   return id_rec(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_IF:    return id_if(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_UA:    return id_ua(shift(t->a, d, cutoff));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
@@ -80,6 +98,14 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
     case ID_LAM:   return id_lam(inst(body->a, depth + 1, arg));
     case ID_PI:    return id_pi(inst(body->a, depth, arg), inst(body->b, depth + 1, arg));
     case ID_SIGMA: return id_sigma(inst(body->a, depth, arg), inst(body->b, depth + 1, arg));
+    case ID_LIST:  return id_list(inst(body->a, depth, arg));
+    case ID_NIL:   return id_nil();
+    case ID_CONS:  return id_cons(inst(body->a, depth, arg), inst(body->b, depth, arg));
+    case ID_LISTREC:return id_listrec(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
+    case ID_SUM:   return id_sum(inst(body->a, depth, arg), inst(body->b, depth, arg));
+    case ID_INL:   return id_inl(inst(body->a, depth, arg));
+    case ID_INR:   return id_inr(inst(body->a, depth, arg));
+    case ID_CASE:  return id_case(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_SUCC:  return id_succ(inst(body->a, depth, arg));
     case ID_REFL:  return id_refl(inst(body->a, depth, arg));
     case ID_PAIR:  return id_pair(inst(body->a, depth, arg), inst(body->b, depth, arg));
@@ -89,6 +115,7 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
     case ID_EQUIV: return id_equiv(inst(body->a, depth, arg), inst(body->b, depth, arg));
     case ID_ID:    return id_idty(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_TRANSP:return id_transp(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
+    case ID_REC:   return id_rec(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_IF:    return id_if(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_UA:    return id_ua(inst(body->a, depth, arg));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
@@ -100,6 +127,7 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
 
 /* ----------------------------------------------------- the by-observation rules */
 static id_node *observe(const id_node *A, const id_node *x, const id_node *y);
+static id_node *observe_list(const id_node *Elem, const id_node *x, const id_node *y);
 
 /* Classify a first-component path type (built from Unit/Empty/Prod by observing an
  * inductive A): 0 = inhabited-uniquely (a = a', all Unit), 1 = empty (a != a', has an
@@ -129,6 +157,18 @@ static id_node *observe_nat(const id_node *x, const id_node *y) {
   return id_idty(id_base(ID_NAT), id_copy(x), id_copy(y));  /* neutral (not a numeral) */
 }
 
+/* Id (List Elem): recurse on the cons spine; each head pairs an Id Elem with the tail Id. */
+static id_node *observe_list(const id_node *Elem, const id_node *x, const id_node *y) {
+  int xn = (x->kind == ID_NIL),  yn = (y->kind == ID_NIL);
+  int xc = (x->kind == ID_CONS), yc = (y->kind == ID_CONS);
+  if (xn && yn) return id_base(ID_UNIT);                       /* [] = []                       */
+  if (xn && yc) return id_base(ID_EMPTY);                      /* different lengths             */
+  if (xc && yn) return id_base(ID_EMPTY);
+  if (xc && yc)                                                /* (h:t)=(h':t') ~> Id Elem h h' * Id (List Elem) t t' */
+    return id_prod(observe(Elem, x->a, y->a), observe_list(Elem, x->b, y->b));
+  return id_idty(id_list(id_copy(Elem)), id_copy(x), id_copy(y));  /* neutral (not a literal list) */
+}
+
 /* A, x, y are already in normal form; return the observed reduction (fresh). */
 static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
   switch (A->kind) {
@@ -139,6 +179,15 @@ static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
       return id_idty(id_copy(A), id_copy(x), id_copy(y));
     }
     case ID_NAT:   return observe_nat(x, y);
+    case ID_LIST:  return observe_list(A->a, x, y);
+    case ID_SUM: {                                          /* inl/inr: same tag -> Id of the component; different tag -> Empty */
+      int xl = (x->kind == ID_INL), xr = (x->kind == ID_INR);
+      int yl = (y->kind == ID_INL), yr = (y->kind == ID_INR);
+      if (xl && yl) return observe(A->a, x->a, y->a);
+      if (xr && yr) return observe(A->b, x->a, y->a);
+      if ((xl && yr) || (xr && yl)) return id_base(ID_EMPTY);
+      return id_idty(id_copy(A), id_copy(x), id_copy(y));
+    }
     case ID_UNIT:  return id_base(ID_UNIT);                 /* contractible: all equal   */
     case ID_EMPTY: return id_base(ID_UNIT);                 /* vacuous: no elements       */
     case ID_PROD:                                           /* componentwise */
@@ -219,6 +268,12 @@ id_node *id_nf(const id_node *t) {
     case ID_PI:    return id_pi(id_nf(t->a), id_nf(t->b));
     case ID_PROD:  return id_prod(id_nf(t->a), id_nf(t->b));
     case ID_SIGMA: return id_sigma(id_nf(t->a), id_nf(t->b));
+    case ID_LIST:  return id_list(id_nf(t->a));
+    case ID_NIL:   return id_nil();
+    case ID_CONS:  return id_cons(id_nf(t->a), id_nf(t->b));
+    case ID_SUM:   return id_sum(id_nf(t->a), id_nf(t->b));
+    case ID_INL:   return id_inl(id_nf(t->a));
+    case ID_INR:   return id_inr(id_nf(t->a));
     case ID_ARR:   return id_arr(id_nf(t->a), id_nf(t->b));
     case ID_EQUIV: return id_equiv(id_nf(t->a), id_nf(t->b));
     case ID_APP: {
@@ -230,6 +285,45 @@ id_node *id_nf(const id_node *t) {
         return r;
       }
       return id_app(f, x);                                  /* neutral application */
+    }
+    case ID_CASE: {
+      /* sum eliminator:  case (inl x) f g = f x ;  case (inr y) f g = g y. */
+      id_node *sc = id_nf(t->a);
+      if (sc->kind == ID_INL) { id_node *ap = id_app(id_copy(t->b), id_copy(sc->a)); id_node *r = id_nf(ap); id_free(ap); id_free(sc); return r; }
+      if (sc->kind == ID_INR) { id_node *ap = id_app(id_copy(t->c), id_copy(sc->a)); id_node *r = id_nf(ap); id_free(ap); id_free(sc); return r; }
+      return id_case(sc, id_nf(t->b), id_nf(t->c));            /* neutral scrutinee */
+    }
+    case ID_LISTREC: {
+      /* List recursor (foldr):  foldr z s nil = z ;  foldr z s (cons a as) = s a (foldr z s as).
+       * The step s is a function of the head and the recursive result: ((s a) (foldr z s as)). */
+      id_node *xs = id_nf(t->c);
+      if (xs->kind == ID_NIL) { id_free(xs); return id_nf(t->a); }
+      if (xs->kind == ID_CONS) {
+        id_node *hd  = xs->a;                                   /* head (owned by xs)      */
+        id_node *tl  = xs->b;                                   /* tail (owned by xs)      */
+        id_node *rec = id_listrec(id_copy(t->a), id_copy(t->b), id_copy(tl));
+        id_node *ap  = id_app(id_app(id_copy(t->b), id_copy(hd)), rec);
+        id_node *r   = id_nf(ap);
+        id_free(ap); id_free(xs);
+        return r;
+      }
+      return id_listrec(id_nf(t->a), id_nf(t->b), xs);          /* neutral scrutinee */
+    }
+    case ID_REC: {
+      /* Nat recursor:  rec z s 0 = z ;  rec z s (succ m) = s m (rec z s m).
+       * The step s is a function of two arguments (the predecessor and the
+       * recursive result), applied as  ((s m) (rec z s m)). */
+      id_node *n = id_nf(t->c);
+      if (n->kind == ID_ZERO) { id_free(n); return id_nf(t->a); }
+      if (n->kind == ID_SUCC) {
+        id_node *m   = n->a;                                   /* predecessor (owned by n) */
+        id_node *rec = id_rec(id_copy(t->a), id_copy(t->b), id_copy(m));
+        id_node *ap  = id_app(id_app(id_copy(t->b), id_copy(m)), rec);
+        id_node *r   = id_nf(ap);
+        id_free(ap); id_free(n);
+        return r;
+      }
+      return id_rec(id_nf(t->a), id_nf(t->b), n);              /* neutral scrutinee */
     }
     case ID_TRANSP: {
       id_node *P = id_nf(t->a), *p = id_nf(t->b), *x = id_nf(t->c);
@@ -316,11 +410,20 @@ void id_print(const id_node *t) {
     case ID_APP:   printf("("); id_print(t->a); printf(" "); id_print(t->b); printf(")"); break;
     case ID_PROD:  printf("("); id_print(t->a); printf(" * "); id_print(t->b); printf(")"); break;
     case ID_SIGMA: printf("(Sigma "); id_print(t->a); printf(". "); id_print(t->b); printf(")"); break;
+    case ID_LIST:  printf("List "); id_print(t->a); break;
+    case ID_NIL:   printf("nil"); break;
+    case ID_CONS:  printf("(cons "); id_print(t->a); printf(" "); id_print(t->b); printf(")"); break;
+    case ID_SUM:   printf("("); id_print(t->a); printf(" + "); id_print(t->b); printf(")"); break;
+    case ID_INL:   printf("(inl "); id_print(t->a); printf(")"); break;
+    case ID_INR:   printf("(inr "); id_print(t->a); printf(")"); break;
     case ID_ARR:   printf("("); id_print(t->a); printf(" -> "); id_print(t->b); printf(")"); break;
     case ID_PI:    printf("(Pi "); id_print(t->a); printf(". "); id_print(t->b); printf(")"); break;
     case ID_EQUIV: printf("Equiv "); id_print(t->a); printf(" "); id_print(t->b); break;
     case ID_ID:    printf("Id "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); break;
     case ID_TRANSP:printf("transport "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); break;
+    case ID_REC:   printf("(rec "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); printf(")"); break;
+    case ID_LISTREC:printf("(foldr "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); printf(")"); break;
+    case ID_CASE:  printf("(case "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); printf(")"); break;
     case ID_IF:    printf("(if "); id_print(t->a); printf(" "); id_print(t->b); printf(" "); id_print(t->c); printf(")"); break;
     case ID_UA:    printf("(ua "); id_print(t->a); printf(")"); break;
   }

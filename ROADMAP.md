@@ -97,6 +97,54 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     0 refused. Sound limit: a NON-inductive first component (e.g. A = U, where the
     path is a genuine equivalence) is left neutral by the spec and refused by the
     net — that needs real transport along the first-component path.
+✅  Nat recursor / eliminator (semantics AND net): rec z s n — the elimination dual
+    to the zero/succ constructors — computes by recursion on the scrutinee. rec z s 0
+    → z; rec z s (succ m) → s m (rec z s m). The step s is λn.λr. … (n = predecessor,
+    r = recursive result), so double/add/pred (value steps) and even (an `if` IN the
+    step body) all run. On the net it is two agents: N_REC, plus a call-by-value
+    step-forcer N_RSTEP that forces the recursive result to a value BEFORE the step is
+    applied — this keeps duplication on the value fragment (the only fragment idnet's
+    structural copy is sound for) and lets the eliminator branch correctly. The fix
+    that made `if`-in-step work: a value-eliminator (if / rec / its forcer) whose
+    principal meets a bound variable WAITS for β to substitute a real value instead of
+    firing on the variable (Id/transport/Σ neutral-variable rules are unaffected and
+    still fire). Validated against the spec: worked cases (incl. nested rec and
+    recursor-result-into-Id) + a 60k recursor fuzz, 0 wrong, 0 refused; a neutral
+    (free-variable) scrutinee is soundly refused. Limit: only VALUE arguments to the
+    step's β are sound — general nested β still needs the fan duplication that Δ-Nets
+    has and idnet does not; the CBV forcer is exactly the workaround for that.
+✅  Lists — a parameterized, data-carrying inductive type (semantics AND net). Three
+    pieces, mirroring the inductive-type pattern: construction (nil / cons),
+    observation (Id over List by structural recursion on the cons spine), and
+    elimination (foldr). Id (List E) xs ys observes the spines together: [] = []
+    gives Unit, mismatched lengths give Empty, and cons h:t = cons h':t' gives the
+    PRODUCT (Id E h h') * (Id (List E) t t') — so for equal lists it is a nested
+    product of Units, and an Empty anywhere marks the difference (e.g. an element
+    type of U yields genuine Equiv components, Equiv Bool Nat * Unit). On the net
+    this is the two-agent observer dance (N_IDL faces xs; N_NSZ / N_CCS face ys
+    carrying the element type and the held head/tail) plus an extra port (PORTS 4→5)
+    so the cons case can hold y, output, element type, head and tail at once. foldr
+    reuses the recursor machinery wholesale: N_LREC + the same call-by-value
+    step-forcer (N_RSTEP), where the step sees the head and the recursive result, so
+    length / count / `all` (an `if` on the head) / map-succ (which builds a list) all
+    run. Validated against the spec: worked cases + a 60k Id-over-List fuzz (random
+    element type, random lists, biased equal/unequal) + a 60k foldr fuzz, 0 wrong,
+    0 refused; a neutral (free-variable) list spine is soundly refused. Same inherited
+    limit as the Nat recursor: only value arguments to the step's beta are sound.
+✅  Coproducts A + B (semantics AND net) — the categorical dual of the product, and
+    the missing core type former (alongside ×, Σ, →, Π, List). Construction is inl /
+    inr; observation is Id over the sum (inl a = inl a' observes Id A a a'; inr b =
+    inr b' observes Id B b b'; a tag mismatch is Empty); elimination is case
+    (case (inl x) f g = f x, case (inr y) f g = g y). On the net Id-over-sum is a
+    two-agent observer (N_IDS faces x carrying both component types; N_INLS / N_INRS
+    face y on the matching side), and case is a single agent that, on inl/inr, builds
+    the application f x / g y and discards the other branch — the application then
+    reduces by the ordinary beta, so no new evaluation machinery is needed and `if`s
+    in the branch bodies fire after substitution (the value-eliminator-waits rule).
+    Validated against the spec: worked cases (incl. U components -> genuine Equiv,
+    product components, case feeding Id, and a case that *builds* a sum) + a 60k
+    Id-over-sum fuzz + a 60k case fuzz, 0 wrong, 0 refused; a neutral (free-variable)
+    sum is soundly refused.
 🟡  Dependent families (semantics, id_observe.c): the remaining open cases are
     transport THROUGH a dependent Σ family, Id over a Σ whose first component is
     non-inductive (needs transport along a non-trivial first-component path), and
@@ -196,11 +244,14 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
    for the GPU.
 3. 🟡  **Finish Id/transport in the net** — Id, the function case (funext, incl.
    dependent Π), transport (incl. computational univalence, via a minimal on-net
-   evaluator: application/β + `if`), AND Id over a dependent Σ for inductive first
-   components (a decision agent on the first-component path) now all run as agents
-   in src/idnet.c. Remaining: transport over a function family (the inverse path),
-   transport through a dependent Σ, Σ over a non-inductive first component, and the
-   cross-check against the cubical layer.
+   evaluator: application/β + `if`), Id over a dependent Σ for inductive first
+   components (a decision agent on the first-component path), AND the Nat recursor
+   (rec, with a call-by-value step-forcer so `if`/value steps run), AND Lists (a
+   parameterized inductive type: Id over List by observation + the foldr recursor,
+   reusing the step-forcer), AND coproducts A+B (Id over the sum + the case
+   eliminator) now all run as agents in src/idnet.c. Remaining: transport over a
+   function family (the inverse path), transport through a dependent Σ, Σ over a
+   non-inductive first component, and the cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)

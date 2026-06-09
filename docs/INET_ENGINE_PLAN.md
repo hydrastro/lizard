@@ -420,6 +420,75 @@ refused. Sound limit: a *non-inductive* first component (e.g. `A = U`, whose pat
 a genuine equivalence) is left neutral by the spec and refused by the net — closing
 it needs real transport along the first-component path.
 
+**The Nat recursor now runs on the net as well.** `rec z s n` — the eliminator dual
+to the `zero`/`succ` constructors — is realized by two agents. `N_REC` faces the
+scrutinee: meeting `zero` it yields the base `z` (and erases the step); meeting
+`succ m` it spawns the recursive call `rec z s m` and arranges to apply the step `s`
+to `m` and that result. The step body uses de Bruijn `λn.λr. …` (n = predecessor,
+r = recursive result), so `double`/`add`/`pred` (value steps) work, and so does
+`even = rec true (λn.λr. if r false true) n` — an `if` *inside* the step body. The
+subtlety this exposed: idnet's structural copy (`cs`) is only sound on the value
+fragment, so the recursive result must be a *value* before the step's β duplicates
+it. A call-by-value step-forcer agent (`N_RSTEP`) does exactly that — it waits for
+the recursive call to reduce to a numeral/Bool, then applies the step. The remaining
+bug was that the inner `if` of an unapplied step body would fire on its bound
+variable `r` (a no-op the main loop then erased, destroying the step). The fix: a
+*value*-eliminator (`if`, `rec`, or its forcer) whose principal port meets a bound
+variable **waits** for β to substitute a real value there rather than firing on the
+variable; `Id`/transport/Σ-decision agents keep their neutral-variable rules and are
+unaffected. A genuinely free-variable scrutinee then simply leaves the recursor stuck
+and read-back refuses. Validated against the §5 spec over worked cases (including
+`double(double n)` and recursor-result-fed-into-`Id`) and a **60,000-case recursor
+fuzz** (random `double`/`add`/`even`/`pred` over small numerals): zero wrong, zero
+refused. Limit: only *value* arguments to the step's β are sound; general nested β
+still needs the fan duplication Δ-Nets has and idnet lacks — the CBV forcer is the
+targeted workaround for the recursor.
+
+**Lists round out the inductive-type pattern with a parameterized, data-carrying
+type.** A List inductive type gets the same three pieces every inductive type does:
+construction (`nil` / `cons`), observation (`Id (List E)` by structural recursion),
+and elimination (`foldr`). Observing `Id (List E) xs ys` walks the two cons spines
+together: `[] = []` is `Unit`, two lists of different length are `Empty`, and
+`cons h t = cons h' t'` is the *product* `(Id E h h') * (Id (List E) t t')`. So for
+two equal lists the result is a nested product of `Unit`s (contractible but not
+literally `Unit`, exactly as for products), and any element difference shows up as an
+`Empty` in the corresponding factor; an element type of `U` makes the head factors
+genuine equivalences (`Equiv Bool Nat * Unit`). On the net this is the same two-agent
+observer dance used for `Id Nat`: `N_IDL` faces the first list, and `N_NSZ`/`N_CCS`
+face the second while carrying the element type and the held head/tail. The cons-vs-y
+agent has to remember five things at once (the second list, the output, the element
+type, and the first list's head and tail), which is one more than the four ports the
+engine had, so `PORTS` went 4→5 (every port address is `node*PORTS + i`, so this is a
+pure capacity bump). `foldr` needs no new evaluation machinery at all: it is `N_LREC`
+plus the *same* call-by-value step-forcer `N_RSTEP` introduced for the Nat recursor,
+with the step now receiving the head element and the recursive result. So `length`,
+`count` (an `if` on the head), `all`, and `map succ` (which *builds* a list) all run.
+Validated against the §5 spec over worked cases and two **60,000-case fuzzes** (one
+for `Id (List E) xs ys` over a random element type and random biased-equal lists, one
+for random `foldr` programs): zero wrong, zero refused. A neutral (free-variable) list
+spine is soundly refused. The inherited limit is the recursor's: only *value*
+arguments to the step's β are sound.
+
+**Coproducts `A + B` complete the core type formers.** The product's categorical
+dual was the one fundamental former still missing (the engine already had `×`, `Σ`,
+`→`, `Π`, and `List`). It follows the same three-part shape: construction (`inl` /
+`inr`), observation (`Id (A+B)`), and elimination (`case`). Observing the sum is
+purely by tag: `inl a = inl a'` reduces to `Id A a a'`, `inr b = inr b'` to
+`Id B b b'`, and a tag mismatch to `Empty` (so, as in the rest of the system, equal
+values give a contractible answer and any difference surfaces an `Empty`; a `U`
+component yields a genuine `Equiv`). On the net this is the same two-agent dance as
+`Id Nat`/`Id List`: `N_IDS` faces the first value carrying both component types, then
+`N_INLS`/`N_INRS` face the second on the matching side and spawn the component `Id`.
+The eliminator `case` needs *no* new evaluation machinery at all: `N_CASE` faces the
+scrutinee and, on `inl x` / `inr y`, simply builds the application `f x` / `g y` and
+erases the other branch — that application then reduces by the ordinary β rule, and
+any `if` in the chosen branch's body fires once β has substituted the value (the
+value-eliminator-waits rule again). Validated against the §5 spec over worked cases
+(including a `case` that *produces* a sum which is then observed, and `case` results
+fed into `Id`) and two **60,000-case fuzzes** (one for `Id (A+B) x y` over random
+component types and random injections, one for random `case` programs): zero wrong,
+zero refused. A neutral (free-variable) sum is soundly refused.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -859,13 +928,17 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        wavefront reducer (`dn_parallel`) reports work/depth; conflict-aware `dn_gpu` models one GPU dispatch
                        (fires only non-overlapping redexes/round) and shows idealized width 5-10 collapses to ~2-3 realizable; all validated == sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv,
-                       dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)); 36 checks.
+                       dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)), and the Nat recursor
+                       rec z s n (double/add/pred + even with an if in the step body), Lists (Id over List by observation + foldr), and coproducts A+B (Id over the sum + case); 71 checks.
   - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule;
                        inductive + universe fragment AND functions (funext, incl. dependent Pi) via the de Bruijn "body is f z" trick,
                        neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz.
                        Transport too (transport^P p x): TR agent recurses on the family body -- constant->identity, product->componentwise,
                        identity family + ua f -> f x (computational univalence), via a minimal on-net evaluator (application/beta + if); +60k transport fuzz.
                        Dependent Sigma too: Id over Sigma x:A. B x for inductive A, via a decision agent on the first-component path (product paths collapse by chaining); +60k Sigma fuzz.
+                       Nat recursor too: rec z s n as N_REC + a call-by-value step-forcer N_RSTEP (value steps AND an if in the step body, e.g. even); a value-eliminator facing a bound variable waits for beta; +60k recursor fuzz.
+                       Lists too (a parameterized inductive type): Id over List E by observation (two-agent spine dance N_IDL/N_NSZ/N_CCS, nested products, PORTS 4->5) AND foldr (N_LREC reusing the N_RSTEP forcer: length/count/all/map); +60k Id-over-List fuzz +60k foldr fuzz.
+                       Coproducts too (A+B, dual to the product): Id over the sum by observation (two-agent dance N_IDS/N_INLS/N_INRS; tag mismatch -> Empty) AND the case eliminator (N_CASE builds f x / g y, reducing by ordinary beta -- no new machinery); +60k Id-over-sum fuzz +60k case fuzz (720k total).
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which

@@ -46,6 +46,59 @@ static id_node *rand_val(const id_node *ty, int d) {
   }
 }
 
+/* ---- Nat-recursor step functions (rec z s n).  Inside the step body the de Bruijn
+ * convention is: var 1 = the predecessor n, var 0 = the recursive result r. ---- */
+static id_node *dbl_step(void) { return id_lam(id_lam(id_succ(id_succ(id_var(0))))); }            /* double: r |-> succ succ r */
+static id_node *add_step(void) { return id_lam(id_lam(id_succ(id_var(0)))); }                     /* add m:  r |-> succ r      */
+static id_node *evn_step(void) { return id_lam(id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)))); } /* even: r |-> if r false true (if in the step body) */
+static id_node *prd_step(void) { return id_lam(id_lam(id_var(1))); }                              /* pred:   _ |-> n (the predecessor) */
+/* build a random closed recursor program; the spec result is the differential oracle. */
+static id_node *rand_recursor(void) {
+  int kind = (int)(rnd() % 4);
+  int n    = (int)(rnd() % 8);            /* scrutinee numeral 0..7 */
+  switch (kind) {
+    case 0: return id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(n));                       /* 2n  : Nat  */
+    case 1: return id_rec(id_nat_lit((int)(rnd() % 5)), add_step(), id_nat_lit(n));        /* m+n : Nat  */
+    case 2: return id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(n));                    /* parity : Bool */
+    default:return id_rec(id_nat_lit(0), prd_step(), id_nat_lit(n));                       /* n-1 : Nat  */
+  }
+}
+
+/* ---- random lists, and List-recursor (foldr) step functions (var 1 = head, var 0 = result) ---- */
+static id_node *rand_list(const id_node *Elem, int d) {
+  int n = (int)(rnd() % 4), i;            /* 0..3 elements */
+  id_node *t = id_nil(), *e[4];
+  for (i = 0; i < n; i++) e[i] = rand_val(Elem, d);
+  for (i = n - 1; i >= 0; i--) t = id_cons(e[i], t);
+  return t;
+}
+static id_node *llen_step(void) { return id_lam(id_lam(id_succ(id_var(0)))); }                              /* length: _ r -> succ r */
+static id_node *cnt_step(void)  { return id_lam(id_lam(id_if(id_var(1), id_succ(id_var(0)), id_var(0)))); }  /* count trues: if head then succ r else r */
+static id_node *lall_step(void) { return id_lam(id_lam(id_if(id_var(1), id_var(0), id_base(ID_FALSE)))); }   /* all: if head then r else false */
+static id_node *lmap_step(void) { return id_lam(id_lam(id_cons(id_succ(id_var(1)), id_var(0)))); }           /* map succ: cons (succ head) r */
+static id_node *rand_listfold(void) {
+  int kind = (int)(rnd() % 4);
+  id_node *E, *xs;
+  if (kind == 3) { E = id_base(ID_NAT);  xs = rand_list(E, 2); id_free(E); return id_listrec(id_nil(),         lmap_step(), xs); }
+  if (kind == 0) { E = id_base(ID_NAT);  xs = rand_list(E, 2); id_free(E); return id_listrec(id_nat_lit(0),    llen_step(), xs); }
+  E = id_base(ID_BOOL); xs = rand_list(E, 2); id_free(E);
+  if (kind == 1) return id_listrec(id_nat_lit(0),    cnt_step(),  xs);
+  return                id_listrec(id_base(ID_TRUE), lall_step(), xs);
+}
+
+/* ---- random coproduct values and case programs ---- */
+static id_node *rand_inj(const id_node *A, const id_node *B, int d) {
+  return (rnd() & 1u) ? id_inl(rand_val(A, d)) : id_inr(rand_val(B, d));
+}
+static id_node *rand_case(void) {
+  id_node *A = rand_inductive(2), *B = rand_inductive(2);
+  id_node *f = id_lam(id_pair(id_var(0), id_var(0)));   /* left branch:  x -> (x, x)  */
+  id_node *g = id_lam(id_succ(id_var(0)));              /* right branch: y -> succ y  */
+  id_node *scrut = rand_inj(A, B, 2);
+  id_free(A); id_free(B);
+  return id_case(scrut, f, g);
+}
+
 static int fails = 0;
 
 /* a supported case: net result must equal the spec normal form */
@@ -330,6 +383,179 @@ int main(void) {
     else printf("    ok   %d random Id (Sigma A. B) (a,b)(a',b'): net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma (Id over Sigma, inductive first component incl. products), matching the spec over 420k fuzz; unsupported cases refused, never mis-computed\n", fails);
+  printf("[13] NAT RECURSOR -- rec z s n on the net (CBV step-forcer); value steps AND if-in-step-body\n");
+  ok_case("double 0",  id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(0)));
+  ok_case("double 3",  id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(3)));
+  ok_case("double 5",  id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(5)));
+  ok_case("add 2 3",   id_rec(id_nat_lit(2), add_step(), id_nat_lit(3)));
+  ok_case("pred 0",    id_rec(id_nat_lit(0), prd_step(), id_nat_lit(0)));
+  ok_case("pred 4",    id_rec(id_nat_lit(0), prd_step(), id_nat_lit(4)));
+  ok_case("even 4",    id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(4)));   /* if in the step body */
+  ok_case("even 3",    id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(3)));
+  ok_case("double(double 2)", id_rec(id_nat_lit(0), dbl_step(), id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(2))));
+  /* recursor result feeding an Id observation */
+  ok_case("Id Nat (double 3) 6",
+          id_idty(id_base(ID_NAT), id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(3)), id_nat_lit(6)));
+  ok_case("Id Nat (add 2 3) 6",
+          id_idty(id_base(ID_NAT), id_rec(id_nat_lit(2), add_step(), id_nat_lit(3)), id_nat_lit(6)));
+  ok_case("Id Bool (even 4) true",
+          id_idty(id_base(ID_BOOL), id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(4)), id_base(ID_TRUE)));
+  ok_case("Id Bool (even 3) false",
+          id_idty(id_base(ID_BOOL), id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(3)), id_base(ID_FALSE)));
+
+  printf("[13b] SOUND REFUSAL -- recursor on a neutral (free-variable) scrutinee -> net waits, read-back refuses\n");
+  refuse_case("rec _ dbl (var)", id_rec(id_nat_lit(0), dbl_step(), id_var(0)));
+  refuse_case("rec _ evn (var)", id_rec(id_base(ID_TRUE), evn_step(), id_var(0)));
+
+  printf("[14] RECURSOR FUZZ -- random closed double/add/even/pred programs: net result == spec, every time\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *term = rand_recursor();
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random recursor programs (double/add/even/pred): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf("[15] LISTS -- Id over List E by observation on the net (spine + element-wise, nested products)\n");
+  {
+    id_node *bt = id_base(ID_BOOL), *nt = id_base(ID_NAT), *ut = id_base(ID_U);
+    ok_case("Id (List Bool) [] []",      id_idty(id_list(id_base(ID_BOOL)), id_nil(), id_nil()));
+    ok_case("Id (List Bool) [t] [t]",    id_idty(id_list(id_base(ID_BOOL)), id_cons(id_base(ID_TRUE), id_nil()), id_cons(id_base(ID_TRUE), id_nil())));
+    ok_case("Id (List Bool) [t] [f]",    id_idty(id_list(id_base(ID_BOOL)), id_cons(id_base(ID_TRUE), id_nil()), id_cons(id_base(ID_FALSE), id_nil())));
+    ok_case("Id (List Nat) [1,2] [1,2]", id_idty(id_list(id_base(ID_NAT)), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil())), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))));
+    ok_case("Id (List Nat) [1,2] [1,3]", id_idty(id_list(id_base(ID_NAT)), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil())), id_cons(id_nat_lit(1), id_cons(id_nat_lit(3), id_nil()))));
+    ok_case("Id (List Nat) [1] [1,2]",   id_idty(id_list(id_base(ID_NAT)), id_cons(id_nat_lit(1), id_nil()), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))));
+    ok_case("Id (List U) [Bool] [Nat]",  id_idty(id_list(id_base(ID_U)), id_cons(id_base(ID_BOOL), id_nil()), id_cons(id_base(ID_NAT), id_nil())));
+    id_free(bt); id_free(nt); id_free(ut);
+  }
+
+  printf("[15b] SOUND REFUSAL -- a neutral (free-variable) list spine -> net waits, read-back refuses\n");
+  refuse_case("Id (List Nat) (var) []", id_idty(id_list(id_base(ID_NAT)), id_var(0), id_nil()));
+
+  printf("[16] LIST-Id FUZZ -- random element type & random lists (biased equal/unequal): net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *E  = rand_inductive(2);
+      id_node *xs = rand_list(E, 2);
+      id_node *ys = (rnd() & 1u) ? id_copy(xs) : rand_list(E, 2);
+      id_node *term = id_idty(id_list(id_copy(E)), xs, ys);
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(E); id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random Id (List E) xs ys: net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf("[17] LIST RECURSOR (foldr) -- length / count / all / map on the net (CBV step-forcer)\n");
+  {
+    id_node *L = id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()));
+    ok_case("length [1,2]",  id_listrec(id_nat_lit(0), llen_step(), id_copy(L)));
+    ok_case("length []",     id_listrec(id_nat_lit(0), llen_step(), id_nil()));
+    ok_case("count [t,f,t]", id_listrec(id_nat_lit(0), cnt_step(),  id_cons(id_base(ID_TRUE), id_cons(id_base(ID_FALSE), id_cons(id_base(ID_TRUE), id_nil())))));
+    ok_case("all [t,t,t]",   id_listrec(id_base(ID_TRUE), lall_step(), id_cons(id_base(ID_TRUE), id_cons(id_base(ID_TRUE), id_cons(id_base(ID_TRUE), id_nil())))));
+    ok_case("all [t,f,t]",   id_listrec(id_base(ID_TRUE), lall_step(), id_cons(id_base(ID_TRUE), id_cons(id_base(ID_FALSE), id_cons(id_base(ID_TRUE), id_nil())))));
+    ok_case("map succ [1,2]", id_listrec(id_nil(), lmap_step(), id_copy(L)));
+    ok_case("Id (List Nat) (map succ [1,2]) [2,3]",
+            id_idty(id_list(id_base(ID_NAT)), id_listrec(id_nil(), lmap_step(), id_copy(L)),
+                    id_cons(id_nat_lit(2), id_cons(id_nat_lit(3), id_nil()))));
+    ok_case("Id Nat (length [1,2]) 2",
+            id_idty(id_base(ID_NAT), id_listrec(id_nat_lit(0), llen_step(), id_copy(L)), id_nat_lit(2)));
+    id_free(L);
+  }
+
+  printf("[18] FOLDR FUZZ -- random length/count/all/map programs over random lists: net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *term = rand_listfold();
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random foldr programs (length/count/all/map): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf("[19] SUM TYPES -- Id over A+B by observation (the coproduct, dual to the product)\n");
+  {
+    id_node *BN  = id_sum(id_base(ID_BOOL), id_base(ID_NAT));
+    ok_case("Id (Bool+Nat)(inl t)(inl t)", id_idty(id_copy(BN), id_inl(id_base(ID_TRUE)),  id_inl(id_base(ID_TRUE))));
+    ok_case("Id (Bool+Nat)(inl t)(inl f)", id_idty(id_copy(BN), id_inl(id_base(ID_TRUE)),  id_inl(id_base(ID_FALSE))));
+    ok_case("Id (Bool+Nat)(inl t)(inr 2)", id_idty(id_copy(BN), id_inl(id_base(ID_TRUE)),  id_inr(id_nat_lit(2))));
+    ok_case("Id (Bool+Nat)(inr 2)(inr 2)", id_idty(id_copy(BN), id_inr(id_nat_lit(2)),     id_inr(id_nat_lit(2))));
+    ok_case("Id (Bool+Nat)(inr 2)(inr 3)", id_idty(id_copy(BN), id_inr(id_nat_lit(2)),     id_inr(id_nat_lit(3))));
+    ok_case("Id (U+Nat)(inl Bool)(inl Nat)", id_idty(id_sum(id_base(ID_U), id_base(ID_NAT)), id_inl(id_base(ID_BOOL)), id_inl(id_base(ID_NAT))));
+    ok_case("Id ((Bool*Nat)+Unit)(inl(t,2))(inl(t,3))",
+            id_idty(id_sum(id_prod(id_base(ID_BOOL), id_base(ID_NAT)), id_base(ID_UNIT)),
+                    id_inl(id_pair(id_base(ID_TRUE), id_nat_lit(2))), id_inl(id_pair(id_base(ID_TRUE), id_nat_lit(3)))));
+    id_free(BN);
+  }
+
+  printf("[19b] SOUND REFUSAL -- a neutral (free-variable) sum -> net waits, read-back refuses\n");
+  refuse_case("Id (Bool+Nat) (var) (inl t)", id_idty(id_sum(id_base(ID_BOOL), id_base(ID_NAT)), id_var(0), id_inl(id_base(ID_TRUE))));
+
+  printf("[20] SUM-Id FUZZ -- random component types & random injections (biased equal/unequal): net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *A = rand_inductive(2), *B = rand_inductive(2);
+      id_node *x = rand_inj(A, B, 2);
+      id_node *y = (rnd() & 1u) ? id_copy(x) : rand_inj(A, B, 2);
+      id_node *term = id_idty(id_sum(id_copy(A), id_copy(B)), x, y);
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(A); id_free(B); id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random Id (A+B) x y: net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf("[21] CASE -- the sum eliminator on the net: case (inl x) f g = f x ; case (inr y) f g = g y\n");
+  {
+    id_node *fF = id_lam(id_if(id_var(0), id_nat_lit(1), id_nat_lit(0)));  /* Bool branch: if x then 1 else 0 */
+    id_node *gG = id_lam(id_succ(id_var(0)));                             /* Nat branch:  succ y            */
+    ok_case("case (inl t) fF gG",  id_case(id_inl(id_base(ID_TRUE)),  id_copy(fF), id_copy(gG)));
+    ok_case("case (inl f) fF gG",  id_case(id_inl(id_base(ID_FALSE)), id_copy(fF), id_copy(gG)));
+    ok_case("case (inr 5) fF gG",  id_case(id_inr(id_nat_lit(5)),     id_copy(fF), id_copy(gG)));
+    ok_case("Id Nat (case (inl t) fF gG) 1", id_idty(id_base(ID_NAT), id_case(id_inl(id_base(ID_TRUE)), id_copy(fF), id_copy(gG)), id_nat_lit(1)));
+    ok_case("Id Nat (case (inr 5) fF gG) 6", id_idty(id_base(ID_NAT), id_case(id_inr(id_nat_lit(5)),    id_copy(fF), id_copy(gG)), id_nat_lit(6)));
+    /* case that PRODUCES a sum, then observed: swap the tags */
+    ok_case("Id (Nat+Bool)(case(inl t) inr inl)(inr t)",
+            id_idty(id_sum(id_base(ID_NAT), id_base(ID_BOOL)),
+                    id_case(id_inl(id_base(ID_TRUE)), id_lam(id_inr(id_var(0))), id_lam(id_inl(id_var(0)))),
+                    id_inr(id_base(ID_TRUE))));
+    id_free(fF); id_free(gG);
+  }
+
+  printf("[22] CASE FUZZ -- random injections through branches (x->(x,x)) / (y->succ y): net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *term = rand_case();
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random case programs (inl/inr through branches): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma + the Nat recursor + Lists (Id + foldr) + coproducts A+B (Id over the sum AND the case eliminator), matching the spec over 720k fuzz; unsupported cases refused, never mis-computed\n", fails);
   return fails ? 1 : 0;
 }

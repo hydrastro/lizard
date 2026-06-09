@@ -34,6 +34,15 @@ static id_node *F_(void)     { return id_base(ID_FALSE); }
 static id_node *Star_(void)  { return id_base(ID_STAR); }
 /* the Boolean negation map  lam b. if b then false else true  (an equivalence) */
 static id_node *Not_(void)   { return id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE))); }
+/* Nat-recursor step bodies (var 1 = predecessor n, var 0 = recursive result r) */
+static id_node *dbl_step(void) { return id_lam(id_lam(id_succ(id_succ(id_var(0))))); }
+static id_node *add_step(void) { return id_lam(id_lam(id_succ(id_var(0)))); }
+static id_node *evn_step(void) { return id_lam(id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)))); }
+static id_node *prd_step(void) { return id_lam(id_lam(id_var(1))); }
+/* List-recursor (foldr) step bodies (var 1 = head, var 0 = recursive result) */
+static id_node *llen_step(void) { return id_lam(id_lam(id_succ(id_var(0)))); }
+static id_node *lall_step(void) { return id_lam(id_lam(id_if(id_var(1), id_var(0), id_base(ID_FALSE)))); }
+static id_node *lmap_step(void) { return id_lam(id_lam(id_cons(id_succ(id_var(1)), id_var(0)))); }
 
 int main(void) {
   /* ---- inductive types: Id computes by structural recursion (observation) ---- */
@@ -184,6 +193,65 @@ int main(void) {
                 id_pair(id_pair(id_nat_lit(2), id_base(ID_TRUE)), id_nat_lit(9)),
                 id_pair(id_pair(id_nat_lit(2), id_base(ID_FALSE)), id_nat_lit(9))),
         Empty_());
+
+  /* ---- Nat recursor: rec z s n computes by recursion on the scrutinee (the elimination dual to zero/succ) ---- */
+  check("rec double 0",  id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(0)), id_nat_lit(0));
+  check("rec double 3",  id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(3)), id_nat_lit(6));
+  check("rec add 2 3",   id_rec(id_nat_lit(2), add_step(), id_nat_lit(3)), id_nat_lit(5));
+  check("rec pred 0",    id_rec(id_nat_lit(0), prd_step(), id_nat_lit(0)), id_nat_lit(0));
+  check("rec pred 4",    id_rec(id_nat_lit(0), prd_step(), id_nat_lit(4)), id_nat_lit(3));
+  check("rec even 4",    id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(4)), T_());
+  check("rec even 3",    id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(3)), F_());
+  check("rec double(double 2)",
+        id_rec(id_nat_lit(0), dbl_step(), id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(2))), id_nat_lit(8));
+  check("Id Nat (double 3) 6", id_idty(Nat_(), id_rec(id_nat_lit(0), dbl_step(), id_nat_lit(3)), id_nat_lit(6)), Unit_());
+  check("Id Nat (add 2 3) 6",  id_idty(Nat_(), id_rec(id_nat_lit(2), add_step(), id_nat_lit(3)), id_nat_lit(6)), Empty_());
+  check("Id Bool (even 4) true", id_idty(Bool_(), id_rec(id_base(ID_TRUE), evn_step(), id_nat_lit(4)), T_()), Unit_());
+
+  /* ---- Lists: a parameterized inductive type. Id by structural recursion on the cons spine (observation),
+   *      and foldr as the recursor (elimination). ---- */
+  check("Id (List Bool) [] []",
+        id_idty(id_list(Bool_()), id_nil(), id_nil()), Unit_());
+  check("Id (List Bool) [t] [f]",
+        id_idty(id_list(Bool_()), id_cons(T_(), id_nil()), id_cons(F_(), id_nil())),
+        id_prod(Empty_(), Unit_()));
+  check("Id (List Nat) [1,2] [1,2]",
+        id_idty(id_list(Nat_()), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil())),
+                                 id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))),
+        id_prod(Unit_(), id_prod(Unit_(), Unit_())));
+  check("Id (List Nat) [1,2] [1,3]",
+        id_idty(id_list(Nat_()), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil())),
+                                 id_cons(id_nat_lit(1), id_cons(id_nat_lit(3), id_nil()))),
+        id_prod(Unit_(), id_prod(Empty_(), Unit_())));
+  check("Id (List Nat) [1] [1,2]",
+        id_idty(id_list(Nat_()), id_cons(id_nat_lit(1), id_nil()),
+                                 id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))),
+        id_prod(Unit_(), Empty_()));
+  check("foldr length [1,2]",
+        id_listrec(id_nat_lit(0), llen_step(), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))), id_nat_lit(2));
+  check("foldr all [t,f,t]",
+        id_listrec(T_(), lall_step(), id_cons(T_(), id_cons(F_(), id_cons(T_(), id_nil())))), F_());
+  check("foldr map succ [1,2]",
+        id_listrec(id_nil(), lmap_step(), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))),
+        id_cons(id_nat_lit(2), id_cons(id_nat_lit(3), id_nil())));
+  check("Id (List Nat) (map succ [1,2]) [2,3]",
+        id_idty(id_list(Nat_()), id_listrec(id_nil(), lmap_step(), id_cons(id_nat_lit(1), id_cons(id_nat_lit(2), id_nil()))),
+                                 id_cons(id_nat_lit(2), id_cons(id_nat_lit(3), id_nil()))),
+        id_prod(Unit_(), id_prod(Unit_(), Unit_())));
+
+  /* ---- Coproducts A + B: the dual of the product. Id observes the tag; case eliminates. ---- */
+  check("Id (Bool+Nat)(inl t)(inl t)", id_idty(id_sum(Bool_(), Nat_()), id_inl(T_()), id_inl(T_())), Unit_());
+  check("Id (Bool+Nat)(inl t)(inl f)", id_idty(id_sum(Bool_(), Nat_()), id_inl(T_()), id_inl(F_())), Empty_());
+  check("Id (Bool+Nat)(inl t)(inr 2)", id_idty(id_sum(Bool_(), Nat_()), id_inl(T_()), id_inr(id_nat_lit(2))), Empty_());
+  check("Id (Bool+Nat)(inr 2)(inr 2)", id_idty(id_sum(Bool_(), Nat_()), id_inr(id_nat_lit(2)), id_inr(id_nat_lit(2))), Unit_());
+  check("Id (Bool+Nat)(inr 2)(inr 3)", id_idty(id_sum(Bool_(), Nat_()), id_inr(id_nat_lit(2)), id_inr(id_nat_lit(3))), Empty_());
+  check("case (inl t) (if x 1 0)(succ y)",
+        id_case(id_inl(T_()), id_lam(id_if(id_var(0), id_nat_lit(1), id_nat_lit(0))), id_lam(id_succ(id_var(0)))), id_nat_lit(1));
+  check("case (inr 5) (if x 1 0)(succ y)",
+        id_case(id_inr(id_nat_lit(5)), id_lam(id_if(id_var(0), id_nat_lit(1), id_nat_lit(0))), id_lam(id_succ(id_var(0)))), id_nat_lit(6));
+  check("Id (Nat+Bool)(case(inl t) inr inl)(inr t)",
+        id_idty(id_sum(Nat_(), Bool_()),
+                id_case(id_inl(T_()), id_lam(id_inr(id_var(0))), id_lam(id_inl(id_var(0)))), id_inr(T_())), Unit_());
 
   if (fails == 0)
     printf("ALL %ld BY-OBSERVATION Id CHECKS PASSED (phase 14c reduction system)\n", checks);

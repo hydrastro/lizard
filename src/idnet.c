@@ -38,8 +38,8 @@
 enum {
   N_ROOT,
   TY_UNIT, TY_EMPTY, TY_U, TY_BOOL, TY_NAT, TY_PROD,   /* type formers          */
-  TY_ARR, TY_PI, TY_SIGMA,                             /* function / pair type formers */
-  VAL_STAR, VAL_PAIR,                                  /* unit / product values */
+  TY_ARR, TY_PI, TY_SIGMA, TY_LIST, TY_SUM,            /* function / pair / list / sum type formers */
+  VAL_STAR, VAL_PAIR, VAL_NIL, VAL_CONS, VAL_INL, VAL_INR, /* unit / product / list / sum values */
   VAL_TRUE, VAL_FALSE, VAL_ZERO, VAL_SUCC,             /* bool / nat values     */
   N_LAM, N_VAR,                                        /* function value, bound variable */
   N_APP, N_IF,                                         /* application, Bool eliminator   */
@@ -49,11 +49,16 @@ enum {
   N_IDN, N_ISZ, N_SCS,                                 /* Nat observation (rec)  */
   N_PI, N_NID,                                         /* result Pi-type, neutral Id */
   N_SIGD,                                              /* Sigma-Id decision (faces the first-component Id result) */
+  N_REC, N_RSTEP,                                      /* Nat recursor; CBV step-forcer */
+  N_LREC,                                              /* List recursor (foldr), reuses N_RSTEP forcer */
+  N_IDL, N_NSZ, N_CCS,                                 /* List-Id observers: faces x; nil-sentinel; cons-vs-y */
+  N_CASE,                                              /* sum eliminator: case scrut f g */
+  N_IDS, N_INLS, N_INRS,                               /* sum-Id observers: faces x; inl-vs-y; inr-vs-y */
   N_ERA                                                /* eraser / gc            */
 };
 
 #define MAXN  200000
-#define PORTS 4
+#define PORTS 5   /* up to 5 ports: the List cons observer holds y, output, elem, head, tail */
 
 static int  k_[MAXN];                 /* kind of each node                       */
 static int  vidx_[MAXN];              /* N_VAR: de Bruijn index                  */
@@ -99,10 +104,12 @@ static void bridge(int a, int pa, int b, int pb) {
  * port 0; the eliminators face what they consume on port 0, so their result is
  * elsewhere: application/Id-family agents output on port 1, the Bool `if` on 3. */
 static int up_port(int kind) {
-  if (kind == N_IF) return 3;
+  if (kind == N_IF || kind == N_REC || kind == N_RSTEP || kind == N_LREC || kind == N_CASE) return 3;
   if (kind == N_APP || kind == N_TR || kind == N_ID || kind == N_UNPAIR ||
       kind == N_IDB || kind == N_EQT || kind == N_EQF ||
-      kind == N_IDN || kind == N_ISZ || kind == N_SCS) return 1;
+      kind == N_IDN || kind == N_ISZ || kind == N_SCS ||
+      kind == N_IDL || kind == N_NSZ || kind == N_CCS ||
+      kind == N_IDS || kind == N_INLS || kind == N_INRS) return 1;
   return 0;
 }
 
@@ -147,6 +154,33 @@ static int enc(const id_node *t) {
                     link_(q, 0, c, up_port(k_[c]));   /* IF principal meets the scrutinee */
                     link_(q, 1, th, up_port(k_[th]));
                     link_(q, 2, el, up_port(k_[el])); return q; }
+    case ID_REC:  { int r = mk(N_REC), z = enc(t->a), sp = enc(t->b), n = enc(t->c);
+                    link_(r, 0, n, up_port(k_[n]));   /* REC principal meets the scrutinee n */
+                    link_(r, 1, z, up_port(k_[z]));   /* base z        */
+                    link_(r, 2, sp, up_port(k_[sp])); /* step s        */
+                    return r; }
+    case ID_LIST: { int L = mk(TY_LIST), e = enc(t->a);
+                    link_(L, 1, e, up_port(k_[e]));   /* element type on port 1 (principal faces the ID) */
+                    return L; }
+    case ID_NIL:  return mk(VAL_NIL);
+    case ID_CONS: { int cc = mk(VAL_CONS), h = enc(t->a), tl = enc(t->b);
+                    link_(cc, 1, h, up_port(k_[h]));  /* head on port 1, tail on port 2 (principal = port 0) */
+                    link_(cc, 2, tl, up_port(k_[tl])); return cc; }
+    case ID_LISTREC: { int r = mk(N_LREC), z = enc(t->a), sp = enc(t->b), xs = enc(t->c);
+                    link_(r, 0, xs, up_port(k_[xs])); /* LREC principal meets the scrutinee list */
+                    link_(r, 1, z, up_port(k_[z]));   /* base z */
+                    link_(r, 2, sp, up_port(k_[sp])); /* step s */
+                    return r; }
+    case ID_SUM:  { int S = mk(TY_SUM), A = enc(t->a), B = enc(t->b);
+                    link_(S, 1, A, up_port(k_[A]));   /* A on port 1, B on port 2 (principal faces ID) */
+                    link_(S, 2, B, up_port(k_[B])); return S; }
+    case ID_INL:  { int v = mk(VAL_INL), x = enc(t->a); link_(v, 1, x, up_port(k_[x])); return v; }
+    case ID_INR:  { int v = mk(VAL_INR), x = enc(t->a); link_(v, 1, x, up_port(k_[x])); return v; }
+    case ID_CASE: { int r = mk(N_CASE), sc = enc(t->a), f = enc(t->b), g = enc(t->c);
+                    link_(r, 0, sc, up_port(k_[sc])); /* CASE principal meets the scrutinee */
+                    link_(r, 1, f, up_port(k_[f]));   /* left branch f  */
+                    link_(r, 2, g, up_port(k_[g]));   /* right branch g */
+                    return r; }
     case ID_TRANSP: {
                     if (t->a->kind != ID_LAM) return mk(N_ERA);   /* non-lambda family -> refuse */
                     { int body = enc(t->a->a), p = enc(t->b), x = enc(t->c), tr = mk(N_TR);
@@ -199,7 +233,10 @@ static int is_active_agent(int kind) {
   return kind == N_ID || kind == N_UNPAIR ||
          kind == N_IDB || kind == N_EQT || kind == N_EQF ||
          kind == N_IDN || kind == N_ISZ || kind == N_SCS ||
-         kind == N_APP || kind == N_IF || kind == N_TR || kind == N_SIGD;
+         kind == N_APP || kind == N_IF || kind == N_TR || kind == N_SIGD ||
+         kind == N_REC || kind == N_RSTEP || kind == N_LREC ||
+         kind == N_IDL || kind == N_NSZ || kind == N_CCS ||
+         kind == N_CASE || kind == N_IDS || kind == N_INLS || kind == N_INRS;
 }
 
 /* apply the rule for agent `a` meeting data `d` (both at principal port 0).
@@ -250,6 +287,28 @@ static void rule(int a, int d) {
         link_(Ux, 2, Ib, 2); link_(Uy, 2, Ib, 3);   /* b,d  -> Ib.x, Ib.y              */
         link_(Ia, 1, P, 1);  link_(Ib, 1, P, 2);    /* component Ids -> product slots  */
       }
+      return;
+    }
+    if (kd == TY_LIST) {
+      /* Id_(List E)(xs,ys): observe the cons spine of xs, then ys; each matching cons
+       * pairs an Id E on the heads with a recursive Id (List E) on the tails. The
+       * element type E (held on TY_LIST.port1) is carried so head Ids can be built. */
+      int IDL = mk(N_IDL);
+      splice(a, 2, IDL, 0);                 /* xs -> IDL principal                    */
+      splice(a, 1, IDL, 1);                 /* output                                 */
+      splice(a, 3, IDL, 2);                 /* ys (held)                              */
+      splice(d, 1, IDL, 3);                 /* element type E (held)                  */
+      return;
+    }
+    if (kd == TY_SUM) {
+      /* Id_(A+B)(x,y): observe the tag of x, then of y. Same tag -> Id of the matching
+       * component type; different tags -> Empty. A and B are held until the tags are known. */
+      int IDS = mk(N_IDS);
+      splice(a, 2, IDS, 0);                 /* x -> IDS principal                     */
+      splice(a, 1, IDS, 1);                 /* output                                 */
+      splice(a, 3, IDS, 2);                 /* y (held)                               */
+      splice(d, 1, IDS, 3);                 /* left type A (held)                     */
+      splice(d, 2, IDS, 4);                 /* right type B (held)                    */
       return;
     }
     if (kd == TY_BOOL) {
@@ -317,6 +376,201 @@ static void rule(int a, int d) {
     }
     /* unsupported former: leave inert -- read-back refuses */
     return;
+  }
+  if (ka == N_REC) {
+    /* Nat recursor.  a.1 = base z, a.2 = step s, a.3 = output; d = scrutinee.
+     *   rec z s 0        = z
+     *   rec z s (succ m) = s m (rec z s m)
+     * The recursive result is forced to a VALUE first (a forcer agent, N_RSTEP),
+     * so that when the step is finally applied via beta the arguments are values
+     * -- the only case the structural-copy beta is sound for. */
+    if (kd == VAL_ZERO) {                 /* rec z s 0 = z */
+      bridge(a, 1, a, 3);                 /* base -> output     */
+      era_at(a, 2);                       /* discard the step   */
+      return;
+    }
+    if (kd == VAL_SUCC) {                 /* rec z s (succ m) = s m (rec z s m) */
+      int m  = pt_[d * PORTS + 1], mp = pp_[d * PORTS + 1];   /* predecessor (a value) */
+      int sN = pt_[a * PORTS + 2], sNp = pp_[a * PORTS + 2];  /* step (a value/lambda) */
+      int mcopy1 = cs(m, mp, 0, -1);      /* m for the recursive call's scrutinee */
+      int mcopy2 = cs(m, mp, 0, -1);      /* m for the step's first argument       */
+      int scopy  = cs(sN, sNp, 0, -1);    /* a second copy of the step             */
+      int rec2 = mk(N_REC), rstep = mk(N_RSTEP);
+      /* rec2 = rec z s m : scrutinee = mcopy1, base = z (moved), step = scopy */
+      link_(rec2, 0, mcopy1, up_port(k_[mcopy1]));
+      splice(a, 1, rec2, 1);              /* move the base z into rec2.base        */
+      link_(rec2, 2, scopy, up_port(k_[scopy]));
+      /* rstep forces rec2's value result, then builds (s m result) */
+      link_(rstep, 0, rec2, 3);           /* rstep principal waits on rec2 output  */
+      link_(rstep, 1, mcopy2, up_port(k_[mcopy2]));
+      splice(a, 2, rstep, 2);             /* move the original step s into rstep   */
+      splice(a, 3, rstep, 3);             /* rstep output := REC's output consumer */
+      return;
+    }
+    return;                               /* neutral scrutinee -> stuck -> refuse  */
+  }
+  if (ka == N_RSTEP) {
+    /* the recursive result has reduced to the value d; build (s m d) = APP(APP(s,m),d).
+     * a.1 = m, a.2 = step s, a.3 = output; d = the value. */
+    int ap1 = mk(N_APP), ap2 = mk(N_APP);
+    splice(a, 2, ap1, 0);                 /* ap1 function := step s (its principal) */
+    splice(a, 1, ap1, 2);                 /* ap1 argument := m                      */
+    link_(ap2, 0, ap1, 1);                /* ap2 function := ap1's output           */
+    splice(a, 0, ap2, 2);                 /* ap2 argument := the value d            */
+    splice(a, 3, ap2, 1);                 /* ap2 output := RSTEP's output consumer  */
+    keep_d = 1;                           /* the value d survives (now ap2's arg)   */
+    return;
+  }
+  if (ka == N_IDL) {
+    /* xs known (d = nil / cons hx tx); a.1 = output, a.2 = ys (held), a.3 = elem (held) */
+    if (kd == VAL_NIL) {                    /* xs = [] : Id is Unit iff ys = []        */
+      int z = mk(N_NSZ);
+      splice(a, 2, z, 0);                   /* ys -> NSZ principal                     */
+      splice(a, 1, z, 1);                   /* output                                  */
+      era_at(a, 3);                         /* element type not needed                 */
+      return;
+    }
+    if (kd == VAL_CONS) {                   /* xs = hx:tx : compare ys, recurse on tails */
+      int s = mk(N_CCS);
+      splice(a, 2, s, 0);                   /* ys -> CCS principal                     */
+      splice(a, 1, s, 1);                   /* output                                  */
+      splice(a, 3, s, 2);                   /* element type E (held)                   */
+      splice(d, 1, s, 3);                   /* hx (head of xs) held                    */
+      splice(d, 2, s, 4);                   /* tx (tail of xs) held                    */
+      return;
+    }
+    return;                                 /* neutral list scrutinee -> stuck -> refuse */
+  }
+  if (ka == N_NSZ) {       /* xs was [] : Id (List E) is Unit iff ys is [], else Empty */
+    if (kd == VAL_NIL)  { int u = mk(TY_UNIT);  splice(a, 1, u, 0); return; }
+    if (kd == VAL_CONS) { int u = mk(TY_EMPTY); splice(a, 1, u, 0); era_at(d, 1); era_at(d, 2); return; }
+    return;
+  }
+  if (ka == N_CCS) {       /* xs was hx:tx : ys=[] -> Empty ; ys=hy:ty -> Id E hx hy * Id (List E) tx ty */
+    if (kd == VAL_NIL) {                    /* lengths differ */
+      int u = mk(TY_EMPTY);
+      splice(a, 1, u, 0);
+      era_at(a, 2); era_at(a, 3); era_at(a, 4);   /* discard E, hx, tx */
+      return;
+    }
+    if (kd == VAL_CONS) {
+      int elem = pt_[a * PORTS + 2], elemp = pp_[a * PORTS + 2];
+      int ecopy = cs(elem, elemp, 0, -1);   /* a 2nd copy of E for the tail's List type */
+      int P  = mk(TY_PROD);
+      int IdH = mk(N_ID), IdT = mk(N_ID), TYL = mk(TY_LIST);
+      splice(a, 1, P, 0);                   /* result product -> output                */
+      /* head: Id E hx hy */
+      splice(a, 2, IdH, 0);                 /* E -> IdH principal (faces the type)     */
+      splice(a, 3, IdH, 2);                 /* hx -> IdH.x                             */
+      splice(d, 1, IdH, 3);                 /* hy -> IdH.y                             */
+      link_(IdH, 1, P, 1);                  /* head Id -> product slot 1               */
+      /* tail: Id (List E) tx ty */
+      link_(TYL, 1, ecopy, up_port(k_[ecopy]));
+      link_(IdT, 0, TYL, 0);                /* IdT principal faces TY_LIST             */
+      splice(a, 4, IdT, 2);                 /* tx -> IdT.x                             */
+      splice(d, 2, IdT, 3);                 /* ty -> IdT.y                             */
+      link_(IdT, 1, P, 2);                  /* tail Id -> product slot 2               */
+      return;
+    }
+    return;
+  }
+  if (ka == N_LREC) {
+    /* List recursor (foldr).  a.1 = base z, a.2 = step s, a.3 = output; d = scrutinee list.
+     *   foldr z s nil        = z
+     *   foldr z s (cons h t) = s h (foldr z s t)     -- forced call-by-value (N_RSTEP), as for Nat. */
+    if (kd == VAL_NIL) {                     /* foldr z s [] = z */
+      bridge(a, 1, a, 3);                    /* base -> output    */
+      era_at(a, 2);                          /* discard the step  */
+      return;
+    }
+    if (kd == VAL_CONS) {                    /* foldr z s (h:t) = s h (foldr z s t) */
+      int sN = pt_[a * PORTS + 2], sNp = pp_[a * PORTS + 2];   /* step */
+      int scopy = cs(sN, sNp, 0, -1);        /* copy of the step for the recursive call */
+      int rec2 = mk(N_LREC), rstep = mk(N_RSTEP);
+      splice(d, 2, rec2, 0);                 /* tail t -> rec2 scrutinee (principal)   */
+      splice(a, 1, rec2, 1);                 /* base z (moved)                         */
+      link_(rec2, 2, scopy, up_port(k_[scopy]));
+      link_(rstep, 0, rec2, 3);              /* rstep waits on rec2 output             */
+      splice(d, 1, rstep, 1);                /* head h -> the step's first argument    */
+      splice(a, 2, rstep, 2);                /* original step s (moved)                */
+      splice(a, 3, rstep, 3);                /* rstep output := LREC's output consumer */
+      return;
+    }
+    return;                                  /* neutral scrutinee -> stuck -> refuse   */
+  }
+  if (ka == N_IDS) {
+    /* x known (d = inl xa / inr xb); a.1 = output, a.2 = y, a.3 = A, a.4 = B */
+    if (kd == VAL_INL) {                    /* x = inl xa : compare y on the left type A */
+      int s = mk(N_INLS);
+      splice(a, 2, s, 0);                   /* y -> INLS principal                    */
+      splice(a, 1, s, 1);                   /* output                                 */
+      splice(a, 3, s, 2);                   /* A (held)                               */
+      splice(d, 1, s, 3);                   /* xa (held)                              */
+      era_at(a, 4);                         /* B not needed                           */
+      return;
+    }
+    if (kd == VAL_INR) {                    /* x = inr xb : compare y on the right type B */
+      int s = mk(N_INRS);
+      splice(a, 2, s, 0);                   /* y -> INRS principal                    */
+      splice(a, 1, s, 1);                   /* output                                 */
+      splice(a, 4, s, 2);                   /* B (held)                               */
+      splice(d, 1, s, 3);                   /* xb (held)                              */
+      era_at(a, 3);                         /* A not needed                           */
+      return;
+    }
+    return;                                 /* neutral sum -> stuck -> refuse         */
+  }
+  if (ka == N_INLS) {       /* x was inl xa : y=inl ya -> Id A xa ya ; y=inr -> Empty */
+    if (kd == VAL_INL) {
+      int Id = mk(N_ID);
+      splice(a, 2, Id, 0);                  /* A -> Id principal (faces the type)     */
+      splice(a, 3, Id, 2);                  /* xa -> Id.x                             */
+      splice(d, 1, Id, 3);                  /* ya -> Id.y                             */
+      splice(a, 1, Id, 1);                  /* output := Id A xa ya                   */
+      return;
+    }
+    if (kd == VAL_INR) {                    /* different tag */
+      int u = mk(TY_EMPTY);
+      splice(a, 1, u, 0);
+      era_at(a, 2); era_at(a, 3); era_at(d, 1);   /* discard A, xa, y's value */
+      return;
+    }
+    return;
+  }
+  if (ka == N_INRS) {       /* x was inr xb : y=inr yb -> Id B xb yb ; y=inl -> Empty */
+    if (kd == VAL_INR) {
+      int Id = mk(N_ID);
+      splice(a, 2, Id, 0); splice(a, 3, Id, 2); splice(d, 1, Id, 3); splice(a, 1, Id, 1);
+      return;
+    }
+    if (kd == VAL_INL) {
+      int u = mk(TY_EMPTY);
+      splice(a, 1, u, 0);
+      era_at(a, 2); era_at(a, 3); era_at(d, 1);
+      return;
+    }
+    return;
+  }
+  if (ka == N_CASE) {
+    /* sum eliminator. a.1 = f, a.2 = g, a.3 = output; d = scrutinee.
+     *   case (inl x) f g = f x      case (inr y) f g = g y   (the application reduces by the usual beta). */
+    if (kd == VAL_INL) {
+      int ap = mk(N_APP);
+      splice(a, 1, ap, 0);                  /* f -> APP principal (meets the function) */
+      splice(d, 1, ap, 2);                  /* x -> APP argument                       */
+      splice(a, 3, ap, 1);                  /* APP output := CASE's output consumer    */
+      era_at(a, 2);                         /* discard g                               */
+      return;
+    }
+    if (kd == VAL_INR) {
+      int ap = mk(N_APP);
+      splice(a, 2, ap, 0);                  /* g -> APP principal                      */
+      splice(d, 1, ap, 2);                  /* y -> APP argument                       */
+      splice(a, 3, ap, 1);                  /* APP output                              */
+      era_at(a, 1);                         /* discard f                               */
+      return;
+    }
+    return;                                 /* neutral scrutinee -> stuck -> refuse    */
   }
   if (ka == N_APP) {
     /* beta: (lam. body) arg.  Substitute var0 := arg into the body (a fresh copy),
@@ -499,6 +753,21 @@ static void reduce(void) {
       if (pt_[a * PORTS + 0] < 0 || pp_[a * PORTS + 0] != 0) continue;
       b = pt_[a * PORTS + 0];
       if (b < 0 || pp_[b * PORTS + 0] != 0) continue;
+      /* A bound (or neutral) variable is not a value.  A VALUE-eliminator -- one that
+       * branches on a Bool/Nat value (if, the Nat recursor, its step-forcer) -- whose
+       * principal meets a variable must WAIT until beta substitutes a real value there:
+       * firing it now (inside an unapplied step/lambda body, e.g. the inner `if` of
+       *   even = rec true (\n.\r. if r false true) n )
+       * would wrongly consume the eliminator before the step is applied.  A genuinely
+       * free variable simply leaves it stuck -> read-back refuses.  We do NOT skip here
+       * for Id/transport/Sigma-decision agents: those have proper neutral-variable rules
+       * (Id B z z -> neutral, transp^(\X.X) over a neutral, etc.) that must still fire. */
+      if (((k_[a] == N_IF || k_[a] == N_REC || k_[a] == N_RSTEP || k_[a] == N_LREC ||
+            k_[a] == N_IDL || k_[a] == N_NSZ || k_[a] == N_CCS ||
+            k_[a] == N_CASE || k_[a] == N_IDS || k_[a] == N_INLS || k_[a] == N_INRS) && k_[b] == N_VAR) ||
+          ((k_[b] == N_IF || k_[b] == N_REC || k_[b] == N_RSTEP || k_[b] == N_LREC ||
+            k_[b] == N_IDL || k_[b] == N_NSZ || k_[b] == N_CCS ||
+            k_[b] == N_CASE || k_[b] == N_IDS || k_[b] == N_INLS || k_[b] == N_INRS) && k_[a] == N_VAR)) continue;
       /* a,b are an active pair; orient agent vs data */
       if (is_active_agent(k_[a]) && !is_active_agent(k_[b])) {
         rule(a, b);
@@ -533,11 +802,21 @@ static id_node *rb(int a, int p) {
       case TY_U:     r = id_base(ID_U);     break;
       case TY_BOOL:  r = id_base(ID_BOOL);  break;
       case TY_NAT:   r = id_base(ID_NAT);   break;
+      case TY_LIST:  r = id_list(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case TY_SUM:   { id_node *AA = rb(pt_[a*PORTS+1], pp_[a*PORTS+1]);
+                       id_node *BB = rb(pt_[a*PORTS+2], pp_[a*PORTS+2]);
+                       r = id_sum(AA, BB); break; }
       case VAL_STAR: r = id_base(ID_STAR);  break;
       case VAL_TRUE: r = id_base(ID_TRUE);  break;
       case VAL_FALSE:r = id_base(ID_FALSE); break;
       case VAL_ZERO: r = id_base(ID_ZERO);  break;
       case VAL_SUCC: r = id_succ(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case VAL_NIL:  r = id_nil(); break;
+      case VAL_CONS: { id_node *hh = rb(pt_[a*PORTS+1], pp_[a*PORTS+1]);
+                       id_node *tt = rb(pt_[a*PORTS+2], pp_[a*PORTS+2]);
+                       r = id_cons(hh, tt); break; }
+      case VAL_INL:  r = id_inl(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case VAL_INR:  r = id_inr(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
       case N_VAR:    r = id_var(vidx_[a]); break;
       case TY_PROD:  r = id_prod(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                  rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
@@ -577,7 +856,7 @@ id_node *idnet_id_nf(const id_node *t, long *steps) {
   int R, root;
   id_node *res;
   if (!t) return (id_node *)0;
-  if (t->kind != ID_ID && t->kind != ID_TRANSP) return (id_node *)0;
+  if (t->kind != ID_ID && t->kind != ID_TRANSP && t->kind != ID_REC && t->kind != ID_LISTREC && t->kind != ID_CASE) return (id_node *)0;
   n_ = 0; inter_ = 0; over_ = 0; rb_bad = 0; rb_depth = 0; cs_guard = 0;
   R = mk(N_ROOT);
   root = enc(t);
