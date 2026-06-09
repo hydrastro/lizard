@@ -42,6 +42,8 @@ enum {
   VAL_STAR, VAL_PAIR,                                  /* unit / product values */
   VAL_TRUE, VAL_FALSE, VAL_ZERO, VAL_SUCC,             /* bool / nat values     */
   N_LAM, N_VAR,                                        /* function value, bound variable */
+  N_APP, N_IF,                                         /* application, Bool eliminator   */
+  N_REFL, N_UA, N_TR,                                  /* refl path, ua path, transport  */
   N_ID, N_EQUIV, N_UNPAIR,                             /* Id / result / projection */
   N_IDB, N_EQT, N_EQF,                                 /* Bool observation       */
   N_IDN, N_ISZ, N_SCS,                                 /* Nat observation (rec)  */
@@ -92,6 +94,17 @@ static void bridge(int a, int pa, int b, int pb) {
   else if (tb >= 0) { pt_[tb * PORTS + qb] = -1; pp_[tb * PORTS + qb] = -1; }
 }
 
+/* the "output"/up port of a node -- where its consumer connects. Most nodes use
+ * port 0; the eliminators face what they consume on port 0, so their result is
+ * elsewhere: application/Id-family agents output on port 1, the Bool `if` on 3. */
+static int up_port(int kind) {
+  if (kind == N_IF) return 3;
+  if (kind == N_APP || kind == N_TR || kind == N_ID || kind == N_UNPAIR ||
+      kind == N_IDB || kind == N_EQT || kind == N_EQF ||
+      kind == N_IDN || kind == N_ISZ || kind == N_SCS) return 1;
+  return 0;
+}
+
 /* ---- encode an id_node (a type or a value) into a net; return its root node.
  * The node's principal (port 0) is left dangling for the caller to wire. ---- */
 static int enc(const id_node *t) {
@@ -116,18 +129,74 @@ static int enc(const id_node *t) {
                     link_(a, 1, x, 0); link_(a, 2, y, 0); return a; }
     case ID_PI:   { int a = mk(TY_PI), x = enc(t->a), y = enc(t->b);
                     link_(a, 1, x, 0); link_(a, 2, y, 0); return a; }
-    case ID_LAM:  { int a = mk(N_LAM), b = enc(t->a); link_(a, 1, b, 0); return a; }
+    case ID_LAM:  { int a = mk(N_LAM), b = enc(t->a); link_(a, 1, b, up_port(k_[b])); return a; }
     case ID_VAR:  { int a = mk(N_VAR); vidx_[a] = t->idx; return a; }
+    case ID_ID:   { int I = mk(N_ID), A = enc(t->a), x = enc(t->b), y = enc(t->c);
+                    link_(I, 0, A, up_port(k_[A]));   /* ID principal meets the type former */
+                    link_(I, 2, x, up_port(k_[x]));
+                    link_(I, 3, y, up_port(k_[y])); return I; }
+    case ID_REFL: return mk(N_REFL);
+    case ID_UA:   { int u = mk(N_UA), f = enc(t->a); link_(u, 1, f, up_port(k_[f])); return u; }
+    case ID_APP:  { int ap = mk(N_APP), f = enc(t->a), x = enc(t->b);
+                    link_(ap, 0, f, up_port(k_[f]));  /* APP principal meets the function */
+                    link_(ap, 2, x, up_port(k_[x])); return ap; }
+    case ID_IF:   { int q = mk(N_IF), c = enc(t->a), th = enc(t->b), el = enc(t->c);
+                    link_(q, 0, c, up_port(k_[c]));   /* IF principal meets the scrutinee */
+                    link_(q, 1, th, up_port(k_[th]));
+                    link_(q, 2, el, up_port(k_[el])); return q; }
+    case ID_TRANSP: {
+                    if (t->a->kind != ID_LAM) return mk(N_ERA);   /* non-lambda family -> refuse */
+                    { int body = enc(t->a->a), p = enc(t->b), x = enc(t->c), tr = mk(N_TR);
+                      link_(tr, 0, body, up_port(k_[body]));  /* TR faces the family BODY */
+                      link_(tr, 2, p, up_port(k_[p]));        /* the path                 */
+                      link_(tr, 3, x, up_port(k_[x]));        /* the value                */
+                      return tr; } }
     default:       return mk(N_ERA);   /* unsupported leaf: harmless stub */
   }
 }
 
 /* ---- the interaction rules ---- */
+
+/* Copy the tree rooted at `node` (which connects to its parent via `entry`); every
+ * OTHER port leads to a child, so we recurse on those. If arg>=0 we also perform a
+ * de Bruijn substitution var(depth) := a fresh copy of `arg` (used for beta). The
+ * substituted argument is assumed closed (true for the values we apply), so no
+ * shifting of `arg` is needed. Trees only (values / types / paths / closed bodies). */
+static int cs_guard;
+static int cs(int node, int entry, int depth, int arg) {
+  int k, nn, p;
+  if (node < 0) return mk(N_ERA);
+  if (++cs_guard > 300000) { cs_guard--; over_ = 1; return mk(N_ERA); }
+  k = k_[node];
+  if (k == N_VAR) {
+    int vi = vidx_[node], r;
+    cs_guard--;
+    if (arg >= 0 && vi == depth) return cs(arg, up_port(k_[arg]), 0, -1);  /* substitute */
+    r = mk(N_VAR); vidx_[r] = (arg >= 0 && vi > depth) ? vi - 1 : vi;       /* shift past removed binder */
+    return r;
+  }
+  nn = mk(k); vidx_[nn] = vidx_[node];
+  for (p = 0; p < PORTS; p++) {
+    int c, cp, nd, nc;
+    if (p == entry) continue;
+    c = pt_[node * PORTS + p];
+    if (c < 0) continue;
+    cp = pp_[node * PORTS + p];
+    nd = depth;
+    if ((k == N_LAM && p == 1) || (k == N_PI && p == 2)) nd = depth + 1;   /* under one more binder */
+    nc = cs(c, cp, nd, arg);
+    link_(nn, p, nc, cp);
+  }
+  cs_guard--;
+  return nn;
+}
+
 /* an "active pair" is two nodes whose principals (port 0) are wired together */
 static int is_active_agent(int kind) {
   return kind == N_ID || kind == N_UNPAIR ||
          kind == N_IDB || kind == N_EQT || kind == N_EQF ||
-         kind == N_IDN || kind == N_ISZ || kind == N_SCS;
+         kind == N_IDN || kind == N_ISZ || kind == N_SCS ||
+         kind == N_APP || kind == N_IF || kind == N_TR;
 }
 
 /* apply the rule for agent `a` meeting data `d` (both at principal port 0).
@@ -219,6 +288,66 @@ static void rule(int a, int d) {
     }
     /* unsupported former (dependent Sigma, ...): leave inert -- read-back refuses */
     return;
+  }
+  if (ka == N_APP) {
+    /* beta: (lam. body) arg.  Substitute var0 := arg into the body (a fresh copy),
+     * then wire the reduced body to the application's output. */
+    if (kd == N_LAM) {
+      int bn = pt_[d * PORTS + 1], bp = pp_[d * PORTS + 1];   /* lambda body root + up port */
+      int arg = pt_[a * PORTS + 2];                            /* the argument               */
+      int r = cs(bn, bp, 0, arg);
+      splice(a, 1, r, bp);                                     /* output := substituted body */
+      return;                                                  /* erase APP(a) and LAM(d)    */
+    }
+    return;   /* application of a non-lambda (neutral) -> stuck -> refuse */
+  }
+  if (ka == N_IF) {
+    /* Bool elimination: if true -> then, if false -> else */
+    if (kd == VAL_TRUE)  { bridge(a, 1, a, 3); era_at(a, 2); return; }
+    if (kd == VAL_FALSE) { bridge(a, 2, a, 3); era_at(a, 1); return; }
+    return;   /* scrutinee neutral -> stuck -> refuse */
+  }
+  if (ka == N_TR) {
+    /* transport^(lam i. <body>) p x, the agent facing the family BODY at port 0,
+     * path on port 2, value on port 3.  Recurse on the body's structure, dual to Id. */
+    int path = pt_[a * PORTS + 2];
+    int pk   = (path >= 0) ? k_[path] : -1;
+    int v    = pt_[a * PORTS + 3], vp = pp_[a * PORTS + 3];
+    if (pk == N_REFL) {                       /* transport along refl is the identity */
+      splice(a, 1, v, vp); era_at(a, 2); return;
+    }
+    if (kd == TY_BOOL || kd == TY_NAT || kd == TY_UNIT || kd == TY_EMPTY || kd == TY_U) {
+      splice(a, 1, v, vp); era_at(a, 2); return;   /* closed (constant) family -> identity */
+    }
+    if (kd == N_VAR) {
+      if (vidx_[d] != 0) { splice(a, 1, v, vp); era_at(a, 2); return; }   /* var_k>0: constant */
+      if (pk == N_UA) {                       /* identity family + ua f : transport = f x */
+        int f = pt_[path * PORTS + 1], fp = pp_[path * PORTS + 1];
+        int ap = mk(N_APP);
+        link_(ap, 0, f, fp);                  /* APP faces the forward map f */
+        link_(ap, 2, v, vp);                  /* argument = x                */
+        splice(a, 1, ap, 1);                  /* output := f x (then beta fires) */
+        k_[path] = N_ERA; pt_[path * PORTS] = -1;   /* consume the ua node */
+        return;
+      }
+      return;   /* identity family + non-ua/non-refl path -> neutral -> refuse */
+    }
+    if (kd == TY_PROD) {                       /* product family: componentwise (HoTT 2.6.4) */
+      if (v < 0 || k_[v] != VAL_PAIR) return;  /* value not a pair -> refuse */
+      {
+        int L = pt_[d * PORTS + 1], Lp = pp_[d * PORTS + 1];
+        int R = pt_[d * PORTS + 2], Rp = pp_[d * PORTS + 2];
+        int u = pt_[v * PORTS + 1], uq = pp_[v * PORTS + 1];
+        int w = pt_[v * PORTS + 2], wq = pp_[v * PORTS + 2];
+        int pcopy = cs(path, pp_[a * PORTS + 2], 0, -1);   /* duplicate the path for R */
+        int trL = mk(N_TR), trR = mk(N_TR), P = mk(VAL_PAIR);
+        splice(a, 1, P, 0);                    /* output := the pair */
+        link_(trL, 0, L, Lp); link_(trL, 2, path, pp_[a * PORTS + 2]); link_(trL, 3, u, uq); link_(trL, 1, P, 1);
+        link_(trR, 0, R, Rp); link_(trR, 2, pcopy, up_port(k_[pcopy]));  link_(trR, 3, w, wq); link_(trR, 1, P, 2);
+        return;
+      }
+    }
+    return;   /* function family (non-refl) / other -> refuse */
   }
   if (ka == N_IDB) {
     /* x is known (d = TRUE/FALSE); now observe y with the matching tester */
@@ -371,6 +500,13 @@ static id_node *rb(int a, int p) {
                      r = id_pi(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       case N_LAM:    r = id_lam(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case N_REFL:   r = id_refl(id_base(ID_STAR)); break;     /* refl carrier irrelevant here */
+      case N_UA:     r = id_ua(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case N_IF:     r = id_if(rb(pt_[a*PORTS+0], pp_[a*PORTS+0]),    /* neutral if: cond/then/else */
+                               rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
+                               rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
+      case N_APP:    r = id_app(rb(pt_[a*PORTS+0], pp_[a*PORTS+0]),   /* neutral application */
+                                rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       case N_EQUIV:  r = id_equiv(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                   rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       case N_NID:    r = id_idty(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),    /* neutral Id A x y */
@@ -384,21 +520,19 @@ static id_node *rb(int a, int p) {
   }
 }
 
-/* Public: compute Id A x y on the interaction net. `t` must be an ID_ID node.
- * Returns the read-back result type, or NULL if the net could not be linearised
- * (an unsupported former was reached). *steps (optional) = interaction count. */
+/* Public: reduce an id_node on the interaction net (Id A x y, or transport^P p x).
+ * Returns the read-back result, or NULL if the net could not be linearised (a stuck
+ * agent was reached -- an unsupported case, refused rather than mis-computed).
+ * *steps (optional) = interaction count. */
 id_node *idnet_id_nf(const id_node *t, long *steps) {
-  int R, I, A, x, y;
+  int R, root;
   id_node *res;
-  if (!t || t->kind != ID_ID) return (id_node *)0;
-  n_ = 0; inter_ = 0; over_ = 0; rb_bad = 0; rb_depth = 0;
+  if (!t) return (id_node *)0;
+  if (t->kind != ID_ID && t->kind != ID_TRANSP) return (id_node *)0;
+  n_ = 0; inter_ = 0; over_ = 0; rb_bad = 0; rb_depth = 0; cs_guard = 0;
   R = mk(N_ROOT);
-  I = mk(N_ID);
-  A = enc(t->a); x = enc(t->b); y = enc(t->c);
-  link_(I, 0, A, 0);     /* ID principal meets the type former */
-  link_(I, 1, R, 0);     /* ID output -> root                  */
-  link_(I, 2, x, 0);
-  link_(I, 3, y, 0);
+  root = enc(t);
+  link_(R, 0, root, up_port(k_[root]));
   reduce();
   if (steps) *steps = inter_;
   if (over_) return (id_node *)0;

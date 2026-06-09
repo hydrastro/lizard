@@ -146,12 +146,13 @@ int main(void) {
   ok_case("Id (Pi Unit. Bool)(l.t)(l.f)",
           id_idty(id_pi(id_base(ID_UNIT), id_base(ID_BOOL)), id_lam(id_base(ID_TRUE)), id_lam(id_base(ID_FALSE))));
 
-  printf("[6b] SOUND REFUSAL -- a function body that needs real beta is refused, not guessed\n");
-  /* body applies something (lam x. (lam y.y) x): needs beta-reduction, not implemented -> refuse */
-  refuse_case("Id (Nat->Nat)(l.(l.#0)#0)..",
-              id_idty(id_arr(id_base(ID_NAT), id_base(ID_NAT)),
-                      id_lam(id_app(id_lam(id_var(0)), id_var(0))),
-                      id_lam(id_app(id_lam(id_var(0)), id_var(0)))));
+  printf("[6b] BETA IN BODIES -- a function body that applies something now reduces on the net\n");
+  /* body applies something (lam x. (lam y.y) x = identity after beta): the net now
+   * has application + beta, so this reduces rather than being refused */
+  ok_case("Id (Nat->Nat)(l.(l.#0)#0)..",
+          id_idty(id_arr(id_base(ID_NAT), id_base(ID_NAT)),
+                  id_lam(id_app(id_lam(id_var(0)), id_var(0))),
+                  id_lam(id_app(id_lam(id_var(0)), id_var(0)))));
 
   printf("[7] DIFFERENTIAL FUZZ -- random types & values: net result == spec, every time\n");
   {
@@ -196,6 +197,71 @@ int main(void) {
     else printf("    ok   %d random Id (A->B) f g (funext): net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id reduces by interaction on Unit/Bool/Nat/Prod/U AND functions (funext, incl. dependent Pi), matching the spec (300k fuzz); bodies needing real beta are refused, never mis-typed\n", fails);
+  printf("[9] TRANSPORT -- transport^P p x on the net, incl. COMPUTATIONAL UNIVALENCE\n");
+  {
+    id_node *NOT = id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)));
+    /* transport along refl is the identity, for any family */
+    ok_case("transp^(lX.X) refl true",
+            id_transp(id_lam(id_var(0)), id_refl(id_base(ID_STAR)), id_base(ID_TRUE)));
+    /* constant family -> identity (even along a non-trivial path) */
+    ok_case("transp^(l_.Bool) (ua not) true",
+            id_transp(id_lam(id_base(ID_BOOL)), id_ua(id_copy(NOT)), id_base(ID_TRUE)));
+    /* THE univalence computation: transport^(lam X.X)(ua not) b = not b, by graph rewriting */
+    ok_case("transp^(lX.X) (ua not) true  = false",
+            id_transp(id_lam(id_var(0)), id_ua(id_copy(NOT)), id_base(ID_TRUE)));
+    ok_case("transp^(lX.X) (ua not) false = true",
+            id_transp(id_lam(id_var(0)), id_ua(id_copy(NOT)), id_base(ID_FALSE)));
+    /* product of identity families + ua: componentwise univalence -> (not t, not f) */
+    ok_case("transp^(lX.X*X) (ua not) (t,f)",
+            id_transp(id_lam(id_prod(id_var(0), id_var(0))), id_ua(id_copy(NOT)),
+                      id_pair(id_base(ID_TRUE), id_base(ID_FALSE))));
+    /* product, constant components -> identity */
+    ok_case("transp^(l_.Bool*Nat) refl (t,2)",
+            id_transp(id_lam(id_prod(id_base(ID_BOOL), id_base(ID_NAT))),
+                      id_refl(id_base(ID_STAR)), id_pair(id_base(ID_TRUE), id_nat_lit(2))));
+    id_free(NOT);
+
+    printf("[9b] SOUND REFUSAL -- transport over a function family (non-refl) needs the inverse path -> refuse\n");
+    /* transport^(lam X. X->X) (ua not) (id) : function-family transport not implemented -> refuse */
+    refuse_case("transp^(lX.X->X) (ua not) id",
+                id_transp(id_lam(id_arr(id_var(0), id_var(0))),
+                          id_ua(id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)))),
+                          id_lam(id_var(0))));
+  }
+
+  printf("[10] TRANSPORT FUZZ -- random constant/product families + refl, and identity-family univalence\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *P, *p, *x, *term, *spec, *net;
+      unsigned pick = rnd() % 3u;
+      if (pick == 0) {                          /* constant family, random path-irrelevant value */
+        id_node *B = rand_type(2);
+        P = id_lam(id_copy(B)); p = id_refl(id_base(ID_STAR)); x = rand_val(B, 2);
+        id_free(B);
+      } else if (pick == 1) {                   /* product family with constant components, refl */
+        id_node *L = rand_type(1), *R = rand_type(1);
+        P = id_lam(id_prod(id_copy(L), id_copy(R)));
+        p = id_refl(id_base(ID_STAR));
+        x = id_pair(rand_val(L, 1), rand_val(R, 1));
+        id_free(L); id_free(R);
+      } else {                                  /* identity family + ua not : univalence on a bool */
+        id_node *b = (rnd() & 1u) ? id_base(ID_TRUE) : id_base(ID_FALSE);
+        P = id_lam(id_var(0));
+        p = id_ua(id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE))));
+        x = b;
+      }
+      term = id_transp(P, p, x);
+      spec = id_nf(id_copy(term));
+      net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random transports (constant/product/univalence): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport reduce by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence (transport along ua f = f), matching the spec over 360k fuzz; unsupported cases refused, never mis-computed\n", fails);
   return fails ? 1 : 0;
 }

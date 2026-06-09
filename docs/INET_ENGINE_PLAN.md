@@ -385,6 +385,24 @@ guessed, and the codomain must be closed (open codomains would need net-level de
 Bruijn shifting, not yet implemented). Transport-as-agents and the dependent Σ
 cases are the pieces still living only in the §5 spec, not yet on the net.
 
+**Transport has now landed on the net as well**, dual to Id. A `TR` agent faces the
+family's *body* (binder stripped) and recurses on its structure: a closed body
+(`Bool`, `Nat`, `U`, or a variable other than the bound one) is a *constant family*
+→ identity; a product body is componentwise (HoTT 2.6.4, the path duplicated for
+the second component); the bound variable itself is the *identity family* `λX.X`,
+where the path decides the result. Transport along `refl` is the identity for any
+family. The genuinely univalent case computes by rewriting:
+`transport^(λX.X)(ua f) x = f x` — e.g. `transport^(λX.X)(ua not) true = false`,
+and combined with the product rule `transport^(λX.X×X)(ua not)(true,false) =
+(false,true)`. Making the net actually *apply* `f` required a small evaluator on
+the net too: an `APP` agent with β realised by a generic structural net-copy
+(`cs`), and a Bool eliminator `if`. Validated against the §5 spec over 6 worked
+cases and a **60,000-case transport fuzz** (constant / product / univalence): zero
+wrong, zero refused. The remaining transport case — over a *function* family along
+a non-`refl` path, which needs the inverse path (HoTT 2.9) — is refused, not
+guessed. A pleasant side effect of having β: a funext body that *applies* something
+(e.g. `λx.(λy.y)x`) now reduces on the net instead of being refused.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -827,7 +845,9 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)); 36 checks.
   - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule;
                        inductive + universe fragment AND functions (funext, incl. dependent Pi) via the de Bruijn "body is f z" trick,
-                       neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz; beta-needing bodies refused.
+                       neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz.
+                       Transport too (transport^P p x): TR agent recurses on the family body -- constant->identity, product->componentwise,
+                       identity family + ua f -> f x (computational univalence), via a minimal on-net evaluator (application/beta + if); +60k transport fuzz.
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which

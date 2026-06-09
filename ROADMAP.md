@@ -64,9 +64,24 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     emits a neutral Id node), and read-back became binder-aware (Π/var/neutral-Id).
     Covers constant, identity, structural (e.g. λ.S#0), into-product, and dependent
     Π codomains. Validated against the spec: 7 worked cases + a 100k funext fuzz
-    (random A→B with constant & identity bodies), 0 wrong, 0 refused. Sound limits:
-    a body that needs real β (an application) is refused, and the codomain must be
-    closed (open codomains would need net-level shifting, not yet done).
+    (random A→B with constant & identity bodies), 0 wrong, 0 refused. (A body that
+    applies something now reduces too — see β below — so the only sound limit left
+    here is that the codomain must be closed; open codomains would need net-level
+    shifting, not yet done.)
+✅  TRANSPORT as interaction-net AGENTS (src/idnet.c): transport^(λi. T i) p x now
+    reduces ON THE NET, dual to Id — a TR agent faces the family's BODY and recurses
+    on its structure: a closed (constant) body → identity; a product body →
+    componentwise (HoTT 2.6.4, duplicating the path); the path variable itself
+    (identity family λX.X) → consult the path. Transport along refl is the identity
+    for any family. The genuinely univalent case works by graph rewriting:
+    transport^(λX.X)(ua f) x = f x, e.g. transport^(λX.X)(ua not) true = false and
+    transport^(λX.X×X)(ua not)(true,false) = (false,true). This needed a minimal
+    EVALUATOR on the net too — application + β (substitution via a generic net copy)
+    and Bool elimination (`if`) — so the net actually computes `f x`. Validated
+    against the spec: 6 worked cases + a 60k transport fuzz (constant/product/
+    univalence), 0 wrong, 0 refused. Sound limit: transport over a FUNCTION family
+    along a non-refl path needs the inverse path (transport of functions, HoTT 2.9)
+    and is refused, not guessed.
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
 🟡  Dependent families (semantics, id_observe.c): Id over a dependent Π is now
     dependent funext — Id (Πx:A. B x) f g = Πz:A. Id (B z)(f z)(g z), the codomain
@@ -166,10 +181,11 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
 2. ⬜  **Multithreaded CPU reducer** — atomic frontier reduction on `ic.c`; the
    correctness groundwork (confluence, locality) is done. The concurrency rehearsal
    for the GPU.
-3. 🟡  **Finish Id/transport in the net** — Id now runs as agents on the inductive
-   + universe fragment AND the function case (funext, incl. dependent Π) in
-   src/idnet.c. Remaining: transport as net agents, the dependent Σ cases, and the
-   cross-check against the cubical layer.
+3. 🟡  **Finish Id/transport in the net** — Id, the function case (funext, incl.
+   dependent Π), AND transport (incl. computational univalence, via a minimal
+   on-net evaluator: application/β + `if`) now all run as agents in src/idnet.c.
+   Remaining: transport over a function family (the inverse path), the dependent Σ
+   cases, and the cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)
