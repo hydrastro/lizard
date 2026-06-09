@@ -24,6 +24,17 @@ static id_node *rand_type(int d) {
     default: return id_prod(rand_type(d - 1), rand_type(d - 1));
   }
 }
+/* an inductive type only (no U), so Id_A reduces to Unit/Empty (possibly a product
+ * of those) -- the fragment where the Sigma-Id first-component path is decidable */
+static id_node *rand_inductive(int d) {
+  int c = (d <= 0) ? (int)(rnd() % 3) : (int)(rnd() % 4);
+  switch (c) {
+    case 0: return id_base(ID_UNIT);
+    case 1: return id_base(ID_BOOL);
+    case 2: return id_base(ID_NAT);
+    default: return id_prod(rand_inductive(d - 1), rand_inductive(d - 1));
+  }
+}
 static id_node *rand_val(const id_node *ty, int d) {
   switch (ty->kind) {
     case ID_UNIT: return id_base(ID_STAR);
@@ -262,6 +273,63 @@ int main(void) {
     else printf("    ok   %d random transports (constant/product/univalence): net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport reduce by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence (transport along ua f = f), matching the spec over 360k fuzz; unsupported cases refused, never mis-computed\n", fails);
+  printf("[11] DEPENDENT SIGMA -- Id over Sigma x:A. B x on the net (inductive first component)\n");
+  {
+    id_node *Bdep = id_if(id_var(0), id_base(ID_BOOL), id_base(ID_NAT));  /* B = lam x. if x then Bool else Nat */
+    ok_case("Id (Sx:Nat.Nat) (2,5)(2,5)",
+            id_idty(id_sigma(id_base(ID_NAT), id_base(ID_NAT)),
+                    id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(2), id_nat_lit(5))));
+    ok_case("Id (Sx:Nat.Nat) (2,5)(2,7)",
+            id_idty(id_sigma(id_base(ID_NAT), id_base(ID_NAT)),
+                    id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(2), id_nat_lit(7))));
+    ok_case("Id (Sx:Nat.Nat) (2,5)(3,5)",   /* first components differ -> Empty */
+            id_idty(id_sigma(id_base(ID_NAT), id_base(ID_NAT)),
+                    id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(3), id_nat_lit(5))));
+    /* GENUINELY DEPENDENT: second component's type depends on the (equal) first value */
+    ok_case("Id (Sx:Bool. if x B N) (true,t)(true,f)",
+            id_idty(id_sigma(id_base(ID_BOOL), id_copy(Bdep)),
+                    id_pair(id_base(ID_TRUE), id_base(ID_TRUE)), id_pair(id_base(ID_TRUE), id_base(ID_FALSE))));
+    ok_case("Id (Sx:Bool. if x B N) (false,2)(false,2)",
+            id_idty(id_sigma(id_base(ID_BOOL), id_copy(Bdep)),
+                    id_pair(id_base(ID_FALSE), id_nat_lit(2)), id_pair(id_base(ID_FALSE), id_nat_lit(2))));
+    ok_case("Id (Sx:Bool. if x B N) (true,t)(false,2)",   /* first differ -> Empty */
+            id_idty(id_sigma(id_base(ID_BOOL), id_copy(Bdep)),
+                    id_pair(id_base(ID_TRUE), id_base(ID_TRUE)), id_pair(id_base(ID_FALSE), id_nat_lit(2))));
+    /* PRODUCT first component: contractible iff every part is */
+    ok_case("Id (S(Bool*Bool).Bool) ((t,f),t)((t,f),t)",
+            id_idty(id_sigma(id_prod(id_base(ID_BOOL), id_base(ID_BOOL)), id_base(ID_BOOL)),
+                    id_pair(id_pair(id_base(ID_TRUE), id_base(ID_FALSE)), id_base(ID_TRUE)),
+                    id_pair(id_pair(id_base(ID_TRUE), id_base(ID_FALSE)), id_base(ID_TRUE))));
+    ok_case("Id (S(Nat*Bool).Nat) ((2,t),9)((2,f),9)",
+            id_idty(id_sigma(id_prod(id_base(ID_NAT), id_base(ID_BOOL)), id_base(ID_NAT)),
+                    id_pair(id_pair(id_nat_lit(2), id_base(ID_TRUE)), id_nat_lit(9)),
+                    id_pair(id_pair(id_nat_lit(2), id_base(ID_FALSE)), id_nat_lit(9))));
+    id_free(Bdep);
+
+    printf("[11b] SOUND REFUSAL -- Sigma with a non-inductive (U) first component -> neutral path -> refuse\n");
+    refuse_case("Id (Sx:U. Bool) (Bool,t)(Nat,t)",
+                id_idty(id_sigma(id_base(ID_U), id_base(ID_BOOL)),
+                        id_pair(id_base(ID_BOOL), id_base(ID_TRUE)), id_pair(id_base(ID_NAT), id_base(ID_TRUE))));
+  }
+
+  printf("[12] SIGMA FUZZ -- random inductive A (incl. products), constant family B, biased equal/unequal first\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *A = rand_inductive(2), *B = rand_type(2);   /* B closed -> constant family */
+      id_node *a1 = rand_val(A, 2), *a2 = (rnd() & 1u) ? id_copy(a1) : rand_val(A, 2);
+      id_node *b1 = rand_val(B, 2), *b2 = rand_val(B, 2);
+      id_node *term = id_idty(id_sigma(id_copy(A), id_copy(B)), id_pair(a1, b1), id_pair(a2, b2));
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(A); id_free(B); id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random Id (Sigma A. B) (a,b)(a',b'): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma (Id over Sigma, inductive first component incl. products), matching the spec over 420k fuzz; unsupported cases refused, never mis-computed\n", fails);
   return fails ? 1 : 0;
 }

@@ -403,6 +403,23 @@ a non-`refl` path, which needs the inverse path (HoTT 2.9) — is refused, not
 guessed. A pleasant side effect of having β: a funext body that *applies* something
 (e.g. `λx.(λy.y)x`) now reduces on the net instead of being refused.
 
+**Id over a dependent Σ has now landed on the net too**, for an *inductive* first
+component. `Id (Σx:A. B x)((a,b),(a',b'))` reduces by deciding the first-component
+path `Id_A a a'`: an `Empty` anywhere (the keys differ) collapses the whole Σ to
+`Empty`; an all-`Unit` result (the keys agree) means the path is trivial, transport
+is the identity, and the type contracts to `Id (B a) b b'` — where the second
+component's *type* genuinely depends on the (equal) first value (e.g.
+`B = λx. if x then Bool else Nat`). On the net this is a decision agent (`N_SIGD`)
+sitting on the first-component `Id`'s output: meeting `Unit` it forwards the
+second-component `Id`, meeting `Empty` it emits `Empty`, and meeting a *product*
+path it chains two decisions (a product key is contractible iff every part is). The
+family `B` is instantiated at `a` by the same generic copy/substitution used for β.
+Validated against the §5 spec over worked cases and a **60,000-case Σ fuzz** (random
+inductive first component including products, constant family): zero wrong, zero
+refused. Sound limit: a *non-inductive* first component (e.g. `A = U`, whose path is
+a genuine equivalence) is left neutral by the spec and refused by the net — closing
+it needs real transport along the first-component path.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -848,6 +865,7 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz.
                        Transport too (transport^P p x): TR agent recurses on the family body -- constant->identity, product->componentwise,
                        identity family + ua f -> f x (computational univalence), via a minimal on-net evaluator (application/beta + if); +60k transport fuzz.
+                       Dependent Sigma too: Id over Sigma x:A. B x for inductive A, via a decision agent on the first-component path (product paths collapse by chaining); +60k Sigma fuzz.
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which

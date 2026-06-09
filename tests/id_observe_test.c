@@ -152,6 +152,39 @@ int main(void) {
         id_idty(id_prod(Nat_(), Nat_()), id_pair(id_nat_lit(2), id_nat_lit(2)), id_pair(id_nat_lit(1), id_nat_lit(2))),
         id_prod(Empty_(), Unit_()));
 
+  /* ---- Id over a DEPENDENT pair type (Sigma).  For an inductive first component
+   * the path is decided by observation: an Empty makes the whole Sigma Empty; an
+   * all-Unit (a = a') contracts to Id (B a) b b' (the trivial path, transport=id). */
+  check("Id (Sx:Nat.Nat) (2,5) (2,5)",
+        id_idty(id_sigma(Nat_(), Nat_()), id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(2), id_nat_lit(5))),
+        Unit_());
+  check("Id (Sx:Nat.Nat) (2,5) (2,7)",
+        id_idty(id_sigma(Nat_(), Nat_()), id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(2), id_nat_lit(7))),
+        Empty_());
+  check("Id (Sx:Nat.Nat) (2,5) (3,5)",   /* first components differ */
+        id_idty(id_sigma(Nat_(), Nat_()), id_pair(id_nat_lit(2), id_nat_lit(5)), id_pair(id_nat_lit(3), id_nat_lit(5))),
+        Empty_());
+  /* genuinely dependent: B = lam x. if x then Bool else Nat -- second type depends on first value */
+  check("Id (Sx:Bool. if x B N) (true,t)(true,f)",
+        id_idty(id_sigma(Bool_(), id_if(id_var(0), Bool_(), Nat_())),
+                id_pair(id_base(ID_TRUE), id_base(ID_TRUE)), id_pair(id_base(ID_TRUE), id_base(ID_FALSE))),
+        Empty_());
+  check("Id (Sx:Bool. if x B N) (false,2)(false,2)",
+        id_idty(id_sigma(Bool_(), id_if(id_var(0), Bool_(), Nat_())),
+                id_pair(id_base(ID_FALSE), id_nat_lit(2)), id_pair(id_base(ID_FALSE), id_nat_lit(2))),
+        Unit_());
+  /* PRODUCT first component: contractible iff every part is (no Empty anywhere) */
+  check("Id (S(Bool*Bool).Bool) ((t,f),t)((t,f),t)",
+        id_idty(id_sigma(id_prod(Bool_(), Bool_()), Bool_()),
+                id_pair(id_pair(id_base(ID_TRUE), id_base(ID_FALSE)), id_base(ID_TRUE)),
+                id_pair(id_pair(id_base(ID_TRUE), id_base(ID_FALSE)), id_base(ID_TRUE))),
+        Unit_());
+  check("Id (S(Nat*Bool).Nat) ((2,t),9)((2,f),9)",   /* second part of the pair-key differs */
+        id_idty(id_sigma(id_prod(Nat_(), Bool_()), Nat_()),
+                id_pair(id_pair(id_nat_lit(2), id_base(ID_TRUE)), id_nat_lit(9)),
+                id_pair(id_pair(id_nat_lit(2), id_base(ID_FALSE)), id_nat_lit(9))),
+        Empty_());
+
   if (fails == 0)
     printf("ALL %ld BY-OBSERVATION Id CHECKS PASSED (phase 14c reduction system)\n", checks);
   else

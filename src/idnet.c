@@ -38,7 +38,7 @@
 enum {
   N_ROOT,
   TY_UNIT, TY_EMPTY, TY_U, TY_BOOL, TY_NAT, TY_PROD,   /* type formers          */
-  TY_ARR, TY_PI,                                       /* function type formers */
+  TY_ARR, TY_PI, TY_SIGMA,                             /* function / pair type formers */
   VAL_STAR, VAL_PAIR,                                  /* unit / product values */
   VAL_TRUE, VAL_FALSE, VAL_ZERO, VAL_SUCC,             /* bool / nat values     */
   N_LAM, N_VAR,                                        /* function value, bound variable */
@@ -48,6 +48,7 @@ enum {
   N_IDB, N_EQT, N_EQF,                                 /* Bool observation       */
   N_IDN, N_ISZ, N_SCS,                                 /* Nat observation (rec)  */
   N_PI, N_NID,                                         /* result Pi-type, neutral Id */
+  N_SIGD,                                              /* Sigma-Id decision (faces the first-component Id result) */
   N_ERA                                                /* eraser / gc            */
 };
 
@@ -129,6 +130,8 @@ static int enc(const id_node *t) {
                     link_(a, 1, x, 0); link_(a, 2, y, 0); return a; }
     case ID_PI:   { int a = mk(TY_PI), x = enc(t->a), y = enc(t->b);
                     link_(a, 1, x, 0); link_(a, 2, y, 0); return a; }
+    case ID_SIGMA:{ int a = mk(TY_SIGMA), x = enc(t->a), y = enc(t->b);
+                    link_(a, 1, x, up_port(k_[x])); link_(a, 2, y, up_port(k_[y])); return a; }
     case ID_LAM:  { int a = mk(N_LAM), b = enc(t->a); link_(a, 1, b, up_port(k_[b])); return a; }
     case ID_VAR:  { int a = mk(N_VAR); vidx_[a] = t->idx; return a; }
     case ID_ID:   { int I = mk(N_ID), A = enc(t->a), x = enc(t->b), y = enc(t->c);
@@ -196,7 +199,7 @@ static int is_active_agent(int kind) {
   return kind == N_ID || kind == N_UNPAIR ||
          kind == N_IDB || kind == N_EQT || kind == N_EQF ||
          kind == N_IDN || kind == N_ISZ || kind == N_SCS ||
-         kind == N_APP || kind == N_IF || kind == N_TR;
+         kind == N_APP || kind == N_IF || kind == N_TR || kind == N_SIGD;
 }
 
 /* apply the rule for agent `a` meeting data `d` (both at principal port 0).
@@ -286,7 +289,33 @@ static void rule(int a, int d) {
       }
       return;
     }
-    /* unsupported former (dependent Sigma, ...): leave inert -- read-back refuses */
+    if (kd == TY_SIGMA) {
+      /* Id (Sigma x:A. B x)((a,b),(a',b')): observe Id_A a a' (-> Unit/Empty, or a
+       * product of those), then a decision agent picks Id (B a) b b' (equal) or
+       * Empty (unequal).  B is instantiated at a by substitution (cs).  Requires
+       * both sides to be literal pairs and A inductive; otherwise refuse. */
+      int xx = pt_[a * PORTS + 2], yy = pt_[a * PORTS + 3];
+      if (xx < 0 || yy < 0 || k_[xx] != VAL_PAIR || k_[yy] != VAL_PAIR) return;
+      {
+        int A  = pt_[d * PORTS + 1], Ap = pp_[d * PORTS + 1];     /* first-component type */
+        int Bb = pt_[d * PORTS + 2], Bp = pp_[d * PORTS + 2];     /* family body (var0 = x) */
+        int a1 = pt_[xx * PORTS + 1], a1p = pp_[xx * PORTS + 1];  /* a  */
+        int b1 = pt_[xx * PORTS + 2], b1p = pp_[xx * PORTS + 2];  /* b  */
+        int a2 = pt_[yy * PORTS + 1], a2p = pp_[yy * PORTS + 1];  /* a' */
+        int b2 = pt_[yy * PORTS + 2], b2p = pp_[yy * PORTS + 2];  /* b' */
+        int Ba = cs(Bb, Bp, 0, a1);                              /* B(a): body with var0 := copy(a) */
+        int IdA = mk(N_ID), IdB = mk(N_ID), Dec = mk(N_SIGD);
+        link_(IdA, 0, A, Ap);  link_(IdA, 2, a1, a1p); link_(IdA, 3, a2, a2p);   /* Id_A a a' */
+        link_(IdB, 0, Ba, up_port(k_[Ba])); link_(IdB, 2, b1, b1p); link_(IdB, 3, b2, b2p);  /* Id (B a) b b' */
+        link_(Dec, 0, IdA, 1);                 /* decision faces the first-component Id result */
+        link_(Dec, 1, IdB, 1);                 /* then-branch: the second-component Id */
+        splice(a, 1, Dec, 2);                  /* decision output -> the Sigma-Id output */
+        k_[xx] = N_ERA; pt_[xx * PORTS] = -1;  /* the two pair nodes are consumed */
+        k_[yy] = N_ERA; pt_[yy * PORTS] = -1;
+      }
+      return;
+    }
+    /* unsupported former: leave inert -- read-back refuses */
     return;
   }
   if (ka == N_APP) {
@@ -348,6 +377,24 @@ static void rule(int a, int d) {
       }
     }
     return;   /* function family (non-refl) / other -> refuse */
+  }
+  if (ka == N_SIGD) {
+    /* the first-component Id has reduced; decide the Sigma-Id.  Dec.1 = then (the
+     * second-component Id), Dec.2 = out. */
+    if (kd == TY_UNIT)  { bridge(a, 1, a, 2); return; }                 /* equal: use Id (B a) b b' */
+    if (kd == TY_EMPTY) { int e = mk(TY_EMPTY); splice(a, 2, e, 0); era_at(a, 1); return; }  /* unequal: Empty */
+    if (kd == TY_PROD) {
+      /* a product first-component path is contractible iff BOTH halves are: chain
+       * two decisions.  Dec(L x R) = decide L ? (decide R ? then : Empty) : Empty. */
+      int L = pt_[d * PORTS + 1], Lp = pp_[d * PORTS + 1];
+      int R = pt_[d * PORTS + 2], Rp = pp_[d * PORTS + 2];
+      int DR = mk(N_SIGD), DL = mk(N_SIGD);
+      link_(DR, 0, R, Rp); splice(a, 1, DR, 1);    /* DR faces R; DR.then = orig then */
+      link_(DL, 0, L, Lp); link_(DL, 1, DR, 2);    /* DL faces L; DL.then = DR.out    */
+      splice(a, 2, DL, 2);                          /* DL.out = orig out               */
+      return;                                       /* Dec(a) and the product erased   */
+    }
+    return;   /* first-component path neutral (e.g. Equiv) -> stuck -> refuse */
   }
   if (ka == N_IDB) {
     /* x is known (d = TRUE/FALSE); now observe y with the matching tester */
@@ -499,6 +546,8 @@ static id_node *rb(int a, int p) {
       case N_PI: case TY_PI:
                      r = id_pi(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
+      case TY_SIGMA: r = id_sigma(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
+                                  rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       case N_LAM:    r = id_lam(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
       case N_REFL:   r = id_refl(id_base(ID_STAR)); break;     /* refl carrier irrelevant here */
       case N_UA:     r = id_ua(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;

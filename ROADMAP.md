@@ -83,12 +83,25 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     along a non-refl path needs the inverse path (transport of functions, HoTT 2.9)
     and is refused, not guessed.
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
-🟡  Dependent families (semantics, id_observe.c): Id over a dependent Π is now
-    dependent funext — Id (Πx:A. B x) f g = Πz:A. Id (B z)(f z)(g z), the codomain
-    carried unshifted under the binder; and transport through a PRODUCT family is
-    componentwise (HoTT 2.6.4), so e.g. transport^(λX.X×X)(ua f)(a,b) = (f a, f b).
-    Remaining: transport through a dependent Σ family, and Id over a dependent Σ
-    (both need transport along the path in the first component) — the subtle cases.
+✅  Id over a dependent Σ (semantics AND net): Id (Σx:A. B x)((a,b),(a',b')) for an
+    INDUCTIVE first component A. The first-component path Id_A a a' is decided by
+    observation — an Empty anywhere (a ≠ a') makes the whole Σ Empty; an all-Unit
+    (a = a') means the path is trivial, transport is the identity, and the type
+    contracts to Id (B a) b b'. The second-component type genuinely depends on the
+    (equal) first value (e.g. B = λx. if x then Bool else Nat). On the net this is a
+    decision agent (N_SIGD) facing the first-component Id result: Unit → the
+    second-component Id, Empty → Empty, and a PRODUCT path collapses by chaining
+    decisions (contractible iff every component is). The family is instantiated at a
+    by the generic copy/substitution. Validated against the spec: worked cases +
+    a 60k Σ fuzz (random inductive A incl. products, constant family B), 0 wrong,
+    0 refused. Sound limit: a NON-inductive first component (e.g. A = U, where the
+    path is a genuine equivalence) is left neutral by the spec and refused by the
+    net — that needs real transport along the first-component path.
+🟡  Dependent families (semantics, id_observe.c): the remaining open cases are
+    transport THROUGH a dependent Σ family, Id over a Σ whose first component is
+    non-inductive (needs transport along a non-trivial first-component path), and
+    transport of functions (the inverse path). Dependent Π funext, product
+    transport, and Id-over-Σ for inductive first components are done (above).
 ```
 
 ## Track C — Optimal reduction  (Δ-Nets, `src/deltanets.c`)
@@ -182,10 +195,12 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
    correctness groundwork (confluence, locality) is done. The concurrency rehearsal
    for the GPU.
 3. 🟡  **Finish Id/transport in the net** — Id, the function case (funext, incl.
-   dependent Π), AND transport (incl. computational univalence, via a minimal
-   on-net evaluator: application/β + `if`) now all run as agents in src/idnet.c.
-   Remaining: transport over a function family (the inverse path), the dependent Σ
-   cases, and the cross-check against the cubical layer.
+   dependent Π), transport (incl. computational univalence, via a minimal on-net
+   evaluator: application/β + `if`), AND Id over a dependent Σ for inductive first
+   components (a decision agent on the first-component path) now all run as agents
+   in src/idnet.c. Remaining: transport over a function family (the inverse path),
+   transport through a dependent Σ, Σ over a non-inductive first component, and the
+   cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)

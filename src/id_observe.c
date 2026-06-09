@@ -16,6 +16,7 @@ id_node *id_pair(id_node *x, id_node *y)          { id_node *t = mk(ID_PAIR);  t
 id_node *id_lam(id_node *body)                    { id_node *t = mk(ID_LAM);   t->a = body; return t; }
 id_node *id_app(id_node *f, id_node *x)           { id_node *t = mk(ID_APP);   t->a = f; t->b = x; return t; }
 id_node *id_prod(id_node *A, id_node *B)          { id_node *t = mk(ID_PROD);  t->a = A; t->b = B; return t; }
+id_node *id_sigma(id_node *A, id_node *B)         { id_node *t = mk(ID_SIGMA); t->a = A; t->b = B; return t; }
 id_node *id_arr(id_node *A, id_node *B)           { id_node *t = mk(ID_ARR);   t->a = A; t->b = B; return t; }
 id_node *id_pi(id_node *dom, id_node *body)       { id_node *t = mk(ID_PI);    t->a = dom; t->b = body; return t; }
 id_node *id_idty(id_node *A, id_node *x, id_node *y) { id_node *t = mk(ID_ID); t->a = A; t->b = x; t->c = y; return t; }
@@ -46,6 +47,7 @@ static id_node *shift(const id_node *t, int d, int cutoff) {
     case ID_VAR:   return id_var(t->idx >= cutoff ? t->idx + d : t->idx);
     case ID_LAM:   return id_lam(shift(t->a, d, cutoff + 1));
     case ID_PI:    return id_pi(shift(t->a, d, cutoff), shift(t->b, d, cutoff + 1));
+    case ID_SIGMA: return id_sigma(shift(t->a, d, cutoff), shift(t->b, d, cutoff + 1));
     case ID_SUCC:  return id_succ(shift(t->a, d, cutoff));
     case ID_REFL:  return id_refl(shift(t->a, d, cutoff));
     case ID_PAIR:  return id_pair(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
@@ -77,6 +79,7 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
       return id_var(body->idx > depth ? body->idx - 1 : body->idx);
     case ID_LAM:   return id_lam(inst(body->a, depth + 1, arg));
     case ID_PI:    return id_pi(inst(body->a, depth, arg), inst(body->b, depth + 1, arg));
+    case ID_SIGMA: return id_sigma(inst(body->a, depth, arg), inst(body->b, depth + 1, arg));
     case ID_SUCC:  return id_succ(inst(body->a, depth, arg));
     case ID_REFL:  return id_refl(inst(body->a, depth, arg));
     case ID_PAIR:  return id_pair(inst(body->a, depth, arg), inst(body->b, depth, arg));
@@ -97,6 +100,23 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
 
 /* ----------------------------------------------------- the by-observation rules */
 static id_node *observe(const id_node *A, const id_node *x, const id_node *y);
+
+/* Classify a first-component path type (built from Unit/Empty/Prod by observing an
+ * inductive A): 0 = inhabited-uniquely (a = a', all Unit), 1 = empty (a != a', has an
+ * Empty), 2 = undecided (a neutral Id/Equiv inside, e.g. from a U component). */
+static int classify_path(const id_node *q) {
+  switch (q->kind) {
+    case ID_UNIT:  return 0;
+    case ID_EMPTY: return 1;
+    case ID_PROD: {
+      int l = classify_path(q->a), r = classify_path(q->b);
+      if (l == 1 || r == 1) return 1;
+      if (l == 2 || r == 2) return 2;
+      return 0;
+    }
+    default: return 2;
+  }
+}
 
 /* Id Nat: recurse on the successor structure of the two numerals. */
 static id_node *observe_nat(const id_node *x, const id_node *y) {
@@ -146,6 +166,28 @@ static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
       id_free(body);
       return id_pi(id_copy(A->a), bnf);
     }
+    case ID_SIGMA: {
+      /* Id (Sigma x:A. B x) (a,b) (a',b') = Sigma (p: Id_A a a'). Id (B a')(transport^B p b) b'.
+       * For an inductive first component, observe(A,a,a') decides the first-component
+       * path: an Empty anywhere (a != a') makes the whole Sigma Empty; all-Unit
+       * (a = a') means the path is trivial, transport is the identity, and the type
+       * contracts to  Id (B a) b b' .  A non-inductive A (e.g. U) leaves a genuine
+       * path: neutral, since that needs real transport along p. */
+      if (x->kind == ID_PAIR && y->kind == ID_PAIR) {
+        id_node *qa = observe(A->a, x->a, y->a);
+        int cls = classify_path(qa);
+        id_free(qa);
+        if (cls == 1) return id_base(ID_EMPTY);
+        if (cls == 0) {
+          id_node *Bsub = inst(A->b, 0, x->a);      /* B instantiated at a (= a') */
+          id_node *Ba   = id_nf(Bsub);
+          id_node *r    = observe(Ba, x->b, y->b);  /* recurse on the second component */
+          id_free(Bsub); id_free(Ba);
+          return r;
+        }
+      }
+      return id_idty(id_copy(A), id_copy(x), id_copy(y));
+    }
     case ID_ID: case ID_EQUIV:
     default:
       return id_idty(id_copy(A), id_copy(x), id_copy(y));   /* neutral / out of scope */
@@ -162,6 +204,7 @@ static int occurs(const id_node *t, int lvl) {
     case ID_VAR: return t->idx == lvl;
     case ID_LAM: return occurs(t->a, lvl + 1);
     case ID_PI:  return occurs(t->a, lvl) || occurs(t->b, lvl + 1);
+    case ID_SIGMA: return occurs(t->a, lvl) || occurs(t->b, lvl + 1);
     default:     return occurs(t->a, lvl) || occurs(t->b, lvl) || occurs(t->c, lvl);
   }
 }
@@ -175,6 +218,7 @@ id_node *id_nf(const id_node *t) {
     case ID_LAM:   return id_lam(id_nf(t->a));
     case ID_PI:    return id_pi(id_nf(t->a), id_nf(t->b));
     case ID_PROD:  return id_prod(id_nf(t->a), id_nf(t->b));
+    case ID_SIGMA: return id_sigma(id_nf(t->a), id_nf(t->b));
     case ID_ARR:   return id_arr(id_nf(t->a), id_nf(t->b));
     case ID_EQUIV: return id_equiv(id_nf(t->a), id_nf(t->b));
     case ID_APP: {
@@ -271,6 +315,7 @@ void id_print(const id_node *t) {
     case ID_PAIR:  printf("("); id_print(t->a); printf(", "); id_print(t->b); printf(")"); break;
     case ID_APP:   printf("("); id_print(t->a); printf(" "); id_print(t->b); printf(")"); break;
     case ID_PROD:  printf("("); id_print(t->a); printf(" * "); id_print(t->b); printf(")"); break;
+    case ID_SIGMA: printf("(Sigma "); id_print(t->a); printf(". "); id_print(t->b); printf(")"); break;
     case ID_ARR:   printf("("); id_print(t->a); printf(" -> "); id_print(t->b); printf(")"); break;
     case ID_PI:    printf("(Pi "); id_print(t->a); printf(". "); id_print(t->b); printf(")"); break;
     case ID_EQUIV: printf("Equiv "); id_print(t->a); printf(" "); id_print(t->b); break;

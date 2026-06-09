@@ -35,7 +35,7 @@
 
 typedef enum {
   ID_BOOL, ID_NAT, ID_UNIT, ID_EMPTY, ID_U,    /* base types and the universe   */
-  ID_PROD, ID_ARR, ID_PI, ID_ID, ID_EQUIV,     /* type formers                  */
+  ID_PROD, ID_ARR, ID_PI, ID_SIGMA, ID_ID, ID_EQUIV,     /* type formers                  */
   ID_TRUE, ID_FALSE, ID_ZERO, ID_SUCC, ID_STAR,/* canonical terms               */
   ID_PAIR, ID_LAM, ID_VAR, ID_APP,             /* pairs / functions / variables */
   ID_REFL, ID_TRANSP,                          /* equality witnesses            */
@@ -60,6 +60,7 @@ id_node *id_app(id_node *f, id_node *x);
 id_node *id_prod(id_node *A, id_node *B);
 id_node *id_arr(id_node *A, id_node *B);
 id_node *id_pi(id_node *dom, id_node *body);
+id_node *id_sigma(id_node *dom, id_node *body);  /* dependent pair type Sigma x:dom. body */
 id_node *id_idty(id_node *A, id_node *x, id_node *y);   /* Id A x y */
 id_node *id_equiv(id_node *A, id_node *B);
 id_node *id_refl(id_node *x);
