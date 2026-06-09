@@ -401,6 +401,8 @@ static void rule(int a, int d) {
         int b2 = pt_[yy * PORTS + 2], b2p = pp_[yy * PORTS + 2];  /* b' */
         int Ba = cs(Bb, Bp, 0, a1);                              /* B(a): body with var0 := copy(a) */
         int IdA = mk(N_ID), IdB = mk(N_ID), Dec = mk(N_SIGD);
+        clos_guard = 0;
+        vidx_[Dec] = occurs_lvl(Bb, Bp, 0) ? 0 : 1;              /* 1 = B constant in x (no transport needed) */
         link_(IdA, 0, A, Ap);  link_(IdA, 2, a1, a1p); link_(IdA, 3, a2, a2p);   /* Id_A a a' */
         link_(IdB, 0, Ba, up_port(k_[Ba])); link_(IdB, 2, b1, b1p); link_(IdB, 3, b2, b2p);  /* Id (B a) b b' */
         link_(Dec, 0, IdA, 1);                 /* decision faces the first-component Id result */
@@ -734,12 +736,28 @@ static void rule(int a, int d) {
       int L = pt_[d * PORTS + 1], Lp = pp_[d * PORTS + 1];
       int R = pt_[d * PORTS + 2], Rp = pp_[d * PORTS + 2];
       int DR = mk(N_SIGD), DL = mk(N_SIGD);
+      vidx_[DR] = 0; vidx_[DL] = 0;                 /* product legs do not build the non-inductive Sigma */
       link_(DR, 0, R, Rp); splice(a, 1, DR, 1);    /* DR faces R; DR.then = orig then */
       link_(DL, 0, L, Lp); link_(DL, 1, DR, 2);    /* DL faces L; DL.then = DR.out    */
       splice(a, 2, DL, 2);                          /* DL.out = orig out               */
       return;                                       /* Dec(a) and the product erased   */
     }
-    return;   /* first-component path neutral (e.g. Equiv) -> stuck -> refuse */
+    if (kd == N_EQUIV) {
+      /* NON-inductive first component: Id_U a a' = Equiv a a' is a genuine path type, so the
+       * Sigma-Id is a genuine Sigma:  Sigma(p: Equiv a a'). Id (B a')(transport^B p b) b'.
+       * When B is CONSTANT in x (flagged at construction) transport is the identity, and the
+       * second-component Id already built (Dec.1) -- which is closed w.r.t. the new binder p --
+       * is exactly the body; build the Sigma. A genuinely dependent B would need the body
+       * transported under the fresh binder (a shift the net does not perform) -> refuse. */
+      if (vidx_[a] != 1) return;                  /* dependent 2nd component -> refuse */
+      { int TS = mk(TY_SIGMA);
+        link_(TS, 1, d, 0);                       /* first component := the equivalence (kept) */
+        splice(a, 1, TS, 2);                      /* body := Id (B a) b b' (= Id (B a') b b', B const) */
+        splice(a, 2, TS, 0);                      /* output := the Sigma type */
+        keep_d = 1; return;
+      }
+    }
+    return;   /* first-component path otherwise neutral -> stuck -> refuse */
   }
   if (ka == N_IDB) {
     /* x is known (d = TRUE/FALSE); now observe y with the matching tester */

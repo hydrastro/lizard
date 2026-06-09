@@ -130,6 +130,17 @@ static id_node *rand_funtransp(void) {
   }
 }
 
+/* ---- random Id over a Sigma with a NON-inductive (U) first component, constant 2nd ---- */
+static id_node *rand_signi(void) {
+  id_node *C  = rand_inductive(1);                 /* constant second-component type       */
+  id_node *T1 = rand_inductive(1);                 /* first-component TYPES (elements of U) */
+  id_node *T2 = rand_inductive(1);
+  id_node *c1 = rand_val(C, 1), *c2 = rand_val(C, 1);
+  id_node *r  = id_idty(id_sigma(id_base(ID_U), id_copy(C)), id_pair(T1, c1), id_pair(T2, c2));
+  id_free(C);
+  return r;
+}
+
 static int fails = 0;
 
 /* a supported case: net result must equal the spec normal form */
@@ -426,10 +437,27 @@ int main(void) {
                     id_pair(id_pair(id_nat_lit(2), id_base(ID_FALSE)), id_nat_lit(9))));
     id_free(Bdep);
 
-    printf("[11b] SOUND REFUSAL -- Sigma with a non-inductive (U) first component -> neutral path -> refuse\n");
-    refuse_case("Id (Sx:U. Bool) (Bool,t)(Nat,t)",
-                id_idty(id_sigma(id_base(ID_U), id_base(ID_BOOL)),
-                        id_pair(id_base(ID_BOOL), id_base(ID_TRUE)), id_pair(id_base(ID_NAT), id_base(ID_TRUE))));
+    printf("[11b] NON-INDUCTIVE first component (A = U): Id over Sigma is a genuine Sigma\n");
+    printf("      Sigma(p: Equiv a a'). Id (B a')(transp^B p b) b'.  Constant B -> transport is id.\n");
+    {
+      /* constant second component: the net builds the Sigma, body = Id C b b' */
+      ok_case("Id (Sx:U. Bool) (Bool,t)(Nat,t)",
+              id_idty(id_sigma(id_base(ID_U), id_base(ID_BOOL)),
+                      id_pair(id_base(ID_BOOL), id_base(ID_TRUE)), id_pair(id_base(ID_NAT), id_base(ID_TRUE))));
+      ok_case("Id (Sx:U. Bool) (Bool,t)(Nat,f)",
+              id_idty(id_sigma(id_base(ID_U), id_base(ID_BOOL)),
+                      id_pair(id_base(ID_BOOL), id_base(ID_TRUE)), id_pair(id_base(ID_NAT), id_base(ID_FALSE))));
+      ok_case("Id (Sx:U. Nat) (Bool,2)(Nat,2)",
+              id_idty(id_sigma(id_base(ID_U), id_base(ID_NAT)),
+                      id_pair(id_base(ID_BOOL), id_nat_lit(2)), id_pair(id_base(ID_NAT), id_nat_lit(2))));
+    }
+
+    printf("[11c] SOUND REFUSAL -- a DEPENDENT second component (B x = x) needs the transported body\n");
+    printf("      under the new path binder (a shift the net does not perform) -> refuse\n");
+    /* spec computes Sigma(Equiv Bool Nat). Id Nat (transp^(lZ.Z) p t) 0 ; the net soundly refuses */
+    refuse_case("Id (Sx:U. x) (Bool,t)(Nat,0)",
+                id_idty(id_sigma(id_base(ID_U), id_var(0)),
+                        id_pair(id_base(ID_BOOL), id_base(ID_TRUE)), id_pair(id_base(ID_NAT), id_nat_lit(0))));
   }
 
   printf("[12] SIGMA FUZZ -- random inductive A (incl. products), constant family B, biased equal/unequal first\n");
@@ -639,6 +667,22 @@ int main(void) {
     else printf("    ok   %d random function-family transports (the inverse path): net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma + the Nat recursor + Lists (Id + foldr) + coproducts A+B (Id + case) + univalence in FUNCTION families along a genuine equivalence (forward + inverse, the inverse path; validated by a non-involutive 3-cycle), matching the spec over 780k fuzz; unsupported cases refused, never mis-computed\n", fails);
+  printf("[24] NON-INDUCTIVE SIGMA-ID FUZZ -- Id over Sigma(x:U). C (constant C): a genuine Sigma\n");
+  printf("     Sigma(Equiv T1 T2). Id C c1 c2, with random first-component types T1,T2: net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *term = rand_signi();
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random non-inductive Sigma-Id (constant 2nd component): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma (inductive AND non-inductive/universe first component) + the Nat recursor + Lists (Id + foldr) + coproducts A+B (Id + case) + univalence in FUNCTION families along a genuine equivalence (forward + inverse, the inverse path; validated by a non-involutive 3-cycle), matching the spec over 840k fuzz; unsupported cases refused, never mis-computed\n", fails);
   return fails ? 1 : 0;
 }

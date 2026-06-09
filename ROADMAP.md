@@ -112,9 +112,24 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     decisions (contractible iff every component is). The family is instantiated at a
     by the generic copy/substitution. Validated against the spec: worked cases +
     a 60k Σ fuzz (random inductive A incl. products, constant family B), 0 wrong,
-    0 refused. Sound limit: a NON-inductive first component (e.g. A = U, where the
-    path is a genuine equivalence) is left neutral by the spec and refused by the
-    net — that needs real transport along the first-component path.
+    0 refused.
+✅  Id over a Σ with a NON-INDUCTIVE first component (semantics AND net) — the case
+    that the inverse-path transport just unblocked. For A = U the first-component path
+    Id_U a a' = Equiv a a' is a genuine type, so the Σ-Id does not collapse: it is a
+    genuine Σ of an equivalence path and a transported second-component equality,
+    Σ(p: Id_A a a'). Id (B a')(transport^(λZ. B Z) p b) b'. The transport is along the
+    bound path p, so it is the identity when B is constant and stays neutral otherwise.
+    The SPEC computes this in full (including the dependent case, where the result keeps
+    a neutral transport along the bound path — e.g. Id (Σx:U. x)((Bool,t),(Nat,0)) =
+    Σ(Equiv Bool Nat). Id Nat (transport (λZ.Z) p t) 0; note this is non-trivial even
+    when the two first-component types coincide, since Equiv A A has more than one
+    element). The NET handles the case where the second component is CONSTANT (transport
+    is the identity, and the second-component Id — already built and closed w.r.t. the
+    new binder — is the body; N_SIGD facing an Equiv builds the Σ), and soundly REFUSES
+    a genuinely dependent second component, which would need the body transported under
+    the fresh path binder (a shift the net does not perform). Validated against the spec:
+    worked cases + a 60k non-inductive-Σ fuzz (random first-component types, constant
+    second component), 0 wrong, 0 refused; the dependent case is checked to refuse.
 ✅  Nat recursor / eliminator (semantics AND net): rec z s n — the elimination dual
     to the zero/succ constructors — computes by recursion on the scrutinee. rec z s 0
     → z; rec z s (succ m) → s m (rec z s m). The step s is λn.λr. … (n = predecessor,
@@ -270,9 +285,11 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
    reusing the step-forcer), AND coproducts A+B (Id over the sum + the case
    eliminator), AND univalence in a FUNCTION family (transport along a genuine
    equivalence -- forward + inverse, the inverse path, validated by a non-involutive
-   3-cycle) now all run as agents in src/idnet.c. Remaining: transport through a
-   dependent Σ, Σ over a
-   non-inductive first component, and the cross-check against the cubical layer.
+   3-cycle), AND Id over a Σ with a non-inductive (universe) first component (a genuine
+   Σ of an equivalence path and a transported second equality; constant second component
+   on the net, the dependent case in the spec) now all run as agents in src/idnet.c.
+   Remaining: transport through a dependent Σ family, and the cross-check against the
+   cubical layer (blocked — needs the in-tree ds.h / tt_equality.c headers).
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)

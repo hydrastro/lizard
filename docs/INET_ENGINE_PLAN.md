@@ -512,6 +512,26 @@ to `cyc² (inl t) = inr *`). Zero wrong, zero refused. A function family along a
 *non*-univalence path, or with a nested variable occurrence (e.g. `X*X` in the domain),
 is soundly refused.
 
+**Id over a Σ, for ANY first component.** The dependent-Σ characterization
+`Id (Σx:A. B x)((a,b),(a',b')) = Σ(p: Id_A a a'). Id (B a')(transport^(λZ.B Z) p b) b'`
+previously only ran when the first component `A` was *inductive*: then `Id_A a a'`
+observes to `Unit`/`Empty` and the outer `Σ` collapses (trivial path → `Id (B a) b b'`,
+or `Empty`). The inverse-path transport unblocks the *non-inductive* case. For `A = U`,
+`Id_U a a' = Equiv a a'` is a genuine type, so the `Σ` does **not** collapse — the
+identity type *is* a `Σ` of an equivalence path and a transported second-component
+equality. The spec computes this in full: the transport along the bound path `p` reduces
+to the identity when `B` is constant and otherwise stays a neutral `transport` term under
+the `Σ` binder. So `Id (Σx:U. Bool)((Bool,t),(Nat,t)) = Σ(Equiv Bool Nat). Unit`, while
+`Id (Σx:U. x)((Bool,t),(Nat,0)) = Σ(Equiv Bool Nat). Id Nat (transport (λZ.Z) p t) 0` —
+notably *non-trivial even when the two first-component types coincide*, since `Equiv A A`
+has more than one element (`id` and, on `Bool`, `not`). On the net the decision agent
+`N_SIGD`, on meeting an `Equiv` (rather than `Unit`/`Empty`), builds the `Σ` when the
+second component is **constant** (the already-built second-component `Id` is closed w.r.t.
+the new binder, so it is the body verbatim — no shift) and soundly **refuses** a dependent
+second component (whose body would have to be transported under the fresh binder). Checked
+against the spec by worked cases plus a 60k fuzz over random first-component types with a
+constant second component, 0 wrong / 0 refused, with the dependent case verified to refuse.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -952,7 +972,7 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        (fires only non-overlapping redexes/round) and shows idealized width 5-10 collapses to ~2-3 realizable; all validated == sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv,
                        dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)), and the Nat recursor
-                       rec z s n (double/add/pred + even with an if in the step body), Lists (Id over List by observation + foldr), coproducts A+B (Id over the sum + case), and univalence in a function family (transport along a genuine equivalence -- the inverse path); 76 checks.
+                       rec z s n (double/add/pred + even with an if in the step body), Lists (Id over List by observation + foldr), coproducts A+B (Id over the sum + case), univalence in a function family (transport along a genuine equivalence -- the inverse path), and Id over a Sigma with a non-inductive (universe) first component (a genuine Sigma of an equivalence path + a transported second equality, incl. the dependent case via neutral transport); 82 checks.
   - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule;
                        inductive + universe fragment AND functions (funext, incl. dependent Pi) via the de Bruijn "body is f z" trick,
                        neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz.
@@ -962,7 +982,7 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        Nat recursor too: rec z s n as N_REC + a call-by-value step-forcer N_RSTEP (value steps AND an if in the step body, e.g. even); a value-eliminator facing a bound variable waits for beta; +60k recursor fuzz.
                        Lists too (a parameterized inductive type): Id over List E by observation (two-agent spine dance N_IDL/N_NSZ/N_CCS, nested products, PORTS 4->5) AND foldr (N_LREC reusing the N_RSTEP forcer: length/count/all/map); +60k Id-over-List fuzz +60k foldr fuzz.
                        Coproducts too (A+B, dual to the product): Id over the sum by observation (two-agent dance N_IDS/N_INLS/N_INRS; tag mismatch -> Empty) AND the case eliminator (N_CASE builds f x / g y, reducing by ordinary beta -- no new machinery); +60k Id-over-sum fuzz +60k case fuzz.
-                       Univalence in a FUNCTION family too (the inverse path): a path now carries a genuine equivalence (forward f + inverse g), transport recurses on the family with variance (f covariant, g contravariant on a function domain); conjugation transport^(lX.X->X)(uae f g)h = lz.f(h(g z)). This also fixed a latent call-by-name beta/cs bug (an identity body applied to a non-value redex must wire to the redex output port, not the body var port; both now use up_port(result)). +60k function-family-transport fuzz over involutive Bool AND a genuine non-involutive 3-cycle on Bool+Unit (780k total).
+                       Univalence in a FUNCTION family too (the inverse path): a path now carries a genuine equivalence (forward f + inverse g), transport recurses on the family with variance (f covariant, g contravariant on a function domain); conjugation transport^(lX.X->X)(uae f g)h = lz.f(h(g z)). This also fixed a latent call-by-name beta/cs bug (an identity body applied to a non-value redex must wire to the redex output port, not the body var port; both now use up_port(result)). +60k function-family-transport fuzz over involutive Bool AND a genuine non-involutive 3-cycle on Bool+Unit. Id over a Sigma with a NON-inductive (U) first component too: for A = U the first-component path is Equiv a a' (a genuine type), so the Sigma-Id is Sigma(p: Equiv a a'). Id (B a')(transp^(lZ.B Z) p b) b' -- the spec computes this in full (the dependent case keeps a neutral transport along the bound path), the net builds it when the second component is constant (transport = identity) and soundly refuses the dependent case (which needs a shift under the new binder). +60k non-inductive-Sigma-Id fuzz (840k total).
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which

@@ -279,6 +279,34 @@ int main(void) {
     id_free(XtoX); id_free(NOT);
   }
 
+  /* ---- Id over a Sigma with a NON-INDUCTIVE first component (A = U). The first-component
+   * path Id_U a a' = Equiv a a' is a genuine type, so the Sigma-Id is a genuine Sigma of an
+   * equivalence path and a transported second-component equality. ---- */
+  /* constant second component: transport in a constant family is the identity */
+  check("Id (Sx:U. Bool) ((Bool,t),(Nat,t))",
+        id_idty(id_sigma(U_(), Bool_()), id_pair(Bool_(), T_()), id_pair(Nat_(), T_())),
+        id_sigma(id_equiv(Bool_(), Nat_()), Unit_()));
+  check("Id (Sx:U. Bool) ((Bool,t),(Nat,f))",
+        id_idty(id_sigma(U_(), Bool_()), id_pair(Bool_(), T_()), id_pair(Nat_(), F_())),
+        id_sigma(id_equiv(Bool_(), Nat_()), Empty_()));
+  check("Id (Sx:U. Nat) ((Bool,2),(Nat,2))",
+        id_idty(id_sigma(U_(), Nat_()), id_pair(Bool_(), id_nat_lit(2)), id_pair(Nat_(), id_nat_lit(2))),
+        id_sigma(id_equiv(Bool_(), Nat_()), Unit_()));
+  check("Id (Sx:U. Nat) ((Bool,2),(Bool,3))",
+        id_idty(id_sigma(U_(), Nat_()), id_pair(Bool_(), id_nat_lit(2)), id_pair(Bool_(), id_nat_lit(3))),
+        id_sigma(id_equiv(Bool_(), Bool_()), Empty_()));
+  /* DEPENDENT second component (B x = x): a genuine Sigma of an equivalence path and a SECOND
+   * equality transported along the bound path -- transport stays neutral (identity family,
+   * variable path).  Even when the two first-component types coincide the path is non-trivial. */
+  check("Id (Sx:U. x) ((Bool,t),(Nat,0))",
+        id_idty(id_sigma(U_(), id_var(0)), id_pair(Bool_(), T_()), id_pair(Nat_(), id_nat_lit(0))),
+        id_sigma(id_equiv(Bool_(), Nat_()),
+                 id_idty(Nat_(), id_transp(id_lam(id_var(0)), id_var(0), T_()), id_nat_lit(0))));
+  check("Id (Sx:U. x) ((Bool,t),(Bool,t))",
+        id_idty(id_sigma(U_(), id_var(0)), id_pair(Bool_(), T_()), id_pair(Bool_(), T_())),
+        id_sigma(id_equiv(Bool_(), Bool_()),
+                 id_idty(Bool_(), id_transp(id_lam(id_var(0)), id_var(0), T_()), T_())));
+
   if (fails == 0)
     printf("ALL %ld BY-OBSERVATION Id CHECKS PASSED (phase 14c reduction system)\n", checks);
   else

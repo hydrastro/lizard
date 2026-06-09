@@ -226,14 +226,29 @@ static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
       if (x->kind == ID_PAIR && y->kind == ID_PAIR) {
         id_node *qa = observe(A->a, x->a, y->a);
         int cls = classify_path(qa);
-        id_free(qa);
-        if (cls == 1) return id_base(ID_EMPTY);
+        if (cls == 1) { id_free(qa); return id_base(ID_EMPTY); }
         if (cls == 0) {
           id_node *Bsub = inst(A->b, 0, x->a);      /* B instantiated at a (= a') */
           id_node *Ba   = id_nf(Bsub);
           id_node *r    = observe(Ba, x->b, y->b);  /* recurse on the second component */
-          id_free(Bsub); id_free(Ba);
+          id_free(qa); id_free(Bsub); id_free(Ba);
           return r;
+        }
+        /* cls == -1: a NON-inductive first component (e.g. A = U, where Id_U a a' = Equiv a a'
+         * is a genuine type, not Unit/Empty). The Sigma-Id is then a genuine Sigma of the
+         * first-component path and a SECOND-component equality transported along it:
+         *   Sigma (p : Id_A a a'). Id (B a') (transport^(lam Z. B Z) p b) b'.
+         * The transport is along the bound path p, so it is the identity when B is constant
+         * and stays neutral otherwise -- the inverse-path transport machinery handles both. */
+        {
+          id_node *Ba2 = id_nf(inst(A->b, 0, y->a));          /* B[a'] : 2nd-component type at a' */
+          id_node *fam = id_lam(shift(A->b, 1, 1));           /* lam Z. B[Z] (outer ctx past p)  */
+          id_node *tr  = id_transp(fam, id_var(0), shift(x->b, 1, 0));   /* transp^(lam Z.B Z) p b */
+          id_node *bod = id_idty(shift(Ba2, 1, 0), tr, shift(y->b, 1, 0));
+          id_node *res = id_sigma(qa, bod);                   /* qa = the first-component path type */
+          id_node *nf  = id_nf(res);
+          id_free(Ba2); id_free(res);
+          return nf;
         }
       }
       return id_idty(id_copy(A), id_copy(x), id_copy(y));
