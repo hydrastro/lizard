@@ -209,7 +209,7 @@ deltanets:
 
 idnet:
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) \
+	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread -I$(SRC_DIR) \
 	    tests/idnet_test.c $(SRC_DIR)/idnet.c $(SRC_DIR)/id_observe.c -o $(BUILD_DIR)/idnet_test
 	$(BUILD_DIR)/idnet_test
 

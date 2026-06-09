@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 /* idnet.c -- Id-by-observation realised as an INTERACTION NET.
  *
  * id_observe.c is the executable SPEC: it computes Id_A(x,y) by recursion on the
@@ -34,6 +35,8 @@
 #include "id_observe.h"
 #include "idnet.h"
 #include <stdlib.h>
+#include <pthread.h>
+#include <string.h>
 
 enum {
   N_ROOT,
@@ -69,8 +72,8 @@ static long inter_;                   /* interaction count                      
 static int  over_;                    /* arena/step overflow                    */
 
 static int mk(int kind) {
-  int a = n_++, p;
-  if (n_ > MAXN) { over_ = 1; return 0; }
+  int a = __sync_fetch_and_add(&n_, 1), p;   /* atomic: safe when several threads allocate */
+  if (a >= MAXN) { over_ = 1; return 0; }
   k_[a] = kind;
   for (p = 0; p < PORTS; p++) { pt_[a * PORTS + p] = -1; pp_[a * PORTS + p] = -1; }
   return a;
@@ -282,7 +285,9 @@ static int is_active_agent(int kind) {
 static int keep_d;
 static void rule(int a, int d) {
   int ka = k_[a], kd = k_[d];
-  keep_d = 0;
+  /* keep_d is reset by the (serial) caller before each rule() call; rule branches set it
+   * to 1 only when the data node must survive.  The parallel phase fires only local rules
+   * that never set keep_d, so it never reads or writes this global. */
   if (ka == N_ID) {
     /* I.1 = output, I.2 = x, I.3 = y ; d = the type former at I.0 */
     if (kd == TY_UNIT || kd == TY_EMPTY) {
@@ -852,44 +857,173 @@ static void rule(int a, int d) {
   }
 }
 
+static long serial_sweep_once(void) {
+  int a; long fired = 0;
+  for (a = 0; a < n_; a++) {
+    int b;
+    if (k_[a] == N_ROOT) continue;
+    if (pt_[a * PORTS + 0] < 0 || pp_[a * PORTS + 0] != 0) continue;
+    b = pt_[a * PORTS + 0];
+    if (b < 0 || pp_[b * PORTS + 0] != 0) continue;
+    if (((k_[a] == N_IF || k_[a] == N_REC || k_[a] == N_RSTEP || k_[a] == N_LREC ||
+          k_[a] == N_IDL || k_[a] == N_NSZ || k_[a] == N_CCS ||
+          k_[a] == N_CASE || k_[a] == N_IDS || k_[a] == N_INLS || k_[a] == N_INRS) && k_[b] == N_VAR) ||
+        ((k_[b] == N_IF || k_[b] == N_REC || k_[b] == N_RSTEP || k_[b] == N_LREC ||
+          k_[b] == N_IDL || k_[b] == N_NSZ || k_[b] == N_CCS ||
+          k_[b] == N_CASE || k_[b] == N_IDS || k_[b] == N_INLS || k_[b] == N_INRS) && k_[a] == N_VAR)) continue;
+    if (is_active_agent(k_[a]) && !is_active_agent(k_[b])) {
+      keep_d = 0; rule(a, b);
+      k_[a] = N_ERA; pt_[a*PORTS] = -1;
+      if (!keep_d) { k_[b] = N_ERA; pt_[b*PORTS] = -1; }
+      inter_++; fired++;
+    } else if (is_active_agent(k_[b]) && !is_active_agent(k_[a])) {
+      keep_d = 0; rule(b, a);
+      k_[b] = N_ERA; pt_[b*PORTS] = -1;
+      if (!keep_d) { k_[a] = N_ERA; pt_[a*PORTS] = -1; }
+      inter_++; fired++;
+    }
+  }
+  return fired;
+}
+
+/* The sequential reducer: loop one full sweep to a fixpoint.  Active pairs are detected by two
+ * principal ports meeting (a.0 <-> b.0).  A value-eliminator meeting a bare variable WAITS
+ * (it is not yet applied); Id/transport/decision agents have proper neutral-variable rules. */
 static void reduce(void) {
   int prog = 1; long steps = 0;
   while (prog && !over_) {
-    int a; prog = 0;
-    for (a = 0; a < n_; a++) {
-      int b;
-      if (k_[a] == N_ROOT) continue;
-      if (pt_[a * PORTS + 0] < 0 || pp_[a * PORTS + 0] != 0) continue;
-      b = pt_[a * PORTS + 0];
-      if (b < 0 || pp_[b * PORTS + 0] != 0) continue;
-      /* A bound (or neutral) variable is not a value.  A VALUE-eliminator -- one that
-       * branches on a Bool/Nat value (if, the Nat recursor, its step-forcer) -- whose
-       * principal meets a variable must WAIT until beta substitutes a real value there:
-       * firing it now (inside an unapplied step/lambda body, e.g. the inner `if` of
-       *   even = rec true (\n.\r. if r false true) n )
-       * would wrongly consume the eliminator before the step is applied.  A genuinely
-       * free variable simply leaves it stuck -> read-back refuses.  We do NOT skip here
-       * for Id/transport/Sigma-decision agents: those have proper neutral-variable rules
-       * (Id B z z -> neutral, transp^(\X.X) over a neutral, etc.) that must still fire. */
-      if (((k_[a] == N_IF || k_[a] == N_REC || k_[a] == N_RSTEP || k_[a] == N_LREC ||
-            k_[a] == N_IDL || k_[a] == N_NSZ || k_[a] == N_CCS ||
-            k_[a] == N_CASE || k_[a] == N_IDS || k_[a] == N_INLS || k_[a] == N_INRS) && k_[b] == N_VAR) ||
-          ((k_[b] == N_IF || k_[b] == N_REC || k_[b] == N_RSTEP || k_[b] == N_LREC ||
-            k_[b] == N_IDL || k_[b] == N_NSZ || k_[b] == N_CCS ||
-            k_[b] == N_CASE || k_[b] == N_IDS || k_[b] == N_INLS || k_[b] == N_INRS) && k_[a] == N_VAR)) continue;
-      /* a,b are an active pair; orient agent vs data */
-      if (is_active_agent(k_[a]) && !is_active_agent(k_[b])) {
-        rule(a, b);
-        k_[a] = N_ERA; pt_[a*PORTS] = -1;
-        if (!keep_d) { k_[b] = N_ERA; pt_[b*PORTS] = -1; }
-        inter_++; prog = 1; if (++steps > 4000000L) { over_ = 1; return; }
-      } else if (is_active_agent(k_[b]) && !is_active_agent(k_[a])) {
-        rule(b, a);
-        k_[b] = N_ERA; pt_[b*PORTS] = -1;
-        if (!keep_d) { k_[a] = N_ERA; pt_[a*PORTS] = -1; }
-        inter_++; prog = 1; if (++steps > 4000000L) { over_ = 1; return; }
-      }
-    }
+    long f = serial_sweep_once();
+    prog = (f > 0);
+    steps += f;
+    if (steps > 4000000L) { over_ = 1; return; }
+  }
+}
+
+/* ============================ parallel reducer ============================ */
+/* A LOCAL rule rewires O(1) ports and allocates O(1) fresh nodes -- it never copies a subtree
+ * (no cs) and never sets keep_d.  Such rules may fire concurrently provided no two firings
+ * touch overlapping nodes.  We whitelist the Id-observation and equality/tester collisions
+ * (audited local) and fire them across threads after CLAIMING each redex's closed
+ * neighbourhood (the two agents plus all their port-neighbours), so the firings are pairwise
+ * disjoint.  Everything else -- beta, the recursor, Sigma-construction, transport -- runs in
+ * the sequential fallback sweep.  Interaction nets are strongly confluent, so any interleaving
+ * reaches the SAME normal form as the sequential reducer; the differential fuzz checks it
+ * (parallel result == sequential result == spec). */
+static int rule_par_safe(int ka, int kd) {
+  if (kd == N_VAR) return 0;            /* neutral-variable cases set keep_d -> not local */
+  switch (ka) {
+    case N_ID:  return kd == TY_BOOL || kd == TY_NAT || kd == TY_UNIT || kd == TY_EMPTY || kd == TY_U;
+    case N_IDB: return kd == VAL_TRUE || kd == VAL_FALSE;
+    case N_IDN: return kd == VAL_ZERO || kd == VAL_SUCC;
+    case N_EQT: return kd == VAL_TRUE || kd == VAL_FALSE;
+    case N_EQF: return kd == VAL_TRUE || kd == VAL_FALSE;
+    case N_ISZ: return kd == VAL_ZERO || kd == VAL_SUCC;
+    case N_SCS: return kd == VAL_ZERO || kd == VAL_SUCC;
+    default:    return 0;
+  }
+}
+
+static unsigned char claim_[MAXN];       /* per-node claim flags for disjoint parallel firing */
+static int  try_claim(int x) { return __sync_bool_compare_and_swap(&claim_[x], (unsigned char)0, (unsigned char)1); }
+static void unclaim(int x)   { claim_[x] = (unsigned char)0; }
+
+/* gather {a,b} u port-neighbours(a) u port-neighbours(b) into buf (sorted, deduped); return count */
+static int neighbourhood(int a, int b, int *buf) {
+  int tmp[2 + 2 * PORTS], n = 0, p, i, j, t, m;
+  tmp[n++] = a; tmp[n++] = b;
+  for (p = 0; p < PORTS; p++) { t = pt_[a * PORTS + p]; if (t >= 0) tmp[n++] = t; }
+  for (p = 0; p < PORTS; p++) { t = pt_[b * PORTS + p]; if (t >= 0) tmp[n++] = t; }
+  for (i = 1; i < n; i++) { int v = tmp[i]; for (j = i - 1; j >= 0 && tmp[j] > v; j--) tmp[j + 1] = tmp[j]; tmp[j + 1] = v; }
+  m = 0; for (i = 0; i < n; i++) if (i == 0 || tmp[i] != tmp[i - 1]) buf[m++] = tmp[i];
+  return m;
+}
+
+/* try to fire the local redex whose agent is `a`; returns 1 if fired */
+static int par_try_fire(int a) {
+  int b, lk[2 + 2 * PORTS], m, i, j;
+  if (k_[a] == N_ROOT || k_[a] == N_ERA) return 0;
+  if (pt_[a * PORTS + 0] < 0 || pp_[a * PORTS + 0] != 0) return 0;
+  b = pt_[a * PORTS + 0];
+  if (b < 0 || pp_[b * PORTS + 0] != 0) return 0;
+  if (!(is_active_agent(k_[a]) && !is_active_agent(k_[b]) && rule_par_safe(k_[a], k_[b]))) return 0;
+  m = neighbourhood(a, b, lk);
+  for (i = 0; i < m; i++) if (!try_claim(lk[i])) { for (j = 0; j < i; j++) unclaim(lk[j]); return 0; }
+  /* re-validate under the claim (another thread may have fired between scan and claim) */
+  if (k_[a] == N_ERA || k_[b] == N_ERA || pt_[a * PORTS + 0] != b ||
+      pp_[a * PORTS + 0] != 0 || pp_[b * PORTS + 0] != 0 || !rule_par_safe(k_[a], k_[b])) {
+    for (i = 0; i < m; i++) { unclaim(lk[i]); }
+    return 0;
+  }
+  rule(a, b);                            /* local: rewires only within {a,b,neighbours}, no keep_d */
+  k_[a] = N_ERA; pt_[a * PORTS] = -1;
+  k_[b] = N_ERA; pt_[b * PORTS] = -1;
+  (void)__sync_fetch_and_add(&inter_, 1L);
+  for (i = 0; i < m; i++) unclaim(lk[i]);
+  return 1;
+}
+
+/* ---- persistent worker pool (barriers, reused across rounds and across calls) ---- */
+#define PAR_MAXT 64
+static pthread_t         par_thr[PAR_MAXT];
+static pthread_barrier_t par_b_start, par_b_end;
+static int  par_nthreads;                /* pool size; 0 = no pool running */
+static int  par_shutdown;
+static int  par_round_n;                 /* snapshot of n_ for the current round */
+static long par_round_fired;             /* atomic accumulator for the round */
+
+static void *par_worker(void *arg) {
+  int id = (int)(long)arg;
+  for (;;) {
+    int i;
+    pthread_barrier_wait(&par_b_start);
+    if (par_shutdown) return (void *)0;
+    for (i = id; i < par_round_n; i += par_nthreads)
+      if (par_try_fire(i)) (void)__sync_fetch_and_add(&par_round_fired, 1L);
+    pthread_barrier_wait(&par_b_end);
+  }
+}
+
+static void par_pool_start(int t) {
+  long i;
+  if (t < 1) t = 1;
+  if (t > PAR_MAXT) t = PAR_MAXT;
+  par_nthreads = t; par_shutdown = 0;
+  pthread_barrier_init(&par_b_start, (pthread_barrierattr_t *)0, (unsigned)(t + 1));
+  pthread_barrier_init(&par_b_end,   (pthread_barrierattr_t *)0, (unsigned)(t + 1));
+  for (i = 0; i < t; i++) pthread_create(&par_thr[i], (pthread_attr_t *)0, par_worker, (void *)i);
+}
+
+static void par_pool_stop(void) {
+  int i;
+  if (par_nthreads == 0) return;
+  par_shutdown = 1;
+  pthread_barrier_wait(&par_b_start);    /* release workers; they observe shutdown and exit */
+  for (i = 0; i < par_nthreads; i++) pthread_join(par_thr[i], (void **)0);
+  pthread_barrier_destroy(&par_b_start);
+  pthread_barrier_destroy(&par_b_end);
+  par_nthreads = 0;
+}
+
+static long par_round(void) {
+  par_round_n = n_; par_round_fired = 0;
+  pthread_barrier_wait(&par_b_start);    /* workers go */
+  pthread_barrier_wait(&par_b_end);      /* workers done */
+  return par_round_fired;
+}
+
+/* drain local redexes in parallel rounds, then a sequential sweep for the non-local rest */
+static void reduce_par(void) {
+  int prog = 1; long steps = 0;
+  while (prog && !over_) {
+    long f, p2;
+    prog = 0;
+    do {
+      p2 = par_round(); steps += p2; prog |= (p2 > 0);
+      if (steps > 4000000L) { over_ = 1; return; }
+    } while (p2 > 0 && !over_);
+    f = serial_sweep_once();             /* beta / recursor / Sigma / transport + any leftovers */
+    steps += f; prog |= (f > 0);
+    if (steps > 4000000L) { over_ = 1; return; }
   }
 }
 
@@ -973,6 +1107,30 @@ id_node *idnet_id_nf(const id_node *t, long *steps) {
   root = enc(t);
   link_(R, 0, root, up_port(k_[root]));
   reduce();
+  if (steps) *steps = inter_;
+  if (over_) return (id_node *)0;
+  res = rb(pt_[R * PORTS + 0], pp_[R * PORTS + 0]);
+  if (rb_bad) { return (id_node *)0; }
+  return res;
+}
+
+/* Parallel variant: identical semantics to idnet_id_nf, reduced by reduce_par with `nthreads`
+ * worker threads.  The pool is started and stopped per call (simple and correct; for many tiny
+ * terms a caller may keep its own pool, but here correctness comes first).  By interaction-net
+ * confluence the result equals idnet_id_nf's; the test-suite checks par == seq == spec. */
+id_node *idnet_id_nf_par(const id_node *t, long *steps, int nthreads) {
+  int R, root;
+  id_node *res;
+  if (!t) return (id_node *)0;
+  if (t->kind != ID_ID && t->kind != ID_TRANSP && t->kind != ID_REC && t->kind != ID_LISTREC && t->kind != ID_CASE) return (id_node *)0;
+  n_ = 0; inter_ = 0; over_ = 0; rb_bad = 0; rb_depth = 0; cs_guard = 0;
+  memset(claim_, 0, sizeof(claim_));
+  R = mk(N_ROOT);
+  root = enc(t);
+  link_(R, 0, root, up_port(k_[root]));
+  par_pool_start(nthreads);
+  reduce_par();
+  par_pool_stop();
   if (steps) *steps = inter_;
   if (over_) return (id_node *)0;
   res = rb(pt_[R * PORTS + 0], pp_[R * PORTS + 0]);

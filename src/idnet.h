@@ -7,4 +7,8 @@
  * rather than returning a wrong type). The result matches id_nf() (the spec). */
 #include "id_observe.h"
 id_node *idnet_id_nf(const id_node *t, long *steps);
+/* Parallel reducer: same result as idnet_id_nf, using `nthreads` worker threads (lock-free
+ * disjoint-neighbourhood firing of the local Id/equality rules + a serial fallback for the
+ * subtree-copying rules).  Validated to produce identical normal forms to idnet_id_nf. */
+id_node *idnet_id_nf_par(const id_node *t, long *steps, int nthreads);
 #endif /* IDNET_H */

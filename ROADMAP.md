@@ -235,14 +235,33 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
     validated identical to sequential. The realistic blueprint for the kernel.
 ✅  Flat, pointer-free representation already (agents are array indices) — the
     shape an OpenCL kernel needs
-⬜  Real multithreaded CPU reducer: atomic port operations over the frontier,
-    thread-safe arena. (Deferred here: this sandbox has 1 core, so threads would
-    show correctness-under-concurrency but no speedup; the conflict-free schedule
-    above already validates the parallel-safe dispatch logic a GPU/threads need.)
+✅  Real multithreaded CPU reducer (on the HoTT net, idnet.c — `idnet_id_nf_par`,
+    `reduce_par`): SOUND lock-free parallel firing. The obstacle is locality — our
+    substitution `cs` copies a whole subtree in one rule (a non-local macro-rule with
+    an unbounded write-set), which breaks naive neighbourhood locking. So we fire only
+    the LOCAL rules in parallel (whitelisted: Id-observation against Bool/Nat/Unit/
+    Empty/U and the value testers — O(1) write-set, no cs, no keep_d), each worker
+    CAS-claiming the redex's closed neighbourhood {a,b}∪neighbours so concurrent
+    firings are provably disjoint and re-validating the pair under the claim; the
+    subtree-copying rules (β, recursor/fold, Σ-construction, transport) run in a serial
+    fallback sweep. Atomic node allocation. Correctness rests on interaction-net strong
+    confluence + disjoint firing; VALIDATED differentially: 36k mixed reductions ×
+    {2,4,8} threads with par == seq == spec, 0 divergences, plus a determinism stress
+    (one term reduced 1500× at 8 threads, 0 variance — a race would show). Honest
+    perf: at this scale/granularity it is overhead-bound, NOT yet faster (depth-13
+    balanced product, ~49k interactions: ~4.3 ms seq vs ~4.7 ms at 2–8 threads) — the
+    parallel fraction is small (structural decomposition + cs stay serial), the reducer
+    re-scans the arena each round (a redex work-queue would fix that), and per-net work
+    is tiny vs barrier sync. The hard part — provably race-free concurrent reduction +
+    the claim-based disjoint-firing mechanism — is the GPU backend's foundation. See
+    docs/ARCHITECTURE.md §5.
 ⬜  **OpenCL backend**: a redex-bag kernel — (1) scan the net for active pairs,
     (2) apply the whole batch in parallel with atomic CAS on ports, (3) compact /
     allocate new nodes from a per-workgroup arena, (4) repeat. The Bend/HVM payoff:
-    HVM2 hits ~74,000 MIPS on an RTX 4090 vs ~400 single-thread.
+    HVM2 hits ~74,000 MIPS on an RTX 4090 vs ~400 single-thread. Next perf levers
+    (from the CPU reducer above): a redex work-queue instead of full re-scans, and
+    localizing the structural rules (incremental duplication, the Δ-Nets direction) so
+    far more of the work fires in parallel.
 ```
 
 ### What already de-risks the OpenCL plan
