@@ -421,6 +421,22 @@ actual multithreaded reducer — atomic operations on ports and a thread-safe ar
 so independent active pairs reduce on real cores — which is the Bend/HVM-style
 payoff and deliberately last.
 
+**Status update — a conflict-aware (GPU-dispatch) model** (`dn_gpu`, deltanets
+section [8]). The idealized wavefront over-counts what a GPU can do: a lock-free
+kernel may fire two redexes in one step only if their rewrites touch disjoint
+memory, and two *adjacent* active pairs (one's agent is the other's neighbour)
+overlap, so they must serialise across dispatches. `dn_gpu` fires only a maximal
+**conflict-free** subset of the frontier each round — exactly one kernel dispatch
+— and reports the realistic depth, the per-dispatch width, and the peak live
+working set. The result is validated identical to the sequential and idealized
+reducers (confluence). The honest finding: on tight arithmetic chains (Church
+`add`/`mul`) the idealized width of 5–10 collapses to **~2–3 realizable per
+dispatch**, because successive β-redexes are adjacent — so the achievable GPU
+parallelism on such terms is modest and the win comes from *many independent
+reductions in flight* (branching workloads), not from a single tight chain. This
+is the realistic blueprint the OpenCL kernel implements, and the reason the
+multithreaded step is scheduled with eyes open rather than assumed to be free.
+
 
 ## 7. Honest list of the hard parts
 
@@ -791,7 +807,8 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        across depths 6..16, zero mismatches, zero refusals); Church successor/addition verified;
                        read-back refuses sharing fan-outs -> AIRTIGHT (zero wrong across ~2M random lambda-K terms);
                        `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions;
-                       wavefront reducer (`dn_parallel`) reports work/depth, validated equal to sequential.
+                       wavefront reducer (`dn_parallel`) reports work/depth; conflict-aware `dn_gpu` models one GPU dispatch
+                       (fires only non-overlapping redexes/round) and shows idealized width 5-10 collapses to ~2-3 realizable; all validated == sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv,
                        dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)); 36 checks.
   - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule

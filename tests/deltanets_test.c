@@ -43,6 +43,14 @@
  *     the reference. The optimal reducer's parallelism profile (e.g. mul 3 3:
  *     work 20, depth 5, width 8) is the on-ramp to a data-parallel backend.
  *
+ * [8] GPU DISPATCH MODEL. dn_gpu fires only a CONFLICT-FREE subset of the frontier
+ *     per round (what a lock-free GPU achieves without per-port atomics), so it is
+ *     a faithful model of one kernel dispatch. The result equals the sequential /
+ *     idealized one (confluence). Reported side by side, the idealized wavefront
+ *     width over-counts: on tight arithmetic chains a real dispatch fires only ~2-3
+ *     redexes at once (their rewrites overlap), with a measured peak live working
+ *     set -- the honest parallelism a GPU port would see.
+ *
  * Why exactly lambda-A is GUARANTEED. The CORE handles linearity (fan
  * annihilation, perfectly confluent) and erasure (eraser propagation) correctly,
  * so all of affine reduces soundly regardless of order. What it does NOT yet
@@ -261,6 +269,33 @@ int main(void) {
       }
       printf("    %-9s work=%-4ld depth=%-3ld width=%-3ld  parallelism=%.1fx%s\n",
              cs[i].name, wk, dep, mw, par_ratio, cs[i].readable ? "" : "  (reduction measured; read-back refused)");
+    }
+    if (bad) fails++;
+  }
+
+  printf("[8] GPU DISPATCH MODEL - conflict-free schedule matches sequential; idealized vs realistic depth\n");
+  {
+    struct { const char *name; lc_term *t; int readable; } cs[5];
+    int i, bad = 0;
+    cs[0].name = "add 2 3"; cs[0].t = lc_app(lc_app(c_add(), church(2)), church(3)); cs[0].readable = 1;
+    cs[1].name = "add 3 4"; cs[1].t = lc_app(lc_app(c_add(), church(3)), church(4)); cs[1].readable = 1;
+    cs[2].name = "add 4 5"; cs[2].t = lc_app(lc_app(c_add(), church(4)), church(5)); cs[2].readable = 1;
+    cs[3].name = "mul 3 3"; cs[3].t = lc_app(lc_app(c_mul(), church(3)), church(3)); cs[3].readable = 0;
+    cs[4].name = "mul 4 4"; cs[4].t = lc_app(lc_app(c_mul(), church(4)), church(4)); cs[4].readable = 0;
+    for (i = 0; i < 5; i++) {
+      long w1 = 0, d1 = 0, m1 = 0;            /* idealized wavefront */
+      long w2 = 0, rnd = 0, m2 = 0, pl = 0;   /* realistic conflict-aware */
+      int  c1 = 0, c2 = 0;
+      lc_term *ideal = dn_parallel(cs[i].t, &w1, &d1, &m1, &c1);
+      lc_term *gpu   = dn_gpu(cs[i].t, &w2, &rnd, &m2, &pl, &c2);
+      if (cs[i].readable) {
+        lc_term *ref = lc_nf_ref(cs[i].t);
+        if (!ideal || !gpu || !lc_eq(gpu, ideal) || !lc_eq(gpu, ref)) { bad++; printf("    FAIL %s: GPU schedule != idealized/reference\n", cs[i].name); continue; }
+      } else {
+        if (ideal || gpu || !c1 || !c2) { bad++; printf("    FAIL %s: expected refusal in both modes\n", cs[i].name); continue; }
+      }
+      printf("    %-9s work=%-4ld  idealized[depth=%-3ld width=%-3ld]  GPU[rounds=%-3ld width=%-3ld liveset=%-4ld]%s\n",
+             cs[i].name, w1, d1, m1, rnd, m2, pl, cs[i].readable ? "" : "  (read-back refused; schedule measured)");
     }
     if (bad) fails++;
   }

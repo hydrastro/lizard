@@ -186,6 +186,57 @@ static void reduce_rounds(long *depth, long *maxwidth) {
   *depth = rounds; *maxwidth = mw;
 }
 
+/* Conflict-aware schedule: a faithful model of one GPU kernel dispatch. A lock-free
+ * kernel can fire two redexes in the same step only if their rewrites touch disjoint
+ * memory; two ADJACENT active pairs (one's agent is the other's neighbour) overlap and
+ * must serialise across dispatches. So each round here fires only a maximal CONFLICT-
+ * FREE subset of the frontier -- the parallelism a GPU actually achieves without
+ * per-port atomics -- deferring the rest to later rounds. The result is identical to
+ * sequential (confluence); the point is the realistic depth/width and peak live nodes. */
+static long g_touch[MAXA];
+static long g_stamp;
+static void reduce_conflict(long *rounds, long *maxwidth, long *peaklive) {
+  long rnd = 0, mw = 0, pl = 0, steps = 0;
+  for (;;) {
+    int a, nb = 0, i, sel = 0;
+    for (a = 0; a < g_n; a++) {                       /* snapshot the frontier */
+      int b;
+      if (g_dead[a] || g_kind[a] == K_ROOT) continue;
+      b = tg(a, 0);
+      if (b < 0 || g_dead[b] || g_kind[b] == K_ROOT) continue;
+      if (tpp(a, 0) == 0 && tg(b, 0) == a && tpp(b, 0) == 0 && a < b) {
+        if (nb < MAXA) g_batch[nb] = a;
+        nb++;
+      }
+    }
+    if (nb == 0) break;
+    rnd++; g_stamp++;
+    for (i = 0; i < nb && i < MAXA; i++) {            /* fire a conflict-free subset */
+      int a2 = g_batch[i], b2, p, conflict;
+      if (g_dead[a2] || g_kind[a2] == K_ROOT) continue;
+      b2 = tg(a2, 0);
+      if (b2 < 0 || g_dead[b2] || g_kind[b2] == K_ROOT) continue;
+      if (!(tpp(a2, 0) == 0 && tg(b2, 0) == a2 && tpp(b2, 0) == 0)) continue;
+      conflict = (g_touch[a2] == g_stamp || g_touch[b2] == g_stamp);
+      for (p = 0; p < PORTS && !conflict; p++) {       /* a pair's rewrite touches its */
+        int t = tg(a2, p); if (t >= 0 && g_touch[t] == g_stamp) conflict = 1;  /* agents */
+        t = tg(b2, p);     if (t >= 0 && g_touch[t] == g_stamp) conflict = 1;  /* + neighbours */
+      }
+      if (conflict) continue;
+      g_touch[a2] = g_stamp; g_touch[b2] = g_stamp;
+      for (p = 0; p < PORTS; p++) {
+        int t = tg(a2, p); if (t >= 0) g_touch[t] = g_stamp;
+        t = tg(b2, p);     if (t >= 0) g_touch[t] = g_stamp;
+      }
+      if (interact(a2, b2)) { sel++; if (++steps > 3000000L) { *rounds = rnd; *maxwidth = mw; *peaklive = pl; return; } }
+    }
+    if (sel > mw) mw = sel;
+    { int c = 0; for (a = 0; a < g_n; a++) if (!g_dead[a] && g_kind[a] != K_ROOT) c++; if (c > pl) pl = c; }
+    if (sel == 0) break;                              /* safety: a frontier with only conflicts cannot happen, but never loop */
+  }
+  *rounds = rnd; *maxwidth = mw; *peaklive = pl;
+}
+
 /* ---- translation: term -> net (name-based wiring) ---- */
 static int w_a[MAXW], w_p[MAXW], w_c[MAXW];
 static int g_wn;
@@ -295,11 +346,33 @@ lc_term *dn_normalize(const lc_term *t, long *interactions, int *cyclic) {
   return no;
 }
 
-/* Like dn_normalize, but reduces by the wavefront scheduler and reports the
- * parallelism profile: *depth = rounds (parallel critical path), *maxwidth =
- * peak simultaneous redexes. The returned term is identical to dn_normalize's
- * (perfect confluence); *interactions is the total work, so work/depth is the
- * average parallelism a data-parallel (e.g. OpenCL) backend could exploit. */
+/* Like dn_parallel, but reduces with the CONFLICT-AWARE schedule (one GPU kernel
+ * dispatch per round). Returns the same normal form; reports *rounds (realistic
+ * parallel depth a lock-free GPU achieves), *maxwidth (peak conflict-free dispatch),
+ * and *peaklive (peak simultaneously-live nodes -- the working-set size the GPU
+ * must hold). Compare *rounds here against dn_parallel's idealized depth to see how
+ * much parallelism survives the no-overlap constraint. */
+lc_term *dn_gpu(const lc_term *t, long *interactions, long *rounds, long *maxwidth, long *peaklive, int *cyclic) {
+  int rw, R, d;
+  lc_term *no;
+  long rnd = 0, mw = 0, pl = 0;
+  g_n = 0; g_inter = 0; g_bad = 0; g_wn = 0;
+  for (d = 0; d < MAXD; d++) occ_n[d] = 0;
+  rb_rec = 0; rb_cyc = 0; rb_noncanon = 0;
+  rw = enc(t, 0, 0);
+  R = na(K_ROOT, 0, 0); att(rw, R, 0);
+  reduce_conflict(&rnd, &mw, &pl);
+  if (interactions) *interactions = g_inter;
+  if (rounds) *rounds = rnd;
+  if (maxwidth) *maxwidth = mw;
+  if (peaklive) *peaklive = pl;
+  if (g_bad) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  for (d = 0; d < g_n; d++) rb_seen[d] = 0;
+  no = rb(tg(R, 0), tpp(R, 0), 0);
+  if (rb_cyc || rb_noncanon) { if (cyclic) *cyclic = 1; return (lc_term *)0; }
+  if (cyclic) *cyclic = 0;
+  return no;
+}
 lc_term *dn_parallel(const lc_term *t, long *interactions, long *depth, long *maxwidth, int *cyclic) {
   int rw, R, d;
   lc_term *no;

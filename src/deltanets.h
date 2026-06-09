@@ -67,4 +67,10 @@ int dn_affine(const lc_term *t);
  * a data-parallel backend (e.g. OpenCL) could exploit. */
 lc_term *dn_parallel(const lc_term *t, long *interactions, long *depth, long *maxwidth, int *cyclic);
 
+/* Conflict-aware (GPU-dispatch) variant: same normal form, but fires only a
+ * conflict-free subset of the frontier each round (the parallelism a lock-free GPU
+ * achieves without per-port atomics). Reports *rounds (realistic parallel depth),
+ * *maxwidth (peak conflict-free dispatch), *peaklive (peak live working set). */
+lc_term *dn_gpu(const lc_term *t, long *interactions, long *rounds, long *maxwidth, long *peaklive, int *cyclic);
+
 #endif

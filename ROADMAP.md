@@ -107,10 +107,19 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
     sequential (gcd: 1.0) — checked vs sequential
 ✅  Wavefront reduction (Δ-Nets): same, on the optimal engine — e.g. mul 3 3
     work=20 depth=5 width=8 (~4× here; grows with term size)
+✅  GPU-dispatch model (Δ-Nets, dn_gpu): a faithful single-core model of one
+    lock-free kernel dispatch — fires only a CONFLICT-FREE subset per round (no
+    overlapping rewrites), so it reports the parallelism a GPU actually achieves
+    without per-port atomics. Honest finding: on tight arithmetic chains the
+    idealized wavefront width (5–10) collapses to ~2–3 realizable per dispatch
+    (most redexes are adjacent), with the peak live working set measured. Result
+    validated identical to sequential. The realistic blueprint for the kernel.
 ✅  Flat, pointer-free representation already (agents are array indices) — the
     shape an OpenCL kernel needs
 ⬜  Real multithreaded CPU reducer: atomic port operations over the frontier,
-    thread-safe arena. The first concurrency milestone before the GPU.
+    thread-safe arena. (Deferred here: this sandbox has 1 core, so threads would
+    show correctness-under-concurrency but no speedup; the conflict-free schedule
+    above already validates the parallel-safe dispatch logic a GPU/threads need.)
 ⬜  **OpenCL backend**: a redex-bag kernel — (1) scan the net for active pairs,
     (2) apply the whole batch in parallel with atomic CAS on ports, (3) compact /
     allocate new nodes from a per-workgroup arena, (4) repeat. The Bend/HVM payoff:
