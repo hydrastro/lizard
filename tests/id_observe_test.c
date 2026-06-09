@@ -106,6 +106,36 @@ int main(void) {
   check("transport (lam X. X) (ua not) false  [univalence: negation]",
         id_transp(id_lam(id_var(0)), id_ua(Not_()), F_()), T_());
 
+  /* ---- DEPENDENT function types: Id over a Pi (dependent funext) ---- */
+  /* a Pi whose codomain ignores the argument degenerates to the arrow case */
+  check("Id (Pi Unit. Bool) (lam true) (lam true)",
+        id_idty(id_pi(Unit_(), Bool_()), id_lam(T_()), id_lam(T_())),
+        id_pi(Unit_(), Unit_()));
+  check("Id (Pi Unit. Bool) (lam true) (lam false)",
+        id_idty(id_pi(Unit_(), Bool_()), id_lam(T_()), id_lam(F_())),
+        id_pi(Unit_(), Empty_()));
+  /* identity functions at a Pi type: body applied to the bound var, stays neutral */
+  check("Id (Pi Nat. Nat) (lam #0) (lam #0)",
+        id_idty(id_pi(Nat_(), Nat_()), id_lam(id_var(0)), id_lam(id_var(0))),
+        id_pi(Nat_(), id_idty(Nat_(), id_var(0), id_var(0))));
+  /* a GENUINELY dependent codomain (if #0 then Unit else Unit): it is carried,
+   * unshifted, into the resulting Id, and the applications reduce to star.
+   * Result: Pi z:Bool. Id (if z then Unit else Unit) star star  (neutral body). */
+  check("Id (Pi Bool. if #0 Unit Unit) (lam star)(lam star)",
+        id_idty(id_pi(Bool_(), id_if(id_var(0), Unit_(), Unit_())),
+                id_lam(Star_()), id_lam(Star_())),
+        id_pi(Bool_(), id_idty(id_if(id_var(0), Unit_(), Unit_()), Star_(), Star_())));
+
+  /* ---- transport in a PRODUCT family is componentwise (HoTT Thm 2.6.4) ---- */
+  /* transport^(lam X. X*X) (ua not) (true,false) = (not true, not false) = (false,true) */
+  check("transport (lam X. X*X) (ua not) (true,false)  [componentwise univalence]",
+        id_transp(id_lam(id_prod(id_var(0), id_var(0))), id_ua(Not_()), id_pair(T_(), F_())),
+        id_pair(F_(), T_()));
+  /* mixed family lam X. X*Nat : first component transported, second is constant */
+  check("transport (lam X. X*Nat) (ua not) (true,5)  [mixed family]",
+        id_transp(id_lam(id_prod(id_var(0), Nat_())), id_ua(Not_()), id_pair(T_(), id_nat_lit(5))),
+        id_pair(F_(), id_nat_lit(5)));
+
   /* ---- neutral cases: no canonicity on open terms (variables) ---- */
   check("Id Nat #0 #0 (neutral)",
         id_idty(Nat_(), id_var(0), id_var(0)),

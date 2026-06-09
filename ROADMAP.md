@@ -59,7 +59,12 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
 🟡  The function case in the net (Id_(A→B) f g = Πz. Id B (f z)(g z), funext) —
     needs the λ/application agents; idnet REFUSES it rather than mis-type (sound)
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
-⬜  Dependent function / Σ family cases for transport
+🟡  Dependent families (semantics, id_observe.c): Id over a dependent Π is now
+    dependent funext — Id (Πx:A. B x) f g = Πz:A. Id (B z)(f z)(g z), the codomain
+    carried unshifted under the binder; and transport through a PRODUCT family is
+    componentwise (HoTT 2.6.4), so e.g. transport^(λX.X×X)(ua f)(a,b) = (f a, f b).
+    Remaining: transport through a dependent Σ family, and Id over a dependent Σ
+    (both need transport along the path in the first component) — the subtle cases.
 ```
 
 ## Track C — Optimal reduction  (Δ-Nets, `src/deltanets.c`)

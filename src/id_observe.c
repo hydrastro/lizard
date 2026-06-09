@@ -134,7 +134,19 @@ static id_node *observe(const id_node *A, const id_node *x, const id_node *y) {
       return id_pi(id_copy(A->a), bnf);
     }
     case ID_U:     return id_equiv(id_copy(x), id_copy(y)); /* univalence: paths in U = equivalences */
-    case ID_PI: case ID_ID: case ID_EQUIV:
+    case ID_PI: {
+      /* DEPENDENT funext: Id (Pi x:A. B x) f g  =  Pi z:A. Id (B z) (f z)(g z).
+       * Differs from ARR only in that the codomain B already lives under the
+       * binder (it references var 0), so it is NOT shifted -- var 0 in B is the
+       * new bound variable z, exactly as required. */
+      id_node *body = id_idty(id_copy(A->b),
+                              id_app(shift(x, 1, 0), id_var(0)),
+                              id_app(shift(y, 1, 0), id_var(0)));
+      id_node *bnf = id_nf(body);
+      id_free(body);
+      return id_pi(id_copy(A->a), bnf);
+    }
+    case ID_ID: case ID_EQUIV:
     default:
       return id_idty(id_copy(A), id_copy(x), id_copy(y));   /* neutral / out of scope */
   }
@@ -190,6 +202,21 @@ id_node *id_nf(const id_node *t) {
           id_node *ap = id_app(id_copy(p->a), x);   /* x's ownership moves into ap */
           id_node *r = id_nf(ap);
           id_free(ap); id_free(P); id_free(p);
+          return r;
+        }
+        /* transport in a PRODUCT family is componentwise (HoTT Thm 2.6.4):
+         * transport^(lam i. L i * R i) p (u,v) = (transport^(lam i.L i) p u,
+         *                                         transport^(lam i.R i) p v).
+         * Combined with the rule above, e.g.
+         * transport^(lam X. X*X) (ua f) (a,b) = (f a, f b). */
+        if (P->a->kind == ID_PROD && x->kind == ID_PAIR) {
+          id_node *L  = id_lam(id_copy(P->a->a));   /* lam i. (first  component) */
+          id_node *R  = id_lam(id_copy(P->a->b));   /* lam i. (second component) */
+          id_node *tl = id_transp(L, id_copy(p), id_copy(x->a));
+          id_node *tr = id_transp(R, id_copy(p), id_copy(x->b));
+          id_node *pr = id_pair(tl, tr);
+          id_node *r  = id_nf(pr);
+          id_free(pr); id_free(P); id_free(p); id_free(x);
           return r;
         }
       }

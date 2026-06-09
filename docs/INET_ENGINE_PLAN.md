@@ -337,7 +337,15 @@ structurally (`Id Nat (succ m)(succ n) → Id Nat m n`, bottoming out at
 `Unit`/`Empty`), product componentwise, function pointwise (β fires under the
 resulting `Π`, so `Id (Unit→Bool) (λ.true)(λ.true) →* Π Unit. Unit`), the
 universe by univalence (`Id 𝒰 A B → Equiv A B`), and `transport refl x → x`;
-open terms stay neutral, since canonicity is only for closed terms. Because
+open terms stay neutral, since canonicity is only for closed terms. The
+dependent layer is now partly in: `Id` over a **dependent** `Π` computes by
+dependent funext (`Id (Πx:A. B x) f g → Πz:A. Id (B z)(f z)(g z)`, the codomain
+carried unshifted under the binder), and `transport` through a **product family**
+is componentwise (HoTT Thm 2.6.4), which combined with the univalence rule gives
+clean univalent computations such as `transport^(λX.X×X) (ua f)(a,b) → (f a, f b)`
+(36 checks). The remaining dependent cases — transport through a dependent `Σ`,
+and `Id` over a dependent `Σ` — need transport along the path in the first
+component and are the documented next extension. Because
 `kt_whnf` does **not** reduce `KT_ID` structurally, there is no kernel oracle for
 these rules, so this module *is* the executable specification — the exact rewrite
 set the `Id`/type-former agents must implement in the net. What remains for 14c
@@ -784,7 +792,8 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        read-back refuses sharing fan-outs -> AIRTIGHT (zero wrong across ~2M random lambda-K terms);
                        `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions;
                        wavefront reducer (`dn_parallel`) reports work/depth, validated equal to sequential.
-  - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv).
+  - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv,
+                       dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)); 36 checks.
   - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
