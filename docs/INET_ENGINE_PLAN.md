@@ -347,6 +347,22 @@ rather than as a standalone AST reducer, plus the genuinely dependent cases
 (transport threaded through the second component of a dependent `Σ`); those are
 validated against `tt_equality.c`.
 
+**Status update — `Id` as agents has now landed for the inductive + universe
+fragment** (`src/idnet.c`, `make idnet`). An `N_ID` agent's principal port faces
+a type-former agent, and the collision fires that former's structural rule, as a
+local interaction-net rewrite: `ID·Unit → Unit`; `ID·𝒰(A,B) → Equiv A B`
+(univalence); `ID·(A×B) → (Id A ·)×(Id B ·)` with `UNPAIR·PAIR` projecting the
+two values to their use-sites; `ID·Bool` does case analysis (an `IDB` agent
+observes `x`, then a tester observes `y`); `ID·Nat` is genuinely recursive — an
+`IDN` agent on `succ m`/`succ n` re-spawns an `IDN` agent on `m`/`n`. The result
+type is read back to an `id_node` and checked against `id_nf` (the §5 spec) over
+19 worked cases and a **200,000-term differential fuzz** across random types and
+values: zero wrong, zero refused. This is the duality thesis made literal —
+equality computed *by observation, as graph rewriting*. The remaining piece is
+the function case (`Id_(A→B) f g = Πz. Id B (f z)(g z)`, funext), which needs the
+λ/application agents; until it lands the net read-back *refuses* a function-typed
+`Id` (returns `NULL`) rather than emit a wrong type, keeping the engine sound.
+
 
 ## 6. Making the net the engine (Phases 16–17)
 
@@ -521,6 +537,24 @@ payoff and deliberately last.
   variable used at most once), which strictly subsumes `dn_linear`. The lesson:
   a differential test is only as trustworthy as the thing generating its inputs —
   always verify the generator's output distribution independently.
+
+  *Why there is no read-back shortcut to λK (a negative result).* A tempting idea
+  is to avoid phase-2 by *unsharing during read-back*: when read-back reaches a
+  sharing fan-out (a replicator of arity ≥ 2 at its principal), instead of
+  refusing, follow all of its auxiliary ports and emit a separate copy of the
+  shared subnet per use-site. That terminates only if the shared structure is
+  acyclic. A direct measurement settles it: a corrected traversal that follows
+  child-direction wires, branches at every sharing fan-out into all aux ports, and
+  flags a true back-edge (an ancestor on the current DFS path) finds that **across
+  depths 7–9, of the refused sharing-fan-out terms 130/130, 147/148 and 149/149
+  would loop** — essentially all of them. The β-normal Δ-net for a sharing term is
+  genuinely cyclic, exactly as the paper describes, so naive duplication does not
+  terminate; only phase-2's level-delta-guided *finite* unfolding resolves the
+  cycle. (An earlier cycle check that followed wires in both directions reported
+  everything as cyclic — a bidirectional-wire artifact; the corrected child-only
+  traversal above is the trustworthy one.) Conclusion: λK capability requires the
+  full canonicalization (a)–(e); there is no cheaper read-back trick. The airtight
+  refusal therefore stands as the honest endpoint until phase-2 is built.
 
   *The one shortcut that genuinely fails: leftmost-outermost order alone for λK.*
   A BFS that always reduces the active pair nearest the root keeps the whole
@@ -751,6 +785,8 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        `dn_linear`/`dn_affine` boundary checked, formerly-wrong terms pinned as refused regressions;
                        wavefront reducer (`dn_parallel`) reports work/depth, validated equal to sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv).
+  - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule
+                       (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which
 is not part of these incremental deltas, so they cannot be rebuilt from the zips

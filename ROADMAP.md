@@ -16,10 +16,13 @@ Legend:  ✅ done & validated   🟡 partial   ⬜ open / future   ⭐ you-are-h
 The four-agent core engine is built, validated against the trusted kernel, and
 runs structural recursion. The optimal-reduction engine (Δ-Nets) is **airtight**:
 provably correct on the affine fragment and never-wrong (correct-or-refused) on
-the full λ-calculus. Parallelism is demonstrated (strong confluence + a wavefront
-reducer on both the core engine and Δ-Nets). The two big open fronts are (1) full
-λ-K *sharing* in Δ-Nets — turning refusals into correct answers — and (2) the real
-multithreaded/GPU reducer.
+the full λ-calculus. Identity types now **run as interaction-net agents** —
+Id-by-observation computes by graph rewriting on the inductive + universe fragment,
+matching the spec across a 200k-term fuzz. Parallelism is demonstrated (strong
+confluence + a wavefront reducer on both the core engine and Δ-Nets). The two big
+open fronts are (1) full λ-K *sharing* in Δ-Nets — turning refusals into correct
+answers, which we've now shown needs the full phase-2 canonicalization (no
+duplication shortcut) — and (2) the real multithreaded/GPU reducer.
 
 ---
 
@@ -46,7 +49,15 @@ multithreaded/GPU reducer.
     function pointwise (funext), universe by univalence (→ Equiv) (id_observe.c)
 ✅  Transport as type-former rewrite (semantics): refl/constant family = identity;
     identity family over 𝒰 gives transport^(λX.X)(ua f) x = f x (30 checks)
-🟡  Wire Id / transport into the net as agents (Id meets Σ/Π/𝒰 in the graph)
+✅  Id as interaction-net AGENTS (src/idnet.c): an ID agent's principal meets a
+    type-former's principal and fires that former's structural Id-rule —
+    ID·Unit→Unit, ID·𝒰(A,B)→Equiv A B (univalence), ID·(A×B)→componentwise (with
+    UNPAIR projecting values), ID·Bool→case analysis, ID·Nat→RECURSIVE (Id_Nat of
+    successors re-spawns Id_Nat of predecessors). Validated against id_nf (the
+    spec): 19 worked cases + a 200k-term differential fuzz, 0 wrong, 0 refused.
+    Id computes by observation AS GRAPH REWRITING — the duality thesis, literally.
+🟡  The function case in the net (Id_(A→B) f g = Πz. Id B (f z)(g z), funext) —
+    needs the λ/application agents; idnet REFUSES it rather than mis-type (sound)
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
 ⬜  Dependent function / Σ family cases for transport
 ```
@@ -71,6 +82,10 @@ brackets/croissants of Lamping/Asperti–Guerrini, so delimiters never accumulat
     succeeds). Needs the paper's canonicalization: leftmost-outermost order +
     unpaired-replicator merging/decay + phase-2 aux-fan replication + erasure GC.
     THIS IS THE MAIN OPEN RESEARCH ITEM.  (see docs/INET_ENGINE_PLAN.md §7)
+    Ruled out as a shortcut: unsharing-by-duplication at read-back would LOOP on
+    ~all refused terms (measured 130/130, 147/148, 149/149 across depths 7–9) —
+    the β-normal Δ-nets for sharing are genuinely cyclic, exactly as the paper
+    says, so only the level-delta-guided phase-2 unfolding resolves them.
 ```
 
 ## Track D — Parallelism → GPU / OpenCL  (the endgame)
@@ -128,8 +143,9 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
 2. ⬜  **Multithreaded CPU reducer** — atomic frontier reduction on `ic.c`; the
    correctness groundwork (confluence, locality) is done. The concurrency rehearsal
    for the GPU.
-3. 🟡→✅  **Wire Id/transport into the net as agents** — make the type theory *run*
-   on the engine, cross-checked against the cubical layer.
+3. 🟡  **Finish Id/transport in the net** — Id already runs as agents on the
+   inductive + universe fragment (src/idnet.c); add the function case (funext,
+   needs the λ agents) and transport, then cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)

@@ -200,12 +200,18 @@ opt-core:
 # which leaves a cyclic net) additionally needs the paper's canonicalization
 # rules + a global reduction order; see docs section 7.  Reuses opt_core's
 # lambda term type + reference oracle.
-.PHONY: deltanets
+.PHONY: deltanets idnet
 deltanets:
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) \
 	    tests/deltanets_test.c $(SRC_DIR)/deltanets.c $(SRC_DIR)/opt_core.c -o $(BUILD_DIR)/deltanets_test
 	$(BUILD_DIR)/deltanets_test
+
+idnet:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I$(SRC_DIR) \
+	    tests/idnet_test.c $(SRC_DIR)/idnet.c $(SRC_DIR)/id_observe.c -o $(BUILD_DIR)/idnet_test
+	$(BUILD_DIR)/idnet_test
 
 # Phase 14c: the by-observation identity reduction system and its executable
 # specification.  Id_A(x,y) computes by recursion on the structure of A (Bool/Nat
