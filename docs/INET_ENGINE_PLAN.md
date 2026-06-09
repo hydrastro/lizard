@@ -366,10 +366,24 @@ observes `x`, then a tester observes `y`); `ID·Nat` is genuinely recursive — 
 type is read back to an `id_node` and checked against `id_nf` (the §5 spec) over
 19 worked cases and a **200,000-term differential fuzz** across random types and
 values: zero wrong, zero refused. This is the duality thesis made literal —
-equality computed *by observation, as graph rewriting*. The remaining piece is
-the function case (`Id_(A→B) f g = Πz. Id B (f z)(g z)`, funext), which needs the
-λ/application agents; until it lands the net read-back *refuses* a function-typed
-`Id` (returns `NULL`) rather than emit a wrong type, keeping the engine sound.
+equality computed *by observation, as graph rewriting*.
+
+The **function case has now landed on the net too** (`Id_(A→B) f g = Πz:A. Id B
+(f z)(g z)`, funext). The trick that avoids needing a general β-engine: applying
+`f` and `g` to the freshly introduced Π-binder variable `z` is, in de Bruijn,
+*just their bodies* — the λ's `var 0` and the new Π's `var 0` coincide — so the
+bodies are reused directly with `var 0` now denoting `z`. Two further pieces make
+it work: every observation agent gained a **neutral rule** (observing a variable
+cannot fire, so it emits a neutral `Id` node carrying the reconstructed sides —
+e.g. `Id_Nat(succ m)(z)` after the successor is peeled), and read-back became
+**binder-aware** (`Π`, bound variables by de Bruijn index, neutral `Id`). It
+covers constant, identity, structural (`λ.succ #0`), into-product, and dependent
+`Π` codomains, validated against the spec over 7 worked cases and a **100,000-term
+funext fuzz**: zero wrong, zero refused. Sound limits remain explicit: a body that
+needs real β (a genuine application, e.g. `λx.(λy.y)x`) is *refused* rather than
+guessed, and the codomain must be closed (open codomains would need net-level de
+Bruijn shifting, not yet implemented). Transport-as-agents and the dependent Σ
+cases are the pieces still living only in the §5 spec, not yet on the net.
 
 
 ## 6. Making the net the engine (Phases 16–17)
@@ -811,7 +825,9 @@ GREEN — built and validated this build, standalone (`make <target>`):
                        (fires only non-overlapping redexes/round) and shows idealized width 5-10 collapses to ~2-3 realizable; all validated == sequential.
   - `id-observe`     — identity-by-observation reduces Id to its structural answer (Nat->Unit, products componentwise, U->Equiv,
                        dependent Pi funext, product-family transport: transport^(lam X.X*X)(ua f)(a,b)=(f a,f b)); 36 checks.
-  - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule
+  - `idnet`          — Id-by-observation AS AN INTERACTION NET: ID agent meets a type-former, fires its structural rule;
+                       inductive + universe fragment AND functions (funext, incl. dependent Pi) via the de Bruijn "body is f z" trick,
+                       neutral rules for variables, binder-aware read-back; validated == spec over 300k fuzz; beta-needing bodies refused.
                        (Unit, U->Equiv, Prod componentwise, Bool case-analysis, Nat recursive); matches id_nf on 19 cases + 200k fuzz.
 
 VALIDATED PREVIOUSLY — depend on the full lizard runtime (`<ds.h>` et al.), which

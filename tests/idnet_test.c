@@ -123,15 +123,35 @@ int main(void) {
                   id_pair(id_nat_lit(1), id_nat_lit(2)),
                   id_pair(id_nat_lit(1), id_nat_lit(3))));
 
-  printf("[6] SOUND REFUSAL -- the function case (funext) is not yet wired in -> refuse\n");
-  /* Id (Bool->Bool) f g needs funext + the lambda machinery -> refuse, never mis-type */
-  refuse_case("Id (Bool->Bool) f g",
-              id_idty(id_arr(id_base(ID_BOOL), id_base(ID_BOOL)),
-                      id_lam(id_var(0)), id_lam(id_var(0))));
-  /* Id over a bare function value with arrow type also refused */
-  refuse_case("Id (Nat->Nat) id id",
+  printf("[6] FUNCTIONS -- funext on the net: Id (A->B) f g = Pi z:A. Id B (f z)(g z)\n");
+  /* constant functions: body ignores the argument */
+  ok_case("Id (Unit->Bool)(l.t)(l.t)",
+          id_idty(id_arr(id_base(ID_UNIT), id_base(ID_BOOL)), id_lam(id_base(ID_TRUE)), id_lam(id_base(ID_TRUE))));
+  ok_case("Id (Unit->Bool)(l.t)(l.f)",
+          id_idty(id_arr(id_base(ID_UNIT), id_base(ID_BOOL)), id_lam(id_base(ID_TRUE)), id_lam(id_base(ID_FALSE))));
+  /* identity functions: body is the bound variable -> the inner Id stays neutral */
+  ok_case("Id (Bool->Bool)(l.#0)(l.#0)",
+          id_idty(id_arr(id_base(ID_BOOL), id_base(ID_BOOL)), id_lam(id_var(0)), id_lam(id_var(0))));
+  ok_case("Id (Nat->Nat)(l.#0)(l.#0)",
+          id_idty(id_arr(id_base(ID_NAT), id_base(ID_NAT)), id_lam(id_var(0)), id_lam(id_var(0))));
+  /* structural functions: the successor map -- recursion peels succ, then neutral */
+  ok_case("Id (Nat->Nat)(l.S#0)(l.S#0)",
+          id_idty(id_arr(id_base(ID_NAT), id_base(ID_NAT)), id_lam(id_succ(id_var(0))), id_lam(id_succ(id_var(0)))));
+  /* a function into a product type */
+  ok_case("Id (Unit->Bool*Nat)(l.(t,0))..",
+          id_idty(id_arr(id_base(ID_UNIT), id_prod(id_base(ID_BOOL), id_base(ID_NAT))),
+                  id_lam(id_pair(id_base(ID_TRUE), id_nat_lit(0))),
+                  id_lam(id_pair(id_base(ID_FALSE), id_nat_lit(0)))));
+  /* DEPENDENT function type (Pi): same rule, codomain carried under the binder */
+  ok_case("Id (Pi Unit. Bool)(l.t)(l.f)",
+          id_idty(id_pi(id_base(ID_UNIT), id_base(ID_BOOL)), id_lam(id_base(ID_TRUE)), id_lam(id_base(ID_FALSE))));
+
+  printf("[6b] SOUND REFUSAL -- a function body that needs real beta is refused, not guessed\n");
+  /* body applies something (lam x. (lam y.y) x): needs beta-reduction, not implemented -> refuse */
+  refuse_case("Id (Nat->Nat)(l.(l.#0)#0)..",
               id_idty(id_arr(id_base(ID_NAT), id_base(ID_NAT)),
-                      id_lam(id_var(0)), id_lam(id_var(0))));
+                      id_lam(id_app(id_lam(id_var(0)), id_var(0))),
+                      id_lam(id_app(id_lam(id_var(0)), id_var(0)))));
 
   printf("[7] DIFFERENTIAL FUZZ -- random types & values: net result == spec, every time\n");
   {
@@ -151,6 +171,31 @@ int main(void) {
     else printf("    ok   %d random Id_A(x,y) over Unit/Bool/Nat/U/Prod: net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id reduces by interaction on Unit/Bool/Nat/Prod/U, matching the spec (200k fuzz); the function case is refused, never mis-typed\n", fails);
+  printf("[8] FUNEXT FUZZ -- random function types A->B with constant & identity bodies\n");
+  {
+    int i, N = 100000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *A = rand_type(2), *B = rand_type(2);
+      id_node *f, *g, *idt, *spec, *net;
+      if (rnd() & 1) {                         /* constant functions  lam _. v */
+        f = id_lam(rand_val(B, 2));
+        g = id_lam(rand_val(B, 2));
+      } else {                                 /* identity at A->A (B := A)     */
+        id_free(B); B = id_copy(A);
+        f = id_lam(id_var(0));
+        g = id_lam(id_var(0));
+      }
+      idt  = id_idty(id_arr(id_copy(A), id_copy(B)), f, g);
+      spec = id_nf(idt);
+      net  = idnet_id_nf(idt, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(A); id_free(B); id_free(idt); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random Id (A->B) f g (funext): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id reduces by interaction on Unit/Bool/Nat/Prod/U AND functions (funext, incl. dependent Pi), matching the spec (300k fuzz); bodies needing real beta are refused, never mis-typed\n", fails);
   return fails ? 1 : 0;
 }

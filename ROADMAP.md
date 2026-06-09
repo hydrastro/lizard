@@ -56,8 +56,17 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     successors re-spawns Id_Nat of predecessors). Validated against id_nf (the
     spec): 19 worked cases + a 200k-term differential fuzz, 0 wrong, 0 refused.
     Id computes by observation AS GRAPH REWRITING — the duality thesis, literally.
-🟡  The function case in the net (Id_(A→B) f g = Πz. Id B (f z)(g z), funext) —
-    needs the λ/application agents; idnet REFUSES it rather than mis-type (sound)
+✅  The function case in the net (src/idnet.c): Id_(A→B) f g = Πz:A. Id B (f z)(g z),
+    funext, now reduces ON THE NET. The key move needs no β-engine: applying f,g to
+    the fresh Π-binder z is, in de Bruijn, just their bodies (the λ's var 0 and the
+    new Π's var 0 coincide), so the bodies are reused directly with var 0 = z. Each
+    observation agent gained a NEUTRAL rule (observing a variable can't fire, so it
+    emits a neutral Id node), and read-back became binder-aware (Π/var/neutral-Id).
+    Covers constant, identity, structural (e.g. λ.S#0), into-product, and dependent
+    Π codomains. Validated against the spec: 7 worked cases + a 100k funext fuzz
+    (random A→B with constant & identity bodies), 0 wrong, 0 refused. Sound limits:
+    a body that needs real β (an application) is refused, and the codomain must be
+    closed (open codomains would need net-level shifting, not yet done).
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
 🟡  Dependent families (semantics, id_observe.c): Id over a dependent Π is now
     dependent funext — Id (Πx:A. B x) f g = Πz:A. Id (B z)(f z)(g z), the codomain
@@ -157,9 +166,10 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
 2. ⬜  **Multithreaded CPU reducer** — atomic frontier reduction on `ic.c`; the
    correctness groundwork (confluence, locality) is done. The concurrency rehearsal
    for the GPU.
-3. 🟡  **Finish Id/transport in the net** — Id already runs as agents on the
-   inductive + universe fragment (src/idnet.c); add the function case (funext,
-   needs the λ agents) and transport, then cross-check against the cubical layer.
+3. 🟡  **Finish Id/transport in the net** — Id now runs as agents on the inductive
+   + universe fragment AND the function case (funext, incl. dependent Π) in
+   src/idnet.c. Remaining: transport as net agents, the dependent Σ cases, and the
+   cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 
 ## Validation discipline (applies to everything)
