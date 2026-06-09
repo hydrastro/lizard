@@ -50,7 +50,7 @@ enum {
   N_ID, N_EQUIV, N_UNPAIR,                             /* Id / result / projection */
   N_IDB, N_EQT, N_EQF,                                 /* Bool observation       */
   N_IDN, N_ISZ, N_SCS,                                 /* Nat observation (rec)  */
-  N_PI, N_NID,                                         /* result Pi-type, neutral Id */
+  N_PI, N_NID, N_NTR,                                  /* result Pi-type, neutral Id, neutral transport */
   N_SIGD,                                              /* Sigma-Id decision (faces the first-component Id result) */
   N_REC, N_RSTEP,                                      /* Nat recursor; CBV step-forcer */
   N_LREC,                                              /* List recursor (foldr), reuses N_RSTEP forcer */
@@ -283,6 +283,20 @@ static int is_active_agent(int kind) {
  * Sets keep_d=1 when the data node must survive (it becomes part of a neutral
  * result, e.g. the variable in Id_Nat(z)(y)); otherwise the caller erases it. */
 static int keep_d;
+/* If the transport at agent `a` is genuinely neutral -- a NON-constant family (constants are
+ * already reduced) along a VARIABLE path -- build a neutral-transport node N_NTR carrying
+ * (family body d, path, value), mirroring the neutral-Id construction, and return 1.  This is
+ * exactly the shape the spec leaves neutral; otherwise return 0 and the caller refuses. */
+static int try_neutral_tr(int a, int d) {
+  int p = pt_[a * PORTS + 2];
+  if (p < 0 || k_[p] != N_VAR) return 0;
+  { int nt = mk(N_NTR);
+    splice(a, 1, nt, 0);            /* transport output -> neutral transport */
+    link_(nt, 1, d, 0);            /* family body P[X] (kept) */
+    splice(a, 2, nt, 2);           /* path (the variable) */
+    splice(a, 3, nt, 3);           /* value */
+    keep_d = 1; return 1; }
+}
 static void rule(int a, int d) {
   int ka = k_[a], kd = k_[d];
   /* keep_d is reset by the (serial) caller before each rule() call; rule branches set it
@@ -413,6 +427,31 @@ static void rule(int a, int d) {
         link_(Dec, 0, IdA, 1);                 /* decision faces the first-component Id result */
         link_(Dec, 1, IdB, 1);                 /* then-branch: the second-component Id */
         splice(a, 1, Dec, 2);                  /* decision output -> the Sigma-Id output */
+        /* DEPENDENT non-inductive case: if the first-component path is a genuine equivalence the
+         * body is Id (B a') (transp^(lam Z. B Z) p b) b' under the new binder p.  Buildable WITHOUT
+         * a shift when B mentions only its own binder x and b, b' are closed: B[a'] is a copy of B
+         * at a', the transport is NEUTRAL (path = the fresh bound p, a variable), and the body is
+         * an ACTIVE Id over an ACTIVE transport so products decompose exactly as the spec does
+         * (the N_NTR-aware Bool/Nat observers keep the base leaves neutral).  Stash on Dec.4; the
+         * Equiv rule uses it.  Otherwise leave Dec.4 empty -> the dependent case refuses. */
+        if (vidx_[Dec] == 0) {
+          clos_guard = 0;
+          if (!occurs_lvl(Bb, Bp, 1) && !has_free(b1, b1p, 0) && !has_free(b2, b2p, 0)) {
+            int Ba2  = cs(Bb, Bp, 0, a2);                  /* B[a'] (a2 copied by cs)            */
+            int fam  = cs(Bb, Bp, 0, -1);                  /* family body P[Z]=B[Z], Z=var0      */
+            int bcp  = cs(b1, b1p, 0, -1);                 /* copy of b                          */
+            int b2cp = cs(b2, b2p, 0, -1);                 /* copy of b'                         */
+            int pvar = mk(N_VAR), tr = mk(N_TR), bodyId = mk(N_ID);
+            vidx_[pvar] = 0;                               /* the bound path p = var0            */
+            link_(tr, 0, fam, up_port(k_[fam]));           /* transport faces the family body    */
+            link_(tr, 2, pvar, 0);                         /*   path = p (a variable -> neutral) */
+            link_(tr, 3, bcp, up_port(k_[bcp]));           /*   value = b                        */
+            link_(bodyId, 0, Ba2, up_port(k_[Ba2]));       /* the body Id observes over B[a']    */
+            link_(bodyId, 2, tr, 1);                       /*   x = transp^(lam Z. B Z) p b      */
+            link_(bodyId, 3, b2cp, up_port(k_[b2cp]));     /*   y = b'                           */
+            link_(Dec, 4, bodyId, 1);                      /* stash the body's output on Dec.4   */
+          }
+        }
         k_[xx] = N_ERA; pt_[xx * PORTS] = -1;  /* the two pair nodes are consumed */
         k_[yy] = N_ERA; pt_[yy * PORTS] = -1;
       }
@@ -643,6 +682,11 @@ static void rule(int a, int d) {
     if (pk == N_REFL) {                       /* transport along refl is the identity */
       splice(a, 1, v, vp); era_at(a, 2); return;
     }
+    /* CONSTANT family (body has no occurrence of the binder X=var0): transport is the identity
+     * regardless of path or value shape.  Generic check -> a stuck N_TR always has a genuinely
+     * NON-constant family, which with a variable path is exactly when the spec is neutral. */
+    clos_guard = 0;
+    if (!occurs_lvl(d, pp_[a * PORTS + 0], 0)) { splice(a, 1, v, vp); era_at(a, 2); return; }
     if (kd == TY_BOOL || kd == TY_NAT || kd == TY_UNIT || kd == TY_EMPTY || kd == TY_U) {
       splice(a, 1, v, vp); era_at(a, 2); return;   /* closed (constant) family -> identity */
     }
@@ -657,10 +701,11 @@ static void rule(int a, int d) {
         k_[path] = N_ERA; pt_[path * PORTS] = -1;   /* consume the ua node */
         return;
       }
-      return;   /* identity family + non-ua/non-refl path -> neutral -> refuse */
+      if (try_neutral_tr(a, d)) return;
+      return;   /* identity family + non-variable, non-ua/non-refl path -> refuse */
     }
     if (kd == TY_PROD) {                       /* product family: componentwise (HoTT 2.6.4) */
-      if (v < 0 || k_[v] != VAL_PAIR) return;  /* value not a pair -> refuse */
+      if (v < 0 || k_[v] != VAL_PAIR) { if (try_neutral_tr(a, d)) return; return; }  /* value not a pair */
       {
         int L = pt_[d * PORTS + 1], Lp = pp_[d * PORTS + 1];
         int R = pt_[d * PORTS + 2], Rp = pp_[d * PORTS + 2];
@@ -679,7 +724,7 @@ static void rule(int a, int d) {
        * forward map on the covariant codomain, INVERSE map on the contravariant domain:
        *   transport^(lam X. D->C) (uae f g) h  =  lam z. [f if C=X]( h ( [g if D=X] z ) ). */
       int path = pt_[a * PORTS + 2];
-      if (path < 0 || k_[path] != N_UA) return;            /* non-ua path -> neutral -> refuse */
+      if (path < 0 || k_[path] != N_UA) { if (try_neutral_tr(a, d)) return; return; }  /* non-ua path */
       { int D = pt_[d * PORTS + 1], C = pt_[d * PORTS + 2];
         int dvar = (D >= 0 && k_[D] == N_VAR && vidx_[D] == 0);
         int cvar = (C >= 0 && k_[C] == N_VAR && vidx_[C] == 0);
@@ -728,7 +773,8 @@ static void rule(int a, int d) {
         }
       }
     }
-    return;   /* other family shapes -> refuse */
+    if (try_neutral_tr(a, d)) return;
+    return;   /* other family shapes (non-variable path) -> refuse */
   }
   if (ka == N_SIGD) {
     /* the first-component Id has reduced; decide the Sigma-Id.  Dec.1 = then (the
@@ -754,10 +800,14 @@ static void rule(int a, int d) {
        * second-component Id already built (Dec.1) -- which is closed w.r.t. the new binder p --
        * is exactly the body; build the Sigma. A genuinely dependent B would need the body
        * transported under the fresh binder (a shift the net does not perform) -> refuse. */
-      if (vidx_[a] != 1) return;                  /* dependent 2nd component -> refuse */
       { int TS = mk(TY_SIGMA);
         link_(TS, 1, d, 0);                       /* first component := the equivalence (kept) */
-        splice(a, 1, TS, 2);                      /* body := Id (B a) b b' (= Id (B a') b b', B const) */
+        if (vidx_[a] == 1) {
+          splice(a, 1, TS, 2);                    /* constant B: body := Id (B a) b b' */
+        } else {
+          if (pt_[a * PORTS + 4] < 0) { k_[TS] = N_ERA; pt_[TS * PORTS] = -1; return; }  /* dependent, shift needed -> refuse */
+          splice(a, 4, TS, 2);                    /* dependent B: body := the pre-built Id (Dec.4) */
+        }
         splice(a, 2, TS, 0);                      /* output := the Sigma type */
         keep_d = 1; return;
       }
@@ -768,7 +818,7 @@ static void rule(int a, int d) {
     /* x is known (d = TRUE/FALSE); now observe y with the matching tester */
     if (kd == VAL_TRUE)  { int e = mk(N_EQT); splice(a, 2, e, 0); splice(a, 1, e, 1); return; }
     if (kd == VAL_FALSE) { int e = mk(N_EQF); splice(a, 2, e, 0); splice(a, 1, e, 1); return; }
-    if (kd == N_VAR) {   /* Id_Bool(z)(y) is neutral */
+    if (kd == N_VAR || kd == N_NTR) {   /* Id_Bool(z)(y) is neutral (z a var or neutral transport) */
       int nid = mk(N_NID), tb = mk(TY_BOOL);
       link_(nid, 1, tb, 0); link_(nid, 2, d, 0); splice(a, 2, nid, 3); splice(a, 1, nid, 0);
       keep_d = 1; return;
@@ -807,7 +857,7 @@ static void rule(int a, int d) {
       splice(d, 1, s, 2);                   /* m (predecessor of x) held              */
       return;
     }
-    if (kd == N_VAR) {   /* Id_Nat(z)(y) neutral */
+    if (kd == N_VAR || kd == N_NTR) {   /* Id_Nat(z)(y) neutral (z a var or neutral transport) */
       int nid = mk(N_NID), tn = mk(TY_NAT);
       link_(nid, 1, tn, 0); link_(nid, 2, d, 0); splice(a, 2, nid, 3); splice(a, 1, nid, 0);
       keep_d = 1; return;
@@ -1085,6 +1135,10 @@ static id_node *rb(int a, int p) {
       case N_NID:    r = id_idty(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),    /* neutral Id A x y */
                                  rb(pt_[a*PORTS+2], pp_[a*PORTS+2]),
                                  rb(pt_[a*PORTS+3], pp_[a*PORTS+3])); break;
+      case N_NTR: {  /* neutral transport: port1 = family body P[X] (X=var0), port2 = path, port3 = value */
+                     r = id_transp(id_lam(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])),
+                                   rb(pt_[a*PORTS+2], pp_[a*PORTS+2]),
+                                   rb(pt_[a*PORTS+3], pp_[a*PORTS+3])); break; }
       case VAL_PAIR: r = id_pair(rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                  rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       default:       rb_bad = 1; r = id_base(ID_UNIT); break;   /* a stuck agent in a term slot */

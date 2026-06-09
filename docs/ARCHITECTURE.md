@@ -111,6 +111,18 @@ the root back into a surface term, **refusing** (returning NULL) if it meets an 
 should have been consumed — that is how "unsupported" becomes an honest refusal rather than a
 wrong type.
 
+One consequence shapes how *neutral* results are represented. After `rule()` returns, the loop
+**erases** the active pair unconditionally — so a rule that decides "this is neutral" cannot
+simply leave the stuck agent in place (it would be erased and read-back would refuse). Instead a
+genuinely neutral result is emitted as a **fresh, non-active node** that read-back knows how to
+render: `N_NID` for a neutral `Id A x y` (built when an observation meets a variable), and
+`N_NTR` for a neutral transport `transport^(λX. body) p x` (built when a non-constant family is
+transported along a *variable* path — constant families having already reduced to the identity).
+Because these nodes are not active agents, the reducer never touches them; because the dependent
+Σ-Id body is built as an *active* `Id` over an *active* transport, a product second component
+still decomposes componentwise (the transport splits, its base legs becoming `N_NTR`), matching
+the spec rather than freezing as one opaque blob.
+
 ## 5. Parallelism: what is, what isn't, and why
 
 Interaction nets are famously parallel-friendly: disjoint redexes commute, and the system is

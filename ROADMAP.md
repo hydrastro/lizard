@@ -98,9 +98,12 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     The 3-cycle is the decisive test: cyc ≠ cyc_inv, so transport of the identity is
     the identity only if the inverse is routed to the contravariant slot (a wrong
     forward there would send inl t to cyc² inl t = inr *). A function family along a
-    NON-univalence path is still soundly refused (no inverse to route), as is a nested
-    occurrence of the variable (e.g. X*X in the domain).
-🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
+    NON-univalence VARIABLE path is now COMPUTED as a neutral transport (the net builds an
+    N_NTR node that read-back renders as transport^(λX. body) p x, matching the spec, which is
+    neutral there too); only a NESTED occurrence of the variable along a univalence path
+    (e.g. X*X in the domain) — needing the general shift — is still refused.
+🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c) — BLOCKED:
+    the in-tree ds.h / tt_equality.c are not present in this source tree.
 ✅  Id over a dependent Σ (semantics AND net): Id (Σx:A. B x)((a,b),(a',b')) for an
     INDUCTIVE first component A. The first-component path Id_A a a' is decided by
     observation — an Empty anywhere (a ≠ a') makes the whole Σ Empty; an all-Unit
@@ -123,13 +126,17 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     a neutral transport along the bound path — e.g. Id (Σx:U. x)((Bool,t),(Nat,0)) =
     Σ(Equiv Bool Nat). Id Nat (transport (λZ.Z) p t) 0; note this is non-trivial even
     when the two first-component types coincide, since Equiv A A has more than one
-    element). The NET handles the case where the second component is CONSTANT (transport
-    is the identity, and the second-component Id — already built and closed w.r.t. the
-    new binder — is the body; N_SIGD facing an Equiv builds the Σ), and soundly REFUSES
-    a genuinely dependent second component, which would need the body transported under
-    the fresh path binder (a shift the net does not perform). Validated against the spec:
-    worked cases + a 60k non-inductive-Σ fuzz (random first-component types, constant
-    second component), 0 wrong, 0 refused; the dependent case is checked to refuse.
+    element). The NET now COMPUTES the dependent case too (not just constant B): when B
+    mentions only its own binder x and b, b' are closed (so no outer-variable shift is
+    needed), it builds the body Id (B a')(transport^(λZ. B Z) p b) b' as an ACTIVE Id over
+    an ACTIVE transport whose path is the fresh bound p — so the transport stays neutral
+    (an N_NTR) and, crucially, a PRODUCT second component decomposes componentwise exactly
+    as the spec does (e.g. Id (Σx:U. x*Nat)((Bool,(t,1)),(Nat,(0,1))) = Σ(Equiv Bool Nat).
+    (Id Nat (transport (λZ.Z) p t) 0 * Unit)); the N_NTR-aware Bool/Nat observers keep the
+    base leaves neutral. Constant B still reduces the transport to the identity. A B that
+    references OUTER variables (needing the general de Bruijn shift) is still refused.
+    Validated against the spec: worked cases + a 60k constant-second-component fuzz AND a
+    40k DEPENDENT (B=x and B=x*Nat) fuzz, 0 wrong, 0 refused.
 ✅  Nat recursor / eliminator (semantics AND net): rec z s n — the elimination dual
     to the zero/succ constructors — computes by recursion on the scrutinee. rec z s 0
     → z; rec z s (succ m) → s m (rec z s m). The step s is λn.λr. … (n = predecessor,
