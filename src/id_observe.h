@@ -75,7 +75,8 @@ id_node *id_if(id_node *c, id_node *t, id_node *e);     /* if c then t else e */
 id_node *id_rec(id_node *z, id_node *s, id_node *n);    /* Nat recursor: rec z s n  (z:base, s: step lam n.lam r..., n:scrutinee) */
 id_node *id_listrec(id_node *z, id_node *s, id_node *xs); /* List recursor (foldr): foldr z s xs (s: step lam head.lam r...) */
 id_node *id_case(id_node *scrut, id_node *f, id_node *g); /* case scrut f g : sum eliminator (f:A->C, g:B->C) */
-id_node *id_ua(id_node *f);                             /* univalence path from forward map f */
+id_node *id_ua(id_node *f);                      /* univalence path from an involutive map (inverse = f) */
+id_node *id_uae(id_node *f, id_node *g);         /* univalence path from an equivalence: forward f, inverse g */
 
 id_node *id_nat_lit(int n);                  /* convenience: succ^n zero */
 id_node *id_copy(const id_node *t);          /* deep copy */

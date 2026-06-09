@@ -253,6 +253,32 @@ int main(void) {
         id_idty(id_sum(Nat_(), Bool_()),
                 id_case(id_inl(T_()), id_lam(id_inr(id_var(0))), id_lam(id_inl(id_var(0)))), id_inr(T_())), Unit_());
 
+  /* ---- univalence in a FUNCTION family: transport along a genuine equivalence (the inverse path). ---- */
+  {
+    id_node *XtoX = id_lam(id_arr(id_var(0), id_var(0)));
+    id_node *NOT  = id_lam(id_if(id_var(0), F_(), T_()));
+    /* involutive Bool: transporting the identity gives (extensionally) the identity */
+    check("Id Bool (transp^(X->X)(ua not) id @ t) t",
+          id_idty(Bool_(), id_app(id_transp(id_copy(XtoX), id_ua(id_copy(NOT)), id_lam(id_var(0))), T_()), T_()), Unit_());
+    check("Id Bool (transp^(X->X)(ua not) not @ t) f",
+          id_idty(Bool_(), id_app(id_transp(id_copy(XtoX), id_ua(id_copy(NOT)), id_copy(NOT)), T_()), F_()), Unit_());
+    /* genuine non-involutive 3-cycle on Bool+Unit: transport id is the identity on each element
+     * (a wrong forward-in-contravariant-position would send inl t to cyc^2 inl t = inr *). */
+    {
+      id_node *BU = id_sum(Bool_(), Unit_());
+      id_node *CYC  = id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inl(F_()), id_inr(Star_()))), id_lam(id_inl(T_()))));
+      id_node *CYCi = id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inr(Star_()), id_inl(T_()))), id_lam(id_inl(F_()))));
+      check("Id BU (transp^(X->X)(uae cyc cyc_inv) id @ inl t) inl t",
+            id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_lam(id_var(0))), id_inl(T_())), id_inl(T_())), Unit_());
+      check("Id BU (transp^(X->X)(uae cyc cyc_inv) id @ inr *) inr *",
+            id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_lam(id_var(0))), id_inr(Star_())), id_inr(Star_())), Unit_());
+      check("Id BU (transp^(X->X)(uae cyc cyc_inv) cyc @ inl t) inl f",
+            id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_copy(CYC)), id_inl(T_())), id_inl(F_())), Unit_());
+      id_free(BU); id_free(CYC); id_free(CYCi);
+    }
+    id_free(XtoX); id_free(NOT);
+  }
+
   if (fails == 0)
     printf("ALL %ld BY-OBSERVATION Id CHECKS PASSED (phase 14c reduction system)\n", checks);
   else

@@ -79,9 +79,27 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
     EVALUATOR on the net too — application + β (substitution via a generic net copy)
     and Bool elimination (`if`) — so the net actually computes `f x`. Validated
     against the spec: 6 worked cases + a 60k transport fuzz (constant/product/
-    univalence), 0 wrong, 0 refused. Sound limit: transport over a FUNCTION family
-    along a non-refl path needs the inverse path (transport of functions, HoTT 2.9)
-    and is refused, not guessed.
+    univalence), 0 wrong, 0 refused.
+✅  Univalence in a FUNCTION family (semantics AND net) — the inverse path (HoTT
+    2.9.4), previously the one deferred transport case. A univalence path now carries
+    a genuine equivalence: a forward map f AND an inverse g (uae f g; the old ua f is
+    the involutive case g = f). Transport recurses on the family with VARIANCE — the
+    forward map at covariant occurrences of the type variable, the inverse at
+    contravariant (function-domain) ones: transport^(λX. D[X]->C[X])(uae f g) h =
+    λz. [f if C=X]( h ( [g if D=X] z ) ); so transport^(λX.X->X)(uae f g) h conjugates,
+    λz. f(h(g z)). On the net this builds the result lambda and reduces it innermost-
+    first. Doing so surfaced (and fixed) a latent bug in the net's call-by-name β and
+    its copy/substitution: an identity-like body applied to a NON-value argument (a
+    redex) was wired to the body variable's port instead of the argument's own output
+    port; both now use up_port(result), which is unchanged for ordinary bodies but
+    correct when the body collapses to a redex argument. Validated against the spec by
+    a 60k fuzz (across X->X / D->X / X->D variance, involutive Bool equivalences AND a
+    genuine non-involutive 3-cycle on Bool+Unit) plus worked cases, 0 wrong, 0 refused.
+    The 3-cycle is the decisive test: cyc ≠ cyc_inv, so transport of the identity is
+    the identity only if the inverse is routed to the contravariant slot (a wrong
+    forward there would send inl t to cyc² inl t = inr *). A function family along a
+    NON-univalence path is still soundly refused (no inverse to route), as is a nested
+    occurrence of the variable (e.g. X*X in the domain).
 🟡  Cross-check the semantics against the in-tree cubical layer (tt_equality.c)
 ✅  Id over a dependent Σ (semantics AND net): Id (Σx:A. B x)((a,b),(a',b')) for an
     INDUCTIVE first component A. The first-component path Id_A a a' is decided by
@@ -148,7 +166,8 @@ duplication shortcut) — and (2) the real multithreaded/GPU reducer.
 🟡  Dependent families (semantics, id_observe.c): the remaining open cases are
     transport THROUGH a dependent Σ family, Id over a Σ whose first component is
     non-inductive (needs transport along a non-trivial first-component path), and
-    transport of functions (the inverse path). Dependent Π funext, product
+    transport through a dependent Σ family. (Transport of functions -- the inverse
+    path -- is now DONE on both spec and net.) Dependent Π funext, product
     transport, and Id-over-Σ for inductive first components are done (above).
 ```
 
@@ -249,8 +268,10 @@ local rewrite. That is exactly what a GPU wants. The groundwork is in place.
    (rec, with a call-by-value step-forcer so `if`/value steps run), AND Lists (a
    parameterized inductive type: Id over List by observation + the foldr recursor,
    reusing the step-forcer), AND coproducts A+B (Id over the sum + the case
-   eliminator) now all run as agents in src/idnet.c. Remaining: transport over a
-   function family (the inverse path), transport through a dependent Σ, Σ over a
+   eliminator), AND univalence in a FUNCTION family (transport along a genuine
+   equivalence -- forward + inverse, the inverse path, validated by a non-involutive
+   3-cycle) now all run as agents in src/idnet.c. Remaining: transport through a
+   dependent Σ, Σ over a
    non-inductive first component, and the cross-check against the cubical layer.
 4. ⬜  **OpenCL backend** — the redex-bag kernel above. The massive-parallelism payoff.
 

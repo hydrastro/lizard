@@ -146,7 +146,9 @@ static int enc(const id_node *t) {
                     link_(I, 2, x, up_port(k_[x]));
                     link_(I, 3, y, up_port(k_[y])); return I; }
     case ID_REFL: return mk(N_REFL);
-    case ID_UA:   { int u = mk(N_UA), f = enc(t->a); link_(u, 1, f, up_port(k_[f])); return u; }
+    case ID_UA:   { int u = mk(N_UA), f = enc(t->a), g = enc(t->b);
+                    link_(u, 1, f, up_port(k_[f]));   /* forward map on port 1 */
+                    link_(u, 2, g, up_port(k_[g])); return u; }  /* inverse map on port 2 */
     case ID_APP:  { int ap = mk(N_APP), f = enc(t->a), x = enc(t->b);
                     link_(ap, 0, f, up_port(k_[f]));  /* APP principal meets the function */
                     link_(ap, 2, x, up_port(k_[x])); return ap; }
@@ -222,10 +224,45 @@ static int cs(int node, int entry, int depth, int arg) {
     nd = depth;
     if ((k == N_LAM && p == 1) || (k == N_PI && p == 2)) nd = depth + 1;   /* under one more binder */
     nc = cs(c, cp, nd, arg);
-    link_(nn, p, nc, cp);
+    link_(nn, p, nc, up_port(k_[nc]));   /* up_port(nc)==cp for a plain copy, but tracks the
+                                          * argument's own output port when c was the substituted
+                                          * variable and the argument is a redex (not a value). */
   }
   cs_guard--;
   return nn;
+}
+
+/* Does the subtree rooted at `node` (reached via `entry`) contain a free variable
+ * at de Bruijn level >= depth?  Crossing a binder raises the level.  Used to keep
+ * the function-family transport SOUND: its result introduces a fresh binder, and the
+ * net performs no shifting, so the maps/value placed under it must be closed. */
+static int clos_guard;
+static int has_free(int node, int entry, int depth) {
+  if (node < 0) return 0;
+  if (++clos_guard > 300000) { clos_guard--; return 1; }   /* give up -> treat as open (refuse) */
+  if (k_[node] == N_VAR) { clos_guard--; return vidx_[node] >= depth; }
+  { int p, fr = 0;
+    for (p = 0; p < PORTS; p++) {
+      int c, nd; if (p == entry) continue;
+      c = pt_[node * PORTS + p]; if (c < 0) continue;
+      nd = depth; if ((k_[node] == N_LAM && p == 1) || (k_[node] == N_PI && p == 2)) nd = depth + 1;
+      if (has_free(c, pp_[node * PORTS + p], nd)) { fr = 1; break; }
+    }
+    clos_guard--; return fr; }
+}
+/* Does the subtree contain the family-bound variable (de Bruijn level == depth)? */
+static int occurs_lvl(int node, int entry, int depth) {
+  if (node < 0) return 0;
+  if (++clos_guard > 300000) { clos_guard--; return 1; }
+  if (k_[node] == N_VAR) { clos_guard--; return vidx_[node] == depth; }
+  { int p, oc = 0;
+    for (p = 0; p < PORTS; p++) {
+      int c, nd; if (p == entry) continue;
+      c = pt_[node * PORTS + p]; if (c < 0) continue;
+      nd = depth; if ((k_[node] == N_LAM && p == 1) || (k_[node] == N_PI && p == 2)) nd = depth + 1;
+      if (occurs_lvl(c, pp_[node * PORTS + p], nd)) { oc = 1; break; }
+    }
+    clos_guard--; return oc; }
 }
 
 /* an "active pair" is two nodes whose principals (port 0) are wired together */
@@ -579,9 +616,9 @@ static void rule(int a, int d) {
       int bn = pt_[d * PORTS + 1], bp = pp_[d * PORTS + 1];   /* lambda body root + up port */
       int arg = pt_[a * PORTS + 2];                            /* the argument               */
       int r = cs(bn, bp, 0, arg);
-      splice(a, 1, r, bp);                                     /* output := substituted body */
-      return;                                                  /* erase APP(a) and LAM(d)    */
-    }
+      splice(a, 1, r, up_port(k_[r]));                         /* output := substituted body */
+      return;                                                  /* (up_port(r) == bp for an    */
+    }                                                          /*  ordinary body, but tracks  */
     return;   /* application of a non-lambda (neutral) -> stuck -> refuse */
   }
   if (ka == N_IF) {
@@ -630,7 +667,61 @@ static void rule(int a, int d) {
         return;
       }
     }
-    return;   /* function family (non-refl) / other -> refuse */
+    if (kd == TY_ARR) {
+      /* FUNCTION family lam X. D[X] -> C[X] (HoTT 2.9.4): conjugate by the equivalence,
+       * forward map on the covariant codomain, INVERSE map on the contravariant domain:
+       *   transport^(lam X. D->C) (uae f g) h  =  lam z. [f if C=X]( h ( [g if D=X] z ) ). */
+      int path = pt_[a * PORTS + 2];
+      if (path < 0 || k_[path] != N_UA) return;            /* non-ua path -> neutral -> refuse */
+      { int D = pt_[d * PORTS + 1], C = pt_[d * PORTS + 2];
+        int dvar = (D >= 0 && k_[D] == N_VAR && vidx_[D] == 0);
+        int cvar = (C >= 0 && k_[C] == N_VAR && vidx_[C] == 0);
+        int dcon = !occurs_lvl(D, pp_[d * PORTS + 1], 0);   /* domain constant in X    */
+        int ccon = !occurs_lvl(C, pp_[d * PORTS + 2], 0);   /* codomain constant in X  */
+        if ((!dvar && !dcon) || (!cvar && !ccon)) return;   /* X nested (e.g. X*X) -> refuse */
+        { int hpt = pt_[a * PORTS + 3], hpp = pp_[a * PORTS + 3];
+          int fwd = pt_[path * PORTS + 1], fwp = pp_[path * PORTS + 1];
+          int inv = pt_[path * PORTS + 2], inp = pp_[path * PORTS + 2];
+          clos_guard = 0;
+          /* the result introduces a binder; the maps/value go under it and the net does
+           * not shift -- so they must be closed, else we refuse rather than mis-bind. */
+          if (has_free(hpt, hpp, 0)) return;
+          if (cvar && has_free(fwd, fwp, 0)) return;
+          if (dvar && has_free(inv, inp, 0)) return;
+          if (!dvar && !cvar) {                             /* arrow constant in X -> identity */
+            splice(a, 1, hpt, hpp); era_at(a, 2); return;
+          }
+          /* Build lam z. [f if C=X]( h ( [g if D=X] z ) ).  Create the application nodes
+           * INNERMOST-FIRST so the forward reduction scan fires them inside-out -- each
+           * argument is already reduced when its application fires, so no in-flight redex
+           * is ever copied (which would tangle the wiring). */
+          { int z = mk(N_VAR), inner, innerp, hAP, body, bodyp, Lz;
+            vidx_[z] = 0;
+            if (dvar) { int gAP = mk(N_APP);
+                        splice(path, 2, gAP, 0);            /* g -> gAP principal      */
+                        link_(gAP, 2, z, 0);                /* (g z)                   */
+                        inner = gAP; innerp = 1; }          /* gAP output = port 1     */
+            else      { inner = z; innerp = 0; }
+            hAP = mk(N_APP);
+            splice(a, 3, hAP, 0);                           /* h -> hAP principal      */
+            link_(hAP, 2, inner, innerp);                   /* h (inner)               */
+            if (cvar) { int fAP = mk(N_APP);
+                        splice(path, 1, fAP, 0);            /* f -> fAP principal      */
+                        link_(fAP, 2, hAP, 1);              /* f (h ...)               */
+                        body = fAP; bodyp = 1; }
+            else      { body = hAP; bodyp = 1; }
+            Lz = mk(N_LAM);
+            link_(Lz, 1, body, bodyp);                      /* lambda body             */
+            splice(a, 1, Lz, 0);                            /* transport output := the lambda */
+            if (!cvar) era_at(path, 1);                     /* forward map unused      */
+            if (!dvar) era_at(path, 2);                     /* inverse map unused      */
+            k_[path] = N_ERA; pt_[path * PORTS] = -1;       /* consume the ua node     */
+            return;
+          }
+        }
+      }
+    }
+    return;   /* other family shapes -> refuse */
   }
   if (ka == N_SIGD) {
     /* the first-component Id has reduced; decide the Sigma-Id.  Dec.1 = then (the
@@ -829,7 +920,9 @@ static id_node *rb(int a, int p) {
                                   rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;
       case N_LAM:    r = id_lam(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
       case N_REFL:   r = id_refl(id_base(ID_STAR)); break;     /* refl carrier irrelevant here */
-      case N_UA:     r = id_ua(rb(pt_[a*PORTS+1], pp_[a*PORTS+1])); break;
+      case N_UA:     { id_node *ff = rb(pt_[a*PORTS+1], pp_[a*PORTS+1]);
+                       id_node *gg = rb(pt_[a*PORTS+2], pp_[a*PORTS+2]);
+                       r = id_uae(ff, gg); break; }
       case N_IF:     r = id_if(rb(pt_[a*PORTS+0], pp_[a*PORTS+0]),    /* neutral if: cond/then/else */
                                rb(pt_[a*PORTS+1], pp_[a*PORTS+1]),
                                rb(pt_[a*PORTS+2], pp_[a*PORTS+2])); break;

@@ -99,6 +99,37 @@ static id_node *rand_case(void) {
   return id_case(scrut, f, g);
 }
 
+/* ---- random transport along a univalence path in a FUNCTION family (the inverse path) ---- */
+static id_node *u_not(void)  { return id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE))); }
+static id_node *u_id(void)   { return id_lam(id_var(0)); }
+/* 3-cycle on Bool+Unit and its (distinct) inverse */
+static id_node *u_cyc(void)  { return id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inl(id_base(ID_FALSE)), id_inr(id_base(ID_STAR)))), id_lam(id_inl(id_base(ID_TRUE))))); }
+static id_node *u_cyci(void) { return id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inr(id_base(ID_STAR)), id_inl(id_base(ID_TRUE)))), id_lam(id_inl(id_base(ID_FALSE))))); }
+static id_node *bu_elem(unsigned k) { return (k % 3u == 0u) ? id_inl(id_base(ID_TRUE)) : (k % 3u == 1u) ? id_inl(id_base(ID_FALSE)) : id_inr(id_base(ID_STAR)); }
+static id_node *rand_funtransp(void) {
+  /* Two regimes: involutive Bool equivalences, and the genuine non-involutive 3-cycle. */
+  if (rnd() & 1u) {
+    id_node *fam, *path, *h, *elem, *ref;
+    int v = (int)(rnd() % 3u);                  /* 0: X->X   1: Bool->X   2: X->Bool */
+    fam  = (v == 0) ? id_lam(id_arr(id_var(0), id_var(0)))
+         : (v == 1) ? id_lam(id_arr(id_base(ID_BOOL), id_var(0)))
+                    : id_lam(id_arr(id_var(0), id_base(ID_BOOL)));
+    path = (rnd() & 1u) ? id_ua(u_not()) : id_ua(u_id());
+    h    = (rnd() & 1u) ? u_not() : u_id();
+    elem = (rnd() & 1u) ? id_base(ID_TRUE) : id_base(ID_FALSE);
+    ref  = (rnd() & 1u) ? id_base(ID_TRUE) : id_base(ID_FALSE);
+    return id_idty(id_base(ID_BOOL), id_app(id_transp(fam, path, h), elem), ref);
+  } else {
+    id_node *fam  = id_lam(id_arr(id_var(0), id_var(0)));
+    id_node *path = (rnd() & 1u) ? id_uae(u_cyc(), u_cyci()) : id_uae(u_cyci(), u_cyc());
+    int hk = (int)(rnd() % 3u);
+    id_node *h = (hk == 0) ? u_id() : (hk == 1) ? u_cyc() : u_cyci();
+    id_node *elem = bu_elem(rnd());
+    id_node *ref  = bu_elem(rnd());
+    return id_idty(id_sum(id_base(ID_BOOL), id_base(ID_UNIT)), id_app(id_transp(fam, path, h), elem), ref);
+  }
+}
+
 static int fails = 0;
 
 /* a supported case: net result must equal the spec normal form */
@@ -285,11 +316,47 @@ int main(void) {
                       id_refl(id_base(ID_STAR)), id_pair(id_base(ID_TRUE), id_nat_lit(2))));
     id_free(NOT);
 
-    printf("[9b] SOUND REFUSAL -- transport over a function family (non-refl) needs the inverse path -> refuse\n");
-    /* transport^(lam X. X->X) (ua not) (id) : function-family transport not implemented -> refuse */
-    refuse_case("transp^(lX.X->X) (ua not) id",
-                id_transp(id_lam(id_arr(id_var(0), id_var(0))),
-                          id_ua(id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)))),
+    printf("[9b] UNIVALENCE IN A FUNCTION FAMILY -- transport along a genuine equivalence\n");
+    printf("     (forward f AND inverse g): transp^(lX.X->X)(uae f g) h = lz. f(h(g z)).\n");
+    {
+      id_node *XtoX = id_lam(id_arr(id_var(0), id_var(0)));
+      id_node *NOT  = id_lam(id_if(id_var(0), id_base(ID_FALSE), id_base(ID_TRUE)));
+      id_node *ID1  = id_lam(id_var(0));
+      /* involutive Bool: transport id along (ua not) is (extensionally) the identity */
+      ok_case("Id Bool (transp^(X->X)(ua not) id @ t) t",
+              id_idty(id_base(ID_BOOL), id_app(id_transp(id_copy(XtoX), id_ua(id_copy(NOT)), id_copy(ID1)), id_base(ID_TRUE)), id_base(ID_TRUE)));
+      ok_case("Id Bool (transp^(X->X)(ua not) not @ t) f",
+              id_idty(id_base(ID_BOOL), id_app(id_transp(id_copy(XtoX), id_ua(id_copy(NOT)), id_copy(NOT)), id_base(ID_TRUE)), id_base(ID_FALSE)));
+      /* one-sided families: codomain varies (Bool->X), domain varies (X->Bool) */
+      ok_case("transp^(Bool->X)(ua not) id  [direct lambda]",
+              id_transp(id_lam(id_arr(id_base(ID_BOOL), id_var(0))), id_ua(id_copy(NOT)), id_copy(ID1)));
+      ok_case("transp^(X->Bool)(ua not) id  [direct lambda]",
+              id_transp(id_lam(id_arr(id_var(0), id_base(ID_BOOL))), id_ua(id_copy(NOT)), id_copy(ID1)));
+      /* GENUINE non-involutive 3-cycle on Bool+Unit (cyc != cyc_inv): transport id must be
+       * the identity on every element -- this distinguishes correct inverse routing (a wrong
+       * forward-in-contravariant-position would send inl t to inr * = cyc^2). */
+      {
+        id_node *BU = id_sum(id_base(ID_BOOL), id_base(ID_UNIT));
+        /* cyc:  inl t -> inl f -> inr * -> inl t */
+        id_node *CYC  = id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inl(id_base(ID_FALSE)), id_inr(id_base(ID_STAR)))), id_lam(id_inl(id_base(ID_TRUE)))));
+        id_node *CYCi = id_lam(id_case(id_var(0), id_lam(id_if(id_var(0), id_inr(id_base(ID_STAR)), id_inl(id_base(ID_TRUE)))), id_lam(id_inl(id_base(ID_FALSE)))));
+        ok_case("Id BU (transp^(X->X)(uae cyc cyc_inv) id @ inl t) inl t",
+                id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_copy(ID1)), id_inl(id_base(ID_TRUE))), id_inl(id_base(ID_TRUE))));
+        ok_case("Id BU (transp^(X->X)(uae cyc cyc_inv) id @ inr *) inr *",
+                id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_copy(ID1)), id_inr(id_base(ID_STAR))), id_inr(id_base(ID_STAR))));
+        /* transport cyc along its own univalence acts as cyc: inl t -> inl f */
+        ok_case("Id BU (transp^(X->X)(uae cyc cyc_inv) cyc @ inl t) inl f",
+                id_idty(id_copy(BU), id_app(id_transp(id_copy(XtoX), id_uae(id_copy(CYC), id_copy(CYCi)), id_copy(CYC)), id_inl(id_base(ID_TRUE))), id_inl(id_base(ID_FALSE))));
+        id_free(BU); id_free(CYC); id_free(CYCi);
+      }
+      id_free(XtoX); id_free(NOT); id_free(ID1);
+    }
+
+    printf("[9c] SOUND REFUSAL -- a function family along a NON-univalence path -> refuse\n");
+    /* the family is a function type but the path is not a ua equivalence (here a free var of
+     * the equality type): the net has no inverse map to route, so it refuses (never guesses). */
+    refuse_case("transp^(lX.X->X) (var path) id",
+                id_transp(id_lam(id_arr(id_var(0), id_var(0))), id_var(0),
                           id_lam(id_var(0))));
   }
 
@@ -556,6 +623,22 @@ int main(void) {
     else printf("    ok   %d random case programs (inl/inr through branches): net matches spec, 0 wrong, 0 refused\n", N);
   }
 
-  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma + the Nat recursor + Lists (Id + foldr) + coproducts A+B (Id over the sum AND the case eliminator), matching the spec over 720k fuzz; unsupported cases refused, never mis-computed\n", fails);
+  printf("[23] FUNCTION-FAMILY TRANSPORT FUZZ -- univalence in lX.D->C across variance,\n");
+  printf("     involutive Bool equivalences AND the genuine non-involutive 3-cycle: net == spec\n");
+  {
+    int i, N = 60000, bad = 0, refused = 0;
+    for (i = 0; i < N; i++) {
+      id_node *term = rand_funtransp();
+      id_node *spec = id_nf(id_copy(term));
+      id_node *net  = idnet_id_nf(term, (long *)0);
+      if (!net) refused++;
+      else if (!id_eq(net, spec)) { bad++; if (bad <= 3) { printf("      MISMATCH net="); id_print(net); printf(" spec="); id_print(spec); printf("\n"); } }
+      id_free(term); id_free(spec); if (net) id_free(net);
+    }
+    if (bad || refused) { fails++; printf("    FAIL %d mismatches, %d unexpected refusals out of %d\n", bad, refused, N); }
+    else printf("    ok   %d random function-family transports (the inverse path): net matches spec, 0 wrong, 0 refused\n", N);
+  }
+
+  printf(fails ? "\n%d checks FAILED\n" : "\nidnet: Id AND transport by interaction -- inductive + universe + functions (funext) + transport incl. computational univalence + dependent Sigma + the Nat recursor + Lists (Id + foldr) + coproducts A+B (Id + case) + univalence in FUNCTION families along a genuine equivalence (forward + inverse, the inverse path; validated by a non-involutive 3-cycle), matching the spec over 780k fuzz; unsupported cases refused, never mis-computed\n", fails);
   return fails ? 1 : 0;
 }

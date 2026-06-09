@@ -33,7 +33,8 @@ id_node *id_rec(id_node *z, id_node *s, id_node *n)    { id_node *t = mk(ID_REC)
 id_node *id_listrec(id_node *z, id_node *s, id_node *xs){ id_node *t = mk(ID_LISTREC);t->a = z; t->b = s; t->c = xs; return t; }
 id_node *id_case(id_node *sc, id_node *f, id_node *g)  { id_node *t = mk(ID_CASE);   t->a = sc; t->b = f; t->c = g; return t; }
 id_node *id_if(id_node *c, id_node *th, id_node *el) { id_node *t = mk(ID_IF); t->a = c; t->b = th; t->c = el; return t; }
-id_node *id_ua(id_node *f) { id_node *t = mk(ID_UA); t->a = f; return t; }
+id_node *id_uae(id_node *f, id_node *g) { id_node *t = mk(ID_UA); t->a = f; t->b = g; return t; }
+id_node *id_ua(id_node *f) { return id_uae(f, id_copy(f)); }   /* involutive: inverse = a copy of f */
 
 id_node *id_nat_lit(int n) {
   id_node *t = id_base(ID_ZERO);
@@ -76,7 +77,7 @@ static id_node *shift(const id_node *t, int d, int cutoff) {
     case ID_TRANSP:return id_transp(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_REC:   return id_rec(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
     case ID_IF:    return id_if(shift(t->a, d, cutoff), shift(t->b, d, cutoff), shift(t->c, d, cutoff));
-    case ID_UA:    return id_ua(shift(t->a, d, cutoff));
+    case ID_UA:    return id_uae(shift(t->a, d, cutoff), shift(t->b, d, cutoff));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
     case ID_TRUE: case ID_FALSE: case ID_ZERO: case ID_STAR:
       return mk(t->kind);
@@ -117,7 +118,7 @@ static id_node *inst(const id_node *body, int depth, const id_node *arg) {
     case ID_TRANSP:return id_transp(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_REC:   return id_rec(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
     case ID_IF:    return id_if(inst(body->a, depth, arg), inst(body->b, depth, arg), inst(body->c, depth, arg));
-    case ID_UA:    return id_ua(inst(body->a, depth, arg));
+    case ID_UA:    return id_uae(inst(body->a, depth, arg), inst(body->b, depth, arg));
     case ID_BOOL: case ID_NAT: case ID_UNIT: case ID_EMPTY: case ID_U:
     case ID_TRUE: case ID_FALSE: case ID_ZERO: case ID_STAR:
       return mk(body->kind);
@@ -357,6 +358,30 @@ id_node *id_nf(const id_node *t) {
           id_free(pr); id_free(P); id_free(p); id_free(x);
           return r;
         }
+        /* FUNCTION family (HoTT Thm 2.9.4): transport in lam X. D[X] -> C[X] conjugates by
+         * the equivalence -- a covariant codomain uses the FORWARD map, a contravariant
+         * domain uses the INVERSE map:
+         *   transport^(lam X. D->C) (uae f g) h  =  lam z. f-side ( h ( g-side z ) )
+         * where the f-side wraps with f iff C is X, and the g-side wraps with g iff D is X.
+         * Handled for the fragment where D and C are each either X (var 0) or X-free
+         * (constant); a nested occurrence (e.g. X*X in the domain) is left neutral. */
+        if (P->a->kind == ID_ARR && p->kind == ID_UA) {
+          id_node *D = P->a->a, *C = P->a->b;
+          int dvar = (D->kind == ID_VAR && D->idx == 0);
+          int cvar = (C->kind == ID_VAR && C->idx == 0);
+          int dok  = dvar || !occurs(D, 0);
+          int cok  = cvar || !occurs(C, 0);
+          if (dok && cok) {
+            id_node *fwd = p->a, *inv = p->b;
+            id_node *zin = dvar ? id_app(shift(inv, 1, 0), id_var(0)) : id_var(0);
+            id_node *mid = id_app(shift(x, 1, 0), zin);
+            id_node *bod = cvar ? id_app(shift(fwd, 1, 0), mid) : mid;
+            id_node *lam = id_lam(bod);
+            id_node *r   = id_nf(lam);
+            id_free(lam); id_free(P); id_free(p); id_free(x);
+            return r;
+          }
+        }
       }
       return id_transp(P, p, x);   /* structural family cases: documented extension */
     }
@@ -366,7 +391,7 @@ id_node *id_nf(const id_node *t) {
       if (c->kind == ID_FALSE) { id_free(c); id_free(th); return el; }
       return id_if(c, th, el);     /* neutral */
     }
-    case ID_UA: return id_ua(id_nf(t->a));
+    case ID_UA: return id_uae(id_nf(t->a), id_nf(t->b));
     case ID_ID: {
       id_node *A = id_nf(t->a), *x = id_nf(t->b), *y = id_nf(t->c), *r;
       r = observe(A, x, y);
